@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#123e36" />
+    <title>Field Atlas · Browser GIS</title>
+    <link rel="icon" href="./atlas.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <header class="appbar">
+      <div class="brand">
+        <img src="./atlas.svg" width="36" height="36" alt="" /><span
+          >Field Atlas</span
+        >
+      </div>
+      <nav aria-label="Workspace" id="nav">
+        <button data-view="map" class="active">
+          <i data-icon="map"></i>Map</button
+        ><button data-view="data"><i data-icon="data"></i>Data</button
+        ><button data-view="sql"><i data-icon="code"></i>SQL</button>
+      </nav>
+      <div class="project-actions">
+        <button id="open-project" title="Open project">
+          <i data-icon="folder"></i><span>Open project</span></button
+        ><button id="save-project" class="save" title="Save project">
+          <i data-icon="download"></i><span>Save project</span>
+        </button>
+      </div>
+    </header>
+    <main id="map-view">
+      <aside id="settings" class="sidebar" aria-label="Map settings">
+        <div class="side-heading">
+          <h1>Map workspace</h1>
+          <button
+            class="iconbtn mobile-only"
+            id="close-side"
+            aria-label="Close map settings"
+          >
+            <i data-icon="close"></i>
+          </button>
+        </div>
+        <section class="side-section">
+          <div class="section-title">
+            <h2><i data-icon="layers"></i>Layers</h2>
+            <button class="small-btn" id="add-data">
+              <i data-icon="plus"></i>Add data
+            </button>
+          </div>
+          <div id="layer-list"></div>
+        </section>
+        <section class="side-section">
+          <h2><i data-icon="sliders"></i>Map style</h2>
+          <label for="measure">Measure</label
+          ><select id="measure"></select>
+          <div class="two-fields">
+            <div>
+              <label for="classification">Classification</label
+              ><select id="classification">
+                <option value="quantile">Quantile</option>
+                <option value="equal">Equal interval</option>
+              </select>
+            </div>
+            <div>
+              <label for="class-count">Classes</label
+              ><select id="class-count">
+                <option>3</option>
+                <option>4</option>
+                <option selected>5</option>
+                <option>6</option>
+                <option>7</option>
+              </select>
+            </div>
+          </div>
+          <label>Color palette</label>
+          <div id="palettes" role="group" aria-label="Color palette"></div>
+        </section>
+        <section class="side-section analysis-section">
+          <h2><i data-icon="cluster"></i>Spatial analysis</h2>
+          <label for="rule">Neighbors</label
+          ><select id="rule">
+            <option value="queen">Shared edge or corner (queen)</option>
+            <option value="rook">Shared edge only (rook)</option>
+          </select>
+          <label for="study">Study area</label
+          ><select id="study"></select>
+          <details id="inference">
+            <summary>Test settings</summary>
+            <div class="two-fields">
+              <div>
+                <label for="permutations">Permutations</label
+                ><select id="permutations">
+                  <option>99</option>
+                  <option selected>999</option>
+                  <option>9999</option>
+                </select>
+              </div>
+              <div>
+                <label for="seed">Random seed</label
+                ><input
+                  id="seed"
+                  type="number"
+                  min="1"
+                  max="2147483647"
+                  value="12345"
+                />
+              </div>
+            </div>
+            <label class="checkbox"
+              ><input type="checkbox" id="fdr" />Adjust for multiple tests
+              (FDR)</label
+            >
+          </details>
+          <button class="primary full" id="analyze">
+            <i data-icon="cluster"></i>Find clusters
+          </button>
+        </section>
+      </aside>
+      <section id="canvas-area" aria-label="Interactive map">
+        <div id="map"></div>
+        <button
+          id="mobile-settings"
+          class="floating iconbtn mobile-only"
+          aria-label="Open map settings"
+        >
+          <i data-icon="sliders"></i>
+        </button>
+        <div class="map-title">
+          <h2 id="map-title">Mississippi</h2>
+          <p id="map-subtitle">Census tracts · ACS 2020–2024</p>
+        </div>
+        <div class="map-controls floating">
+          <button id="zoom-in" aria-label="Zoom in">
+            <i data-icon="plus"></i></button
+          ><button id="zoom-out" aria-label="Zoom out">
+            <i data-icon="minus"></i></button
+          ><button id="fit" aria-label="Fit layer to map">
+            <i data-icon="fit"></i></button
+          ><button
+            id="export-map"
+            aria-label="Export map image"
+            title="Export map image"
+          >
+            <i data-icon="photo"></i>
+          </button>
+        </div>
+        <div id="inspect-panel" hidden></div>
+        <div id="legend" class="floating" aria-live="polite"></div>
+        <div class="attribution">
+          Boundaries &amp; estimates · U.S. Census Bureau
+          <span> / </span> Basemap · Natural Earth
+        </div>
+      </section>
+    </main>
+    <main id="work-view" hidden>
+      <aside class="workside">
+        <div class="side-heading">
+          <h1 id="workside-title">Data library</h1>
+        </div>
+        <button id="import-data" class="primary full">
+          <i data-icon="upload"></i>Import files
+        </button>
+        <div id="table-list"></div>
+      </aside>
+      <section id="work-content"></section>
+    </main>
+    <footer>
+      <div>
+        <span class="status-dot"></span
+        ><span id="foot-status" role="status">Opening map…</span>
+      </div>
+      <span id="foot-context">Mississippi · Census tracts</span>
+    </footer>
+    <div id="toast" role="status" hidden></div>
+    <input
+      type="file"
+      accept=".csv,.parquet,.geoparquet,.geojson,.json"
+      id="file-picker"
+      multiple
+      hidden
+    /><input type="file" accept=".bgis,.zip" id="project-picker" hidden />
+    <dialog id="dialog">
+      <div id="dialog-content"></div>
+      <form method="dialog">
+        <button class="iconbtn dialog-close" aria-label="Close dialog">
+          <i data-icon="close"></i>
+        </button>
+      </form>
+    </dialog>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
