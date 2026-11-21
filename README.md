@@ -2,6 +2,8 @@
 
 A static browser GIS for tract-level mapping, spatial queries and exploratory cluster analysis. Open [Field Atlas on GitHub Pages](https://jossammil.github.io/bgis/). The starter project covers all 878 Mississippi census tracts. Local imports are read on the visitor’s device.
 
+To run the app from a clean checkout, rebuild its public datasets, or verify a saved analysis, start with the [reproducibility guide](REPRODUCIBILITY.md). It gives the baseline commit, source downloads, commands and expected results.
+
 ## Use the workspace
 
 - Choose the all-ages or child poverty measure. Set the color palette, classification and number of classes. Click a tract or use the map search to inspect its estimate, ACS 90% margin of error and denominator.
