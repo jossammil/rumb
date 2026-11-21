@@ -1,4 +1,6 @@
 import "./style.css";
+import "./compare.css";
+import { comparisonWorkspace } from "./compare.js";
 import { initMap } from "./map.js";
 import { callStats, inspection } from "./analysis-view.js";
 import { createWorkbench } from "./workbench.js";
@@ -45,6 +47,8 @@ const defaults = () => ({
   sql: "SELECT GEOID, name, county, poverty_pct\nFROM tracts\nORDER BY poverty_pct DESC NULLS LAST",
   layers: [],
   layerViews: {},
+  comparisons: {},
+  compareLayer: null,
 });
 let state = defaults(),
   base,
@@ -60,7 +64,7 @@ let currentColors = [],
   valueMap = new Map(),
   userGeometries = new Map(),
   ready = false;
-let atlas, bench;
+let atlas, bench, comparison;
 const styleName = (f) => fieldNames[f] || f?.replaceAll("_", " ") || "Features";
 const layer = () =>
   state.active === MS
@@ -99,6 +103,10 @@ function status(message) {
   node("foot-status").textContent = message;
 }
 function idleStatus() {
+  if (state.view === "compare") {
+    status(node("cmp-count").textContent);
+    return;
+  }
   status(number(records().length, 0) + " features · " + layer().name);
 }
 async function perform(button, operation) {
@@ -120,11 +128,12 @@ async function perform(button, operation) {
   }
 }
 async function asset(name) {
-  if (baseBlobs[name]) return baseBlobs[name];
+  const cache = baseBlobs;
+  if (cache[name]) return cache[name];
   const res = await fetch("./data/" + name);
   if (!res.ok)
     throw new Error("Unable to read " + name + " (" + res.status + ").");
-  return (baseBlobs[name] = await res.blob());
+  return (cache[name] = await res.blob());
 }
 async function getNeighbors() {
   if (!neighborData)
@@ -154,18 +163,34 @@ async function db() {
   }
   return databasePromise;
 }
-function setView(view) {
+function setView(view, restoring = false) {
   if (!ready) return;
+  const previous = state.view,
+    comparing = view === "compare",
+    mapped = comparing || view === "map";
+  if (comparing && previous === "map") state.mapCamera = atlas.camera();
+  comparison.leave();
   state.view = view;
-  node("map-view").hidden = view !== "map";
-  node("work-view").hidden = view === "map";
+  node("map-view").hidden = !mapped;
+  node("work-view").hidden = mapped;
+  node("map-view").classList.toggle("comparing", comparing);
+  node("cmp-split").hidden = node("cmp-panel").hidden = !comparing;
+  node("settings").hidden = comparing;
   document.querySelectorAll("#nav button").forEach((b) => {
     b.classList.toggle("active", b.dataset.view === view);
     b.setAttribute("aria-current", b.dataset.view === view ? "page" : "false");
   });
   node("settings").classList.remove("open");
-  bench.render(view);
-  if (view === "map") requestAnimationFrame(() => atlas.map.resize());
+  bench.render(mapped ? "map" : view);
+  if (mapped) atlas.map.resize();
+  if (comparing) {
+    const id = state.compareLayer || state.active;
+    comparison.open(id, !restoring && id !== state.active);
+  } else if (view === "map") {
+    renderAll();
+    if (state.mapCamera && !restoring) atlas.map.jumpTo(state.mapCamera);
+    delete state.mapCamera;
+  }
 }
 function cancelAnalysis() {
   runningStats?.abort();
@@ -206,6 +231,7 @@ function showLayer(id, fit = true) {
     keys.map((key) => [key, state[key]]),
   );
   state.active = id;
+  state.compareLayer = id;
   const l = layer();
   const fallback = defaults();
   fallback.measure = l.preferredMeasure || fieldList(l)[0] || "";
@@ -213,7 +239,6 @@ function showLayer(id, fit = true) {
   for (const key of keys) state[key] = saved[key];
   delete state.layerViews[id];
   setView("map");
-  renderAll();
   if (fit) atlas.fit(l.collection);
 }
 function applyNeighbors() {
@@ -231,6 +256,7 @@ function applyNeighbors() {
   return adjacent;
 }
 function renderInspector() {
+  if (state.view === "compare") return;
   const pane = node("inspect-panel"),
     adjacent = applyNeighbors();
   if (!state.inspector || (!state.selected && !state.result)) {
@@ -350,6 +376,7 @@ function legendItems() {
     .concat({ color: "#b6bdb5", text: "Unavailable" });
 }
 function draw() {
+  if (state.view === "compare") return;
   const l = layer(),
     features = l.collection.features,
     values = features.map((f) => f.properties?.[state.measure]);
@@ -577,6 +604,8 @@ function renderAll() {
           renderAll();
         }),
     );
+  node("map-credit").textContent =
+    l.id === MS ? "Boundaries & estimates · U.S. Census Bureau" : l.name;
   node("map-title").textContent = l.id === MS ? "Mississippi" : l.name;
   node("map-subtitle").textContent =
     l.id === MS
@@ -773,6 +802,11 @@ async function saveProject() {
     "sources.json",
   ])
     files[name] = await asset(name);
+  if (
+    state.comparisons.tracts ||
+    (state.view === "compare" && state.compareLayer === MS)
+  )
+    files["places-2025.json"] = await asset("places-2025.json");
   const saved = { ...state, camera: atlas.camera() };
   const blob = await packProject(saved, inputs, files);
   saveBlob(blob, "field-atlas.bgis");
@@ -824,7 +858,7 @@ async function restore(file) {
   if (previous) previous.then((old) => old.close()).catch(() => {});
   bench.reset();
   renderAll();
-  setView(state.view);
+  setView(state.view, true);
   if (s.camera) atlas.map.jumpTo(s.camera);
   notify("Project restored.");
 }
@@ -884,7 +918,11 @@ async function start() {
   find.innerHTML = icon("inspect");
   node("fit").after(find);
   find.onclick = findFeature;
-  atlas = initMap(selectFeature);
+  atlas = initMap((id) =>
+    state.view === "compare"
+      ? comparison.toggle(String(id))
+      : selectFeature(id),
+  );
   await Promise.all([
     atlas.ready,
     asset("tracts.geojson").then(async (blob) => {
@@ -899,6 +937,17 @@ async function start() {
     setView,
     mapSQL,
     showBase: () => showLayer(MS),
+  });
+  comparison = comparisonWorkspace({
+    atlas,
+    state: () => state,
+    layers: () => [
+      { id: MS, name: "Mississippi tracts", collection: base },
+      ...state.layers,
+    ],
+    fieldList,
+    asset,
+    status,
   });
   ready = true;
   renderAll();
@@ -952,25 +1001,31 @@ async function start() {
   }
   node("zoom-in").onclick = () => atlas.map.zoomIn();
   node("zoom-out").onclick = () => atlas.map.zoomOut();
-  node("fit").onclick = () => atlas.fit(layer().collection);
+  node("fit").onclick = () =>
+    atlas.fit(
+      (state.view === "compare" && comparison.collection()) ||
+        layer().collection,
+    );
   node("export-map").onclick = () =>
     perform(node("export-map"), () =>
-      atlas.image(
-        node("map-title").textContent,
-        (state.mode === "cluster" ? "Local Moran clusters · " : "") +
-          styleName(state.measure) +
-          " · " +
-          node("map-subtitle").textContent,
-        legendItems(),
-        (state.result && state.mode === "cluster"
-          ? state.result.studyName +
-            " · " +
-            state.rule +
-            " · " +
-            (state.fdr ? "FDR q" : "p") +
-            " ≤ 0.05 · "
-          : "") + "U.S. Census Bureau · Natural Earth",
-      ),
+      state.view === "compare"
+        ? comparison.image()
+        : atlas.image(
+            node("map-title").textContent,
+            (state.mode === "cluster" ? "Local Moran clusters · " : "") +
+              styleName(state.measure) +
+              " · " +
+              node("map-subtitle").textContent,
+            legendItems(),
+            (state.result && state.mode === "cluster"
+              ? state.result.studyName +
+                " · " +
+                state.rule +
+                " · " +
+                (state.fdr ? "FDR q" : "p") +
+                " ≤ 0.05 · "
+              : "") + "U.S. Census Bureau · Natural Earth",
+          ),
     );
   node("mobile-settings").onclick = () =>
     node("settings").classList.add("open");

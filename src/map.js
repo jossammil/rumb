@@ -296,7 +296,9 @@ export function initMap(onSelect) {
       map.getSource("area").setData({ type: "FeatureCollection", features });
     },
     select(id, neighbors) {
-      const f = ["==", ["get", "__atlas_id"], id ?? ""];
+      const f = Array.isArray(id)
+        ? ["in", ["get", "__atlas_id"], ["literal", id]]
+        : ["==", ["get", "__atlas_id"], id ?? ""];
       map.setFilter("selected", ["all", ["!=", ["geometry-type"], "Point"], f]);
       map.setFilter("selected-point", [
         "all",

@@ -17,6 +17,8 @@
       <nav aria-label="Workspace" id="nav">
         <button data-view="map" class="active">
           <i data-icon="map"></i>Map</button
+        ><button data-view="compare" aria-label="Compare areas">
+          <i data-icon="chart"></i>Compare</button
         ><button data-view="data"><i data-icon="data"></i>Data</button
         ><button data-view="sql"><i data-icon="code"></i>SQL</button>
       </nav>
@@ -147,10 +149,102 @@
         <div id="inspect-panel" hidden></div>
         <div id="legend" class="floating" aria-live="polite"></div>
         <div class="attribution">
-          Boundaries &amp; estimates · U.S. Census Bureau
+          <span id="map-credit"
+            >Boundaries &amp; estimates · U.S. Census Bureau</span
+          >
           <span> / </span> Basemap · Natural Earth
         </div>
       </section>
+      <div
+        id="cmp-split"
+        role="separator"
+        tabindex="0"
+        aria-label="Resize comparison panel"
+        aria-controls="cmp-panel"
+        hidden
+      ></div>
+      <aside id="cmp-panel" aria-label="Compare areas" hidden>
+        <header>
+          <h1>Compare areas</h1>
+          <button id="cmp-export" class="small-btn">
+            <i data-icon="download"></i>CSV
+          </button>
+        </header>
+        <label for="cmp-layer">Polygon layer</label
+        ><select id="cmp-layer"></select>
+        <p id="cmp-count" role="status"></p>
+        <div id="cmp-results" hidden>
+          <details id="cmp-settings" open>
+            <summary>Indicators and weights</summary>
+            <form id="cmp-form">
+              <div id="cmp-components"></div>
+              <div class="cmp-actions">
+                <button type="button" class="small-btn" id="cmp-add">
+                  Add indicator</button
+                ><button type="button" class="small-btn" id="cmp-remove">
+                  Remove third
+                </button>
+                <button class="primary" id="cmp-apply">Apply</button>
+              </div>
+              <p id="cmp-error" role="alert"></p>
+            </form>
+          </details>
+          <label for="cmp-color">Map color</label
+          ><select id="cmp-color">
+            <option value="score">Weighted score</option>
+            <option value="quadrant">Scatterplot quadrant</option>
+          </select>
+          <section>
+            <h2>Indicator comparison</h2>
+            <p id="cmp-axes"></p>
+            <svg
+              id="cmp-plot"
+              viewBox="0 0 400 185"
+              role="group"
+              aria-label="Indicator scatterplot"
+            ></svg>
+            <p id="cmp-medians"></p>
+          </section>
+          <section id="cmp-details" aria-live="polite"></section>
+          <section>
+            <div class="cmp-actions">
+              <h2>Area rankings</h2>
+              <button id="cmp-clear" class="small-btn">Clear selection</button>
+            </div>
+            <div class="cmp-actions">
+              <label class="checkbox"
+                ><input id="cmp-unranked" type="checkbox" />Unranked only</label
+              >
+              <span id="cmp-selection" role="status"></span
+              ><label class="checkbox"
+                ><input type="checkbox" id="cmp-only" />Selected only</label
+              >
+            </div>
+            <div class="cmp-scroll">
+              <table id="cmp-table">
+                <thead>
+                  <tr>
+                    <th><button data-sort="rank">Rank</button></th>
+                    <th><button data-sort="name">Area</button></th>
+                    <th><button data-sort="score">Score</button></th>
+                    <th>Quadrant</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div class="cmp-actions">
+              <button id="cmp-prev" class="small-btn">Previous</button
+              ><span id="cmp-page"></span
+              ><button id="cmp-next" class="small-btn">Next</button>
+            </div>
+          </section>
+          <details>
+            <summary>Methods and sources</summary>
+            <div id="cmp-method"></div>
+          </details>
+        </div>
+      </aside>
     </main>
     <main id="work-view" hidden>
       <aside class="workside">

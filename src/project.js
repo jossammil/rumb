@@ -70,6 +70,11 @@ export async function unpackProject(file) {
     ]) {
       base[name] = await read("base/" + name, new BlobWriter());
     }
+    if (entries.has("base/places-2025.json"))
+      base["places-2025.json"] = await read(
+        "base/places-2025.json",
+        new BlobWriter(),
+      );
     return { state: m.state, inputs, base };
   } finally {
     await zip.close();

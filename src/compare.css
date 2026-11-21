@@ -1,0 +1,215 @@
+.comparing #mobile-settings,
+.comparing #find-feature,
+.comparing #inspect-panel {
+  display: none;
+}
+#cmp-panel {
+  box-sizing: border-box;
+  flex: 0 0 var(--cmp-size, 45%);
+  min-width: 0;
+  overflow: auto;
+  background: #fbfcf9;
+  padding: 20px clamp(12px, 2vw, 30px);
+  font-size: 0.84rem;
+  color: var(--ink);
+  scrollbar-width: thin;
+}
+#cmp-panel header,
+.cmp-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+#cmp-panel h1 {
+  font: 500 1.8rem var(--serif);
+}
+#cmp-panel h2 {
+  font: 500 1.35rem var(--serif);
+}
+#cmp-panel label {
+  display: block;
+}
+#cmp-panel select,
+#cmp-panel input[type="number"] {
+  width: 100%;
+  min-width: 0;
+}
+#cmp-panel section,
+#cmp-panel details {
+  border-top: 1px solid var(--line);
+  margin-top: 14px;
+  padding-top: 12px;
+}
+#cmp-panel summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+#cmp-panel p {
+  line-height: 1.45;
+  margin: 7px 0;
+  color: var(--muted);
+}
+#cmp-panel #cmp-error {
+  color: #983e31;
+}
+.cmp-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.25fr) minmax(52px, 0.65fr);
+  gap: 7px;
+}
+#cmp-panel .cmp-fields label {
+  font-size: 0.72rem;
+}
+.cmp-actions {
+  margin-top: 9px;
+}
+#cmp-panel .cmp-actions label {
+  display: flex;
+  margin: 0;
+}
+#cmp-apply {
+  padding: 6px 15px;
+  margin-left: auto;
+}
+#cmp-plot {
+  display: block;
+  width: 100%;
+  max-height: 215px;
+  background: #f1f5ed;
+  border-radius: 5px;
+}
+#cmp-plot circle {
+  cursor: pointer;
+  fill-opacity: 0.7;
+}
+#cmp-plot circle.chosen {
+  fill-opacity: 1;
+  stroke: #162d23;
+  stroke-width: 2;
+  r: 5;
+}
+.cmp-ticks {
+  font: 10px var(--sans);
+  fill: #506257;
+}
+.cmp-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  margin-top: 6px;
+  font-size: 0.69rem;
+}
+.cmp-key span {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.cmp-scroll {
+  overflow: auto;
+}
+#cmp-table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 8px;
+  font-size: 0.76rem;
+}
+#cmp-table th,
+#cmp-table td {
+  text-align: left;
+  padding: 6px 3px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+#cmp-table button {
+  font-size: inherit;
+  text-align: left;
+  padding: 2px;
+}
+#cmp-table td small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.67rem;
+}
+#cmp-table tr[data-id] {
+  cursor: pointer;
+}
+#cmp-table .chosen {
+  background: #dcecd6;
+  box-shadow: inset 3px 0 var(--teal);
+}
+#cmp-table th[aria-sort="ascending"] button::after {
+  content: " ↑";
+}
+#cmp-table th[aria-sort="descending"] button::after {
+  content: " ↓";
+}
+#cmp-split {
+  flex: none;
+  width: 12px;
+  background: #e1e7de;
+  position: relative;
+  cursor: col-resize;
+  touch-action: none;
+}
+#cmp-split::after {
+  content: "";
+  position: absolute;
+  inset: 44% 4px;
+  border-radius: 4px;
+  background: #8d9e90;
+}
+#cmp-split:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: -2px;
+}
+@media (max-width: 760px) {
+  .comparing {
+    flex-direction: column;
+  }
+  .comparing #canvas-area {
+    min-height: 0;
+  }
+  #cmp-split {
+    height: 14px;
+    width: 100%;
+    cursor: row-resize;
+  }
+  #cmp-split::after {
+    inset: 5px 43%;
+  }
+  #cmp-panel {
+    min-height: 0;
+    padding: 12px 14px;
+  }
+  .comparing .map-title {
+    left: 10px;
+    max-width: 65%;
+    top: 9px;
+  }
+  .comparing .map-title h2 {
+    font-size: 1.1rem;
+  }
+  .comparing #legend {
+    left: 8px;
+    bottom: 18px;
+    width: min(70%, 240px);
+    padding: 6px;
+  }
+  .comparing .map-controls button {
+    height: 29px;
+  }
+}
+@media (max-width: 400px) {
+  .appbar {
+    gap: 3px;
+    padding: 0 5px;
+  }
+  .appbar nav button {
+    padding: 6px;
+  }
+  .appbar nav svg {
+    display: none;
+  }
+}
