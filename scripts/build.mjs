@@ -120,12 +120,45 @@ if (watch) {
   }
   await writeFile("dist/bundle-report.txt", `${report.join("\n")}\n`);
 
+  // 4b. Third-party notices: what ships in dist/ and under which licence, with
+  //     the full SIL Open Font License texts for the bundled fonts.
+  const shipped = [
+    ["maplibre-gl", "the map"],
+    ["@duckdb/duckdb-wasm", "SQL engine (with apache-arrow and flatbuffers)"],
+    ["apache-arrow", "DuckDB result tables"],
+    ["flatbuffers", "DuckDB result tables"],
+    ["@geoda/lisa", "GeoDaLib local Moran statistics"],
+    ["jsts", "polygon contiguity"],
+    ["@zip.js/zip.js", ".rumb project files"],
+    ["@fontsource-variable/jetbrains-mono", "font, Field Terminal"],
+    ["@fontsource-variable/antonio", "font, Starship"],
+    ["@fontsource/chakra-petch", "font, Tactical HUD"],
+    ["@fontsource/saira-stencil-one", "font, Rugged Field Kit"],
+  ];
+  const notices = ["rumb " + pkg.version + " includes these third-party components.", ""];
+  const fontLicences = [];
+  for (const [name, use] of shipped) {
+    const info = JSON.parse(await readFile(`node_modules/${name}/package.json`, "utf8"));
+    notices.push(`${name} ${info.version}  ${info.license}  ${use}`);
+    if (name.includes("fontsource"))
+      fontLicences.push(`---- ${name} ----\n` + (await readFile(`node_modules/${name}/LICENSE`, "utf8")));
+  }
+  notices.push(
+    "DuckDB parquet, json and spatial extensions (MIT; spatial includes GEOS, PROJ and GDAL components)",
+    "",
+    "Data: U.S. Census Bureau (TIGER/Line, ACS) and CDC PLACES are public; Natural Earth is public domain.",
+    "",
+    ...fontLicences,
+  );
+  await writeFile("dist/THIRD-PARTY.txt", notices.join("\n") + "\n");
+
   // 5. The service worker and the offline list. The shell (everything but
   //    vendor/ and data/) is precached; its hash is the app version, so any
   //    change installs a new worker. Data has its own version, from its bytes.
   const rel = (f) => path.relative("dist", f).split(path.sep).join("/");
   const files = (await walk("dist")).map(rel).sort();
-  const skip = (f) => f === "sw.js" || /\.(LEGAL\.txt|map)$/.test(f) || f === "bundle-report.txt";
+  const skip = (f) =>
+    f === "sw.js" || /\.(LEGAL\.txt|map)$/.test(f) || f === "bundle-report.txt" || f === "THIRD-PARTY.txt";
   const shellFiles = files.filter((f) => !f.startsWith("vendor/") && !f.startsWith("data/") && !skip(f));
   const dataFiles = files.filter((f) => f.startsWith("data/") && !f.endsWith("/reference.json"));
   const vendorFiles = files.filter((f) => f.startsWith("vendor/") && !/LICENSE$/.test(f));
