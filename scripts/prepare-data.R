@@ -7,7 +7,7 @@ args <- commandArgs(trailingOnly = TRUE)
 stopifnot(length(args) %in% c(0L, 2L))
 stage <- tempfile("rumb-prepare-")
 dir.create(stage)
-output <- "public/data"
+output <- "public/data/ms"
 dir.create(output, recursive = TRUE, showWarnings = FALSE)
 
 tiger_url <- "https://www2.census.gov/geo/tiger/TIGER2024/TRACT/tl_2024_28_tract.zip"

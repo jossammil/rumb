@@ -1,3 +1,4 @@
+// The statistics worker: Moran analyses and polygon contiguity, off the main thread.
 import { analyze } from "./stats.js";
 
 self.onmessage = async ({ data }) => {
@@ -6,7 +7,7 @@ self.onmessage = async ({ data }) => {
     let result;
     if (type === "analyze") result = await analyze(data);
     else if (type === "weights") {
-      const { polygonNeighbors } = await import("./stats-weights.js");
+      const { polygonNeighbors } = await import("./weights.js");
       result = polygonNeighbors(data.features, data.rule);
     } else throw new Error("Unknown statistics request.");
     self.postMessage({ id, ok: true, result });

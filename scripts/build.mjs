@@ -46,7 +46,7 @@ await cp(
 //    modules. Dynamic imports (DuckDB's bindings, zip.js, jsts, GeoDaLib) become
 //    chunks that load only when first used. CSS imported from JS lands in app.css.
 const options = {
-  entryPoints: { app: "src/main.js", "stats-worker": "src/stats-worker.js" },
+  entryPoints: { app: "src/main.js", "stats-worker": "src/stats/worker.js" },
   bundle: true,
   format: "esm",
   splitting: true,

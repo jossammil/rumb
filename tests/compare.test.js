@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { compareAreas, comparisonCSV } from "../src/compare-score.js";
+import { compareAreas, comparisonCSV } from "../src/stats/compare-score.js";
 const read = (p) => JSON.parse(readFileSync(new URL(p, import.meta.url)));
 const components = (...fields) =>
   fields.map((field, i) => ({
@@ -10,8 +10,8 @@ const components = (...fields) =>
     direction: "higher",
   }));
 test("all 870 paired tract scores, ranks and quadrants match R", () => {
-  const cdc = read("../public/data/places-2025.json").byId;
-  const features = read("../public/data/tracts.geojson").features.map((f) => ({
+  const cdc = read("../public/data/ms/places-2025.json").byId;
+  const features = read("../public/data/ms/tracts.geojson").features.map((f) => ({
     ...f,
     properties: { ...f.properties, ...cdc[f.id] },
   }));

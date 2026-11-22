@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
-import { analyze, adjustFdr } from "../src/stats.js";
-import { polygonNeighbors } from "../src/stats-weights.js";
+import { analyze, adjustFdr } from "../src/stats/stats.js";
+import { polygonNeighbors } from "../src/stats/weights.js";
 
 const values = { a: 1, b: 2, c: 5, d: 9, e: 1, f: 0 };
 const neighbors = {
@@ -143,7 +143,7 @@ test("Mississippi poverty results agree with independent statewide R fixtures fo
   const dataFile = async (name) =>
     JSON.parse(
       await readFile(
-        new URL("../public/data/" + name, import.meta.url),
+        new URL("../public/data/ms/" + name, import.meta.url),
         "utf8",
       ),
     );

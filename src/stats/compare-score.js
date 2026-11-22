@@ -1,3 +1,5 @@
+import { csvCell } from "../data/csv.js";
+
 // R percent_rank uses the lowest rank in each group of equal values.
 function rankField(rows, index, component) {
   const sorted = rows.slice().sort((a, b) => a.values[index] - b.values[index]);
@@ -115,10 +117,6 @@ export function compareAreas(features, components) {
   };
 }
 
-function csvCell(value) {
-  const text = String(value ?? "");
-  return /[",\r\n]/.test(text) ? '"' + text.replaceAll('"', '""') + '"' : text;
-}
 
 export function comparisonCSV(result, selectedIds = []) {
   const selection = new Set(Array.from(selectedIds, String));

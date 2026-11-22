@@ -1,12 +1,13 @@
+// DuckDB-Wasm in a worker: registers the reference layer and imported files as
+// views, checks that SQL is one SELECT, and streams results to the map or CSV.
 import {
   AsyncDuckDB,
   ConsoleLogger,
   DuckDBDataProtocol,
   LogLevel,
 } from "@duckdb/duckdb-wasm";
+import { ident, sqlString } from "./sql.js";
 
-const sqlString = (value) => "'" + String(value).replaceAll("'", "''") + "'";
-const ident = (value) => '"' + String(value).replaceAll('"', '""') + '"';
 const appURL = (path) => new URL(path, document.baseURI).href;
 const geoTypes = new Set(["GEOMETRY", "WKB_BLOB"]);
 const isGeo = (type) => geoTypes.has(type) || type.startsWith("GEOMETRY(");
@@ -80,7 +81,14 @@ async function startRuntime() {
   }
 }
 
-export async function openDatabase({ tractsFile, tractDisplay } = {}) {
+/**
+ * Opens DuckDB with one reference layer registered as a view:
+ * reference = { table, file (GeoParquet File), display (GeoJSON), idField, labelField, idText }
+ * idText names its key for messages, such as "Mississippi tract GEOID".
+ */
+export async function openDatabase({ reference }) {
+  if (!reference?.file) throw new Error("The reference layer's GeoParquet file is missing.");
+  const { table: refTable, idField, labelField, display, idText } = reference;
   const { engine, conn } = await startRuntime();
   const sources = new Map();
   let nextFile = 0;
@@ -304,7 +312,7 @@ export async function openDatabase({ tractsFile, tractDisplay } = {}) {
     const truncated = rows.length > limit;
     return { columns, rows: rows.slice(0, limit), truncated };
   }
-  async function mapQuery(input, { idColumn = "GEOID", limit = 10000 } = {}) {
+  async function mapQuery(input, { idColumn = idField, limit = 10000 } = {}) {
     safeLimit(limit, 50000);
     const sql = await selectStatement(input);
     const columns = await describe("SELECT * FROM (" + sql + ") AS described");
@@ -316,24 +324,11 @@ export async function openDatabase({ tractsFile, tractDisplay } = {}) {
     if (!geom) {
       if (!id)
         throw new Error(
-          "Include a geometry column or Mississippi tract GEOID to map this query.",
+          "Include a geometry column or a " + idText + " to map this query.",
         );
-      if (!displayIndex) {
-        if (!tractDisplay) {
-          const response = await fetch(appURL("data/tracts.geojson"));
-          if (!response.ok)
-            throw new Error(
-              "Could not read the Mississippi display geography.",
-            );
-          tractDisplay = await response.json();
-        }
-        displayIndex = new Map(
-          tractDisplay.features.map((f) => [
-            String(f.properties.GEOID),
-            f.geometry,
-          ]),
-        );
-      }
+      displayIndex ??= new Map(
+        display.features.map((f) => [String(f.properties[idField]), f.geometry]),
+      );
     }
     const attrs = columns
       .filter((c) => !isGeo(c.type))
@@ -405,7 +400,7 @@ export async function openDatabase({ tractsFile, tractDisplay } = {}) {
     if (!source.columns.some((c) => c.name === key))
       throw new Error("Choose a join column.");
     const taken = new Set(
-      checkSource("tracts").columns.map((c) => c.name.toLowerCase()),
+      checkSource(refTable).columns.map((c) => c.name.toLowerCase()),
     );
     const attrs = source.columns
       .filter((c) => c.name !== key && !isGeo(c.type))
@@ -420,26 +415,32 @@ export async function openDatabase({ tractsFile, tractDisplay } = {}) {
     return (
       "SELECT t.* EXCLUDE (geometry)" +
       (attrs.length ? ",\n       " + attrs.join(",\n       ") : "") +
-      "\nFROM tracts AS t\nLEFT JOIN " +
+      "\nFROM " +
+      ident(refTable) +
+      " AS t\nLEFT JOIN " +
       ident(name) +
-      " AS s\n  ON t.GEOID = trim(CAST(s." +
+      " AS s\n  ON t." +
+      ident(idField) +
+      " = trim(CAST(s." +
       ident(key) +
       " AS VARCHAR))"
     );
   }
   async function joinReport(name, key) {
     joinSQL(name, key);
-    const column = ident(key);
+    const column = ident(key),
+      key2 = ident(idField);
     const rows = await execute(
       "WITH groups AS (SELECT trim(CAST(" +
         column +
         " AS VARCHAR)) AS id, count(*) AS n FROM " +
         ident(name) +
         " GROUP BY 1) SELECT " +
-        "coalesce(sum(n) FILTER (WHERE t.GEOID IS NOT NULL), 0) AS matched, " +
-        "coalesce(sum(n) FILTER (WHERE t.GEOID IS NULL), 0) AS unmatched, " +
+        "coalesce(sum(n) FILTER (WHERE t." + key2 + " IS NOT NULL), 0) AS matched, " +
+        "coalesce(sum(n) FILTER (WHERE t." + key2 + " IS NULL), 0) AS unmatched, " +
         "count(*) FILTER (WHERE n > 1 AND id IS NOT NULL AND id <> '') AS \"duplicateKeys\", " +
-        '(SELECT count(*) FROM tracts) - count(t.GEOID) AS "missingTracts" FROM groups LEFT JOIN tracts AS t ON id = t.GEOID',
+        "(SELECT count(*) FROM " + ident(refTable) + ") - count(t." + key2 + ') AS "missingReference" FROM groups LEFT JOIN ' +
+        ident(refTable) + " AS t ON id = t." + key2,
     );
     return rows[0];
   }
@@ -447,14 +448,20 @@ export async function openDatabase({ tractsFile, tractDisplay } = {}) {
     const { geometry } = checkSource(name);
     if (!geometry) throw new Error("Choose an imported point layer.");
     // ST_Within excludes boundary points, avoiding double-counting shared edges.
+    const keys = [idField, labelField].filter(Boolean).map((c) => "t." + ident(c));
     return (
-      "SELECT t.GEOID, t.name, count(p." +
+      "SELECT " +
+      keys.join(", ") +
+      ", count(p." +
       ident(geometry) +
-      ") AS point_count\nFROM tracts AS t\nLEFT JOIN " +
+      ") AS point_count\nFROM " +
+      ident(refTable) +
+      " AS t\nLEFT JOIN " +
       ident(name) +
       " AS p\n  ON ST_Within(p." +
       ident(geometry) +
-      ", t.geometry)\nGROUP BY t.GEOID, t.name"
+      ", t.geometry)\nGROUP BY " +
+      keys.join(", ")
     );
   }
   async function exportCSV(input) {
@@ -511,30 +518,12 @@ export async function openDatabase({ tractsFile, tractDisplay } = {}) {
       await engine.dropFile(file).catch(() => {});
     }
   }
-  async function drop(name) {
-    if (name === "tracts")
-      throw new Error("The reference tract layer is built in.");
-    const src = checkSource(name);
-    await conn.query("DROP VIEW " + ident(name));
-    sources.delete(name);
-    await engine.dropFile(src.path);
-  }
   async function close() {
     await conn.close();
     await engine.terminate();
   }
   try {
-    if (!tractsFile) {
-      const response = await fetch(appURL("data/tracts.parquet"));
-      if (!response.ok)
-        throw new Error(
-          "Could not load the canonical Mississippi tract file (HTTP " +
-            response.status +
-            ").",
-        );
-      tractsFile = new File([await response.blob()], "tracts.parquet");
-    }
-    await addFile(tractsFile, "tracts", "parquet");
+    await addFile(reference.file, refTable, "parquet");
     // A streaming result owns the connection until its last batch. Queue concurrent
     // UI calls so a new preview cannot overwrite an in-flight export or map stream.
     let queue = Promise.resolve();
@@ -554,7 +543,6 @@ export async function openDatabase({ tractsFile, tractDisplay } = {}) {
       joinReport: serial(joinReport),
       pointCountSQL,
       exportCSV: serial(exportCSV),
-      drop: serial(drop),
       close: serial(close),
     };
   } catch (error) {

@@ -551,10 +551,6 @@ select {
   margin: 4px 0;
   cursor: crosshair;
 }
-.scatter circle:focus {
-  stroke: black;
-  stroke-width: 2;
-}
 .plain-btn {
   padding: 2px 0;
   color: var(--teal);
@@ -998,4 +994,33 @@ dialog::backdrop {
   gap: 6px;
   align-items: center;
   margin-top: 3px;
+}
+/* Plots drawn by panels/inspector.js and panels/compare.js */
+.plot-bg {
+  fill: #f2f6ef;
+}
+.plot-axis {
+  stroke: #acbdad;
+}
+.plot-fit {
+  stroke: #697d6a;
+}
+.plot-median {
+  stroke: #78887f;
+}
+.plot-mark {
+  fill: #143e34;
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+.plot-text {
+  fill: #54695a;
+}
+#inspect-panel {
+  --plot-dot: #7b9688;
+}
+.dismiss {
+  float: right;
+  position: relative;
+  z-index: 1;
 }

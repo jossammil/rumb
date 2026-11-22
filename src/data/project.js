@@ -1,3 +1,5 @@
+// Project files (.rumb): a stored ZIP with project.json (the state), the
+// imported files under imports/ and the reference files under base/.
 import {
   BlobReader,
   BlobWriter,
@@ -30,7 +32,11 @@ export async function packProject(state, inputs, baseFiles) {
     await zip.add("base/" + name, new BlobReader(blob));
   return zip.close();
 }
-export async function unpackProject(file) {
+/**
+ * Reads a project. `reference` names the reference table (no import may use it)
+ * and the base/ files it must contain (`required`) or may contain (`optional`).
+ */
+export async function unpackProject(file, reference) {
   const zip = new ZipReader(new BlobReader(file), options);
   try {
     const entries = new Map(
@@ -56,7 +62,7 @@ export async function unpackProject(file) {
     for (const f of m.files) {
       if (
         !/^[a-z_][a-z0-9_]*$/.test(f.table) ||
-        f.table === "tracts" ||
+        f.table === reference.table ||
         inputs.has(f.table)
       )
         throw new Error("Project contains an invalid table name.");
@@ -66,19 +72,11 @@ export async function unpackProject(file) {
       inputs.set(f.table, new File([blob], f.name));
     }
     const base = {};
-    for (const name of [
-      "tracts.parquet",
-      "tracts.geojson",
-      "neighbors.json",
-      "sources.json",
-    ]) {
+    for (const name of reference.required)
       base[name] = await read("base/" + name, new BlobWriter());
-    }
-    if (entries.has("base/places-2025.json"))
-      base["places-2025.json"] = await read(
-        "base/places-2025.json",
-        new BlobWriter(),
-      );
+    for (const name of reference.optional || [])
+      if (entries.has("base/" + name))
+        base[name] = await read("base/" + name, new BlobWriter());
     return { state: m.state, inputs, base };
   } finally {
     await zip.close();

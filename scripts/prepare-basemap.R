@@ -19,10 +19,10 @@ parts <- lapply(names(inputs), function(kind) {
   st_sf(kind=kind, name=label, geometry=st_geometry(geo))
 })
 context <- do.call(rbind, parts)
-st_write(context, "public/data/context.geojson", quiet=TRUE, delete_dsn=TRUE, layer_options="COORDINATE_PRECISION=4")
+st_write(context, "public/data/ms/context.geojson", quiet=TRUE, delete_dsn=TRUE, layer_options="COORDINATE_PRECISION=4")
 # The small global outline is requested when a user leaves the regional basemap.
 global <- "ne_110m_land"
 path <- file.path(ne_cache(), paste0("bgis-", global, ".geojson"))
 if (!file.exists(path)) download.file(paste0("https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/", global, ".geojson"), path, mode="wb")
 world <- st_sf(geometry=st_geometry(st_read(path, quiet=TRUE)))
-st_write(world, "public/data/world-land.geojson", quiet=TRUE, delete_dsn=TRUE, layer_options="COORDINATE_PRECISION=4")
+st_write(world, "public/data/ms/world-land.geojson", quiet=TRUE, delete_dsn=TRUE, layer_options="COORDINATE_PRECISION=4")

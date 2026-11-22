@@ -1,7 +1,7 @@
 # Rebuild the independently calculated statewide score fixture from published inputs.
 library(jsonlite)
-tracts <- fromJSON("public/data/tracts.geojson", simplifyVector=FALSE)$features
-cdc <- fromJSON("public/data/places-2025.json", simplifyVector=FALSE)$byId
+tracts <- fromJSON("public/data/ms/tracts.geojson", simplifyVector=FALSE)$features
+cdc <- fromJSON("public/data/ms/places-2025.json", simplifyVector=FALSE)$byId
 get_value <- function(x) if(is.null(x)) NA_real_ else x
 ids <- vapply(tracts, function(f) f$id, "")
 x <- vapply(tracts, function(f) get_value(f$properties$poverty_pct), 0)

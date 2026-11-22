@@ -5,7 +5,7 @@
 function lisaWasm() {
   if (typeof __LISA_WASM__ !== "undefined")
     return new URL(__LISA_WASM__, self.location.href).href;
-  return new URL("../node_modules/@geoda/lisa/wasm/geoda-lisa.wasm", import.meta.url).href;
+  return new URL("../../node_modules/@geoda/lisa/wasm/geoda-lisa.wasm", import.meta.url).href;
 }
 
 const average = (values) =>
