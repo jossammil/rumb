@@ -4,7 +4,7 @@
 import { referenceLayer } from "../catalog/catalog.js";
 import { numericFields } from "./features.js";
 
-export function createWorkspace(catalog, { status = () => {} } = {}) {
+export function createWorkspace(catalog, { status = () => {}, onDatabase = () => {} } = {}) {
   const ref = referenceLayer(catalog);
   let blobs = {},
     display = null,
@@ -57,10 +57,18 @@ export function createWorkspace(catalog, { status = () => {} } = {}) {
   function db() {
     if (!databasePromise) {
       status("Opening browser database…");
-      databasePromise = openWith(blobs, display, inputs).catch((error) => {
-        databasePromise = null;
-        throw error;
-      });
+      onDatabase("loading");
+      databasePromise = openWith(blobs, display, inputs).then(
+        (engine) => {
+          onDatabase("ready");
+          return engine;
+        },
+        (error) => {
+          databasePromise = null;
+          onDatabase("idle");
+          throw error;
+        },
+      );
     }
     return databasePromise;
   }
@@ -128,6 +136,7 @@ export function createWorkspace(catalog, { status = () => {} } = {}) {
           neighborData = graph;
           inputs = nextInputs;
           databasePromise = engine ? Promise.resolve(engine) : null;
+          onDatabase(engine ? "ready" : "idle");
           if (previous) previous.then((old) => old.close()).catch(() => {});
         },
       };

@@ -61,6 +61,9 @@ const options = {
     __DUCKDB_FOLDER__: JSON.stringify(`vendor/${duckdbFolder}`),
     __LISA_WASM__: JSON.stringify(`vendor/${lisaFolder}/geoda-lisa.wasm`),
   },
+  // Fonts referenced from the CSS are copied under assets/ with a content hash.
+  loader: { ".woff2": "file" },
+  assetNames: "assets/[name]-[hash]",
   legalComments: "linked",
   metafile: true,
   logLevel: "warning",

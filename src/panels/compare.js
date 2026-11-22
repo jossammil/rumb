@@ -4,7 +4,8 @@ import { fieldInfo } from "../catalog/catalog.js";
 import { number } from "../catalog/format.js";
 import { featureId, isPolygon } from "../core/features.js";
 import { exportMapImage } from "../map/export-png.js";
-import { NA_COLOR, quadrantColors, ramp } from "../map/classify.js";
+import { neutralColors } from "../map/basemap-style.js";
+import { quadrantColors, ramp } from "../map/classify.js";
 import { renderLegend } from "../map/legend.js";
 import { compareAreas, comparisonCSV } from "../stats/compare-score.js";
 import { $, h, options, s, saveBlob } from "../ui/dom.js";
@@ -225,14 +226,15 @@ export function createCompare(app) {
       config.color === "score"
         ? scale.map((color, i) => ({ color, text: SCORE_BANDS[i] }))
         : Object.entries(QUADRANTS).map(([key, text]) => ({ text, color: quadrantColors[key] }))
-    ).concat({ color: NA_COLOR, text: "Unranked" });
+    ).concat({ color: neutralColors().na, text: "Unranked" });
   }
   function drawMap() {
+    const { na } = neutralColors();
     app.atlas.draw(
       features.map((f) => {
         const r = result.byId.get(featureId(f));
         const color = r.reason
-          ? NA_COLOR
+          ? na
           : config.color === "quadrant"
             ? quadrantColors[r.quadrant]
             : scale[Math.min(4, Math.floor(r.score / 20))];

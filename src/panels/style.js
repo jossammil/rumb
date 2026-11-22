@@ -2,15 +2,8 @@
 // the active layer's colors and legend.
 import { fieldInfo } from "../catalog/catalog.js";
 import { featureId } from "../core/features.js";
-import {
-  classify,
-  classOf,
-  clusters,
-  NA_COLOR,
-  palettes,
-  ramp,
-  UNIFORM_COLOR,
-} from "../map/classify.js";
+import { neutralColors } from "../map/basemap-style.js";
+import { classify, classOf, clusters, palettes, ramp, UNIFORM_COLOR } from "../map/classify.js";
 import { classItems, renderLegend } from "../map/legend.js";
 import { $, h, options } from "../ui/dom.js";
 
@@ -61,6 +54,8 @@ export function createStyle(app) {
     const cuts = classify(data, state.count, state.classification),
       colors = ramp(state.palette, cuts.length + 1);
     const clustered = state.mode === "cluster" && state.result;
+    const { na, ns } = neutralColors();
+    const clusterColor = (key) => (key === "NS" ? ns : key === "NA" ? na : clusters[key][1]);
     values.clear();
     const annotated = features.map((f) => {
       const id = featureId(f),
@@ -69,9 +64,9 @@ export function createStyle(app) {
       let color = !state.measure
         ? UNIFORM_COLOR
         : !Number.isFinite(v)
-          ? NA_COLOR
+          ? na
           : colors[classOf(v, cuts)];
-      if (clustered) color = clusters[state.result.byId[id]?.cluster ?? "NA"][1];
+      if (clustered) color = clusterColor(state.result.byId[id]?.cluster ?? "NA");
       return { ...f, properties: { ...f.properties, __rumb_id: id, __rumb_color: color } };
     });
     app.atlas.draw(annotated);
@@ -87,13 +82,13 @@ export function createStyle(app) {
         }
       : null;
     if (clustered) {
-      items = Object.values(clusters).map(([text, color]) => ({ text, color }));
+      items = Object.entries(clusters).map(([key, [text]]) => ({ text, color: clusterColor(key) }));
       renderLegend(legend, { kind: "categories", title: "Local Moran clusters", items, action });
     } else if (!state.measure) {
       items = [{ color: UNIFORM_COLOR, text: "Features" }];
       renderLegend(legend, { kind: "ramp", title: "Features", items, action });
     } else {
-      items = classItems(colors, cuts);
+      items = classItems(colors, cuts, na);
       const valid = data.filter(Number.isFinite);
       const unit = l.referenceFields ? fieldInfo(app.catalog, state.measure)?.unit || "" : "";
       renderLegend(legend, {

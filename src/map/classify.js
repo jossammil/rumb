@@ -11,8 +11,8 @@ export const palettes = {
   Cividis: ["#00204d", "#2a406c", "#575c6d", "#7c7b78", "#a69d75", "#d3c164", "#ffea46"],
 };
 
-/** Gray for a missing value, and the single color of a layer with no measure. */
-export const NA_COLOR = "#8a918b";
+/** The single color of a layer with no measure. (Missing values and "not
+ * significant" use theme colors: neutralColors() in basemap-style.js.) */
 export const UNIFORM_COLOR = "#397d70";
 
 /** LISA clusters and Compare quadrants share one high/low color language. */
@@ -28,7 +28,7 @@ export const clusters = {
   HL: ["High–low", quadrantColors.HL],
   LH: ["Low–high", quadrantColors.LH],
   NS: ["Not significant", "#c9d0cc"],
-  NA: ["Unavailable", NA_COLOR],
+  NA: ["Unavailable", "#8a918b"],
 };
 
 /**

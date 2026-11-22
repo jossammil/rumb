@@ -34,6 +34,15 @@ const label = {
 };
 const empty = { type: "FeatureCollection", features: [] };
 
+/** Neutral data colors that follow the theme: unavailable values and "not significant". */
+export function neutralColors(root = document.documentElement) {
+  const css = getComputedStyle(root);
+  return {
+    na: css.getPropertyValue("--na").trim() || "#8a918b",
+    ns: css.getPropertyValue("--cluster-ns").trim() || "#c9d0cc",
+  };
+}
+
 /** Paint properties that follow the theme, by layer id. */
 export function themedPaint(c) {
   return {

@@ -484,6 +484,108 @@ await check("legacy-project", async () => {
   await p.context().close();
 });
 
+// ---- the shell: themes, palette, keys, status bar --------------------------------
+const THEMES = ["terminal", "terminal-night", "terminal-day", "hud", "fieldkit", "starship"];
+await check("themes", async () => {
+  const p = await openPage();
+  await p.click("#analyze");
+  await waitText("#inspect-panel", "0.2768", p);
+  await p.click("#find-feature");
+  await p.fill("#find-term", ids[0]);
+  await p.locator("#find-results button").first().click();
+  for (const theme of THEMES) {
+    await p.evaluate((t) => window.rumb.appearance({ theme: t }), theme);
+    const repainted = await p.evaluate(
+      () =>
+        window.rumb.map.getPaintProperty("ocean", "background-color") ===
+        getComputedStyle(document.documentElement).getPropertyValue("--map-water").trim(),
+    );
+    expect(repainted, `${theme}: map backdrop did not follow the theme`);
+    expect(
+      (await p.evaluate(() => document.documentElement.dataset.theme)) === theme,
+      `${theme} not applied`,
+    );
+    await p.waitForTimeout(300);
+    await shot("theme-" + theme, p);
+  }
+  // The choice is remembered for the next visit.
+  await p.reload();
+  await ready(p);
+  expect((await p.evaluate(() => document.documentElement.dataset.theme)) === "starship", "theme not kept");
+  await p.context().close();
+});
+
+await check("palette", async () => {
+  const p = await openPage();
+  await p.keyboard.press("Control+k");
+  await p.locator("#palette[open]").waitFor();
+  await p.keyboard.type("sql edit");
+  await p.keyboard.press("Enter");
+  await p.locator("#sql-input").waitFor();
+  expect((await p.evaluate(() => window.rumb.state.view)) === "sql", "palette did not open SQL");
+  // Places are found by name, and choosing one selects it on the map.
+  await p.keyboard.press("Control+k");
+  await p.keyboard.type(ids[0]);
+  await p.locator("#palette-list li", { hasText: ids[0] }).first().click();
+  await waitText("#inspect-panel", "Adams County", p);
+  await p.context().close();
+});
+
+await check("keys", async () => {
+  const p = await openPage();
+  await p.keyboard.press("3");
+  await waitText("#work-content", "rows", p);
+  await p.keyboard.press("1");
+  await p.locator("#map-view:not([hidden])").waitFor();
+  await p.keyboard.press("?");
+  await p.locator("#dialog[open] .help-sheet").waitFor();
+  await p.keyboard.press("Escape");
+  await p.locator("#dialog:not([open])").waitFor({ state: "attached" });
+  await p.keyboard.press("r");
+  await waitText("#inspect-panel", "0.2768", p);
+  const before = await p.evaluate(() => document.documentElement.dataset.theme);
+  await p.keyboard.press("t");
+  const after = await p.evaluate(() => document.documentElement.dataset.theme);
+  expect(before !== after, "T did not change the theme");
+  // Keys typed into a text box stay there.
+  await p.keyboard.press("4");
+  await p.click("#sql-input");
+  await p.keyboard.type("1");
+  expect((await p.evaluate(() => window.rumb.state.view)) === "sql", "a key in the editor switched views");
+  await p.context().close();
+});
+
+await check("statusbar", async () => {
+  const p = await openPage();
+  const box = await p.locator("#map").boundingBox();
+  await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await p.locator("#sb-coords span", { hasText: /\d+\.\d{5} N/ }).waitFor();
+  await p.click("#sb-coords");
+  await p.mouse.move(box.x + box.width / 2 + 5, box.y + box.height / 2);
+  await p.locator("#sb-coords span", { hasText: /°.*″N/ }).waitFor();
+  expect(/^\d+\.\d$/.test(await p.textContent("#sb-zoom span")), "zoom readout");
+  expect((await p.textContent("#sb-db span")) === "idle", "database idle before use");
+  await p.click("#analyze");
+  await waitText("#sb-time", "lisa", p);
+  await p.keyboard.press("4");
+  await p.click("#run-query");
+  await waitText("#sb-db", "ready", p);
+  await waitText("#sb-state", "READY", p);
+  await p.context().close();
+});
+
+await check("narrow", async () => {
+  const p = await openPage({ width: 320, height: 640 });
+  expect(await noOverflow(p), "page wider than 320px");
+  await p.keyboard.press("4");
+  expect(await noOverflow(p), "SQL view wider than 320px");
+  await p.keyboard.press("2");
+  await waitText("#cmp-count", "870", p);
+  expect(await noOverflow(p), "Compare wider than 320px");
+  await shot("narrow-320", p);
+  await p.context().close();
+});
+
 // ---- across all checks --------------------------------------------------------
 await check("same-origin", async () => {
   expect(external.size === 0, `requests to ${[...external].join(", ")}`);

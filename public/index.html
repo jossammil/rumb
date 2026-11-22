@@ -1,61 +1,77 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="terminal">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="theme-color" content="#123e36" />
+    <meta name="theme-color" content="#050505" />
+    <meta name="description" content="rumb: a field GIS that runs in your browser. Maps, spatial SQL and cluster statistics with no server." />
     <title>rumb · field GIS</title>
-    <link rel="icon" href="./atlas.svg" type="image/svg+xml" />
+    <link rel="icon" href="./rumb.svg" type="image/svg+xml" />
+    <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="stylesheet" href="./app.css" />
+    <script>
+      // Apply the saved theme before the first paint (ui/themes.js owns these settings).
+      try {
+        const s = JSON.parse(localStorage.getItem("rumb.settings") || "{}");
+        const root = document.documentElement;
+        if (s.theme) root.dataset.theme = s.theme;
+        if (s.size) root.dataset.size = s.size;
+        if (s.decor === false) root.dataset.decor = "off";
+        if (s.scanlines) root.dataset.scanlines = "on";
+      } catch {}
+    </script>
   </head>
   <body>
     <header class="appbar">
-      <div class="brand">
-        <img src="./atlas.svg" width="36" height="36" alt="" /><span
-          >rumb</span
-        >
-      </div>
+      <a class="brand" href="./" aria-label="rumb home">
+        <svg width="24" height="24" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <circle cx="16" cy="16" r="12.5" />
+          <path d="M16 2v5M16 25v5M2 16h5M25 16h5" />
+          <path d="M9.5 22.5 22.5 9.5M22.5 9.5h-5.5M22.5 9.5V15" />
+        </svg>
+        <span class="wordmark">rumb</span><span class="tag" id="brand-region"></span>
+      </a>
       <nav aria-label="Workspace" id="nav">
-        <button data-view="map" class="active">
-          <i data-icon="map"></i>Map</button
-        ><button data-view="compare" aria-label="Compare areas">
-          <i data-icon="chart"></i>Compare</button
-        ><button data-view="data"><i data-icon="data"></i>Data</button
-        ><button data-view="sql"><i data-icon="code"></i>SQL</button>
+        <button data-view="map" class="active"><i data-icon="map"></i>Map<kbd>1</kbd></button
+        ><button data-view="compare" aria-label="Compare areas"><i data-icon="chart"></i>Compare<kbd>2</kbd></button
+        ><button data-view="data"><i data-icon="data"></i>Data<kbd>3</kbd></button
+        ><button data-view="sql"><i data-icon="code"></i>SQL<kbd>4</kbd></button>
       </nav>
+      <button id="open-palette" class="palette-trigger" title="Command palette">
+        <i data-icon="command"></i><span>Run a command…</span><kbd>⌘K</kbd>
+      </button>
       <div class="project-actions">
-        <button id="open-project" title="Open project">
-          <i data-icon="folder"></i><span>Open project</span></button
-        ><button id="save-project" class="save" title="Save project">
-          <i data-icon="download"></i><span>Save project</span>
-        </button>
+        <button id="open-project" title="Open a project (O)"><i data-icon="folder"></i><span>Open</span></button
+        ><button id="save-project" class="save" title="Save the project (⌘S)"><i data-icon="download"></i><span>Save</span></button>
       </div>
     </header>
     <main id="map-view">
+      <nav class="rail" aria-label="Tools">
+        <button data-tool="layers" title="Layers (L)"><i data-icon="layers"></i>L</button>
+        <button data-tool="style" title="Map style (S)"><i data-icon="sliders"></i>S</button>
+        <button data-tool="analyze" title="Spatial analysis (A)"><i data-icon="cluster"></i>A</button>
+        <button data-tool="find" title="Find a feature (F)"><i data-icon="inspect"></i>F</button>
+        <span class="rail-gap"></span>
+        <button data-tool="appearance" title="Appearance (T cycles themes)"><i data-icon="palette"></i>T</button>
+        <button data-tool="help" title="Keyboard shortcuts and about (?)"><i data-icon="help"></i>?</button>
+      </nav>
       <aside id="settings" class="sidebar" aria-label="Map settings">
         <div class="side-heading">
           <h1>Map workspace</h1>
-          <button
-            class="iconbtn mobile-only"
-            id="close-side"
-            aria-label="Close map settings"
-          >
+          <button class="iconbtn mobile-only" id="close-side" aria-label="Close map settings">
             <i data-icon="close"></i>
           </button>
         </div>
-        <section class="side-section">
+        <section class="side-section" id="sec-layers">
           <div class="section-title">
-            <h2><i data-icon="layers"></i>Layers</h2>
-            <button class="small-btn" id="add-data">
-              <i data-icon="plus"></i>Add data
-            </button>
+            <h2><i data-icon="layers"></i>Layers<kbd>L</kbd></h2>
           </div>
           <div id="layer-list"></div>
+          <button class="small-btn full" id="add-data"><i data-icon="plus"></i>Add data</button>
         </section>
-        <section class="side-section">
-          <h2><i data-icon="sliders"></i>Map style</h2>
-          <label for="measure">Measure</label
-          ><select id="measure"></select>
+        <section class="side-section" id="sec-style">
+          <h2><i data-icon="sliders"></i>Map style<kbd>S</kbd></h2>
+          <label for="measure">Measure</label><select id="measure"></select>
           <div class="two-fields">
             <div>
               <label for="classification">Classification</label
@@ -78,15 +94,14 @@
           <label>Color palette</label>
           <div id="palettes" role="group" aria-label="Color palette"></div>
         </section>
-        <section class="side-section analysis-section">
-          <h2><i data-icon="cluster"></i>Spatial analysis</h2>
+        <section class="side-section analysis-section" id="sec-analyze">
+          <h2><i data-icon="cluster"></i>Spatial analysis<kbd>A</kbd></h2>
           <label for="rule">Neighbors</label
           ><select id="rule">
             <option value="queen">Shared edge or corner (queen)</option>
             <option value="rook">Shared edge only (rook)</option>
           </select>
-          <label for="study">Study area</label
-          ><select id="study"></select>
+          <label for="study">Study area</label><select id="study"></select>
           <details id="inference">
             <summary>Test settings</summary>
             <div class="two-fields">
@@ -100,77 +115,43 @@
               </div>
               <div>
                 <label for="seed">Random seed</label
-                ><input
-                  id="seed"
-                  type="number"
-                  min="1"
-                  max="2147483647"
-                  value="12345"
-                />
+                ><input id="seed" type="number" min="1" max="2147483647" value="12345" />
               </div>
             </div>
-            <label class="checkbox"
-              ><input type="checkbox" id="fdr" />Adjust for multiple tests
-              (FDR)</label
-            >
+            <label class="checkbox"><input type="checkbox" id="fdr" />Adjust for multiple tests (FDR)</label>
           </details>
-          <button class="primary full" id="analyze">
-            <i data-icon="cluster"></i>Find clusters
-          </button>
+          <button class="primary full" id="analyze"><i data-icon="cluster"></i>Find clusters</button>
         </section>
       </aside>
       <section id="canvas-area" aria-label="Interactive map">
         <div id="map"></div>
-        <button
-          id="mobile-settings"
-          class="floating iconbtn mobile-only"
-          aria-label="Open map settings"
-        >
+        <button id="mobile-settings" class="floating iconbtn mobile-only" aria-label="Open map settings">
           <i data-icon="sliders"></i>
         </button>
         <div class="map-title">
           <h2 id="map-title">Opening map…</h2>
           <p id="map-subtitle"></p>
         </div>
-        <div class="map-controls floating">
-          <button id="zoom-in" aria-label="Zoom in">
-            <i data-icon="plus"></i></button
-          ><button id="zoom-out" aria-label="Zoom out">
-            <i data-icon="minus"></i></button
-          ><button id="fit" aria-label="Fit layer to map">
-            <i data-icon="fit"></i></button
-          ><button
-            id="export-map"
-            aria-label="Export map image"
-            title="Export map image"
-          >
-            <i data-icon="photo"></i>
-          </button>
+        <div class="map-controls">
+          <button id="zoom-in" aria-label="Zoom in" title="Zoom in (+)"><i data-icon="plus"></i></button
+          ><button id="zoom-out" aria-label="Zoom out" title="Zoom out (−)"><i data-icon="minus"></i></button
+          ><button id="fit" aria-label="Fit layer to map" title="Fit the layer (0)"><i data-icon="fit"></i></button
+          ><button id="find-feature" aria-label="Find a feature" title="Find a feature (F)"><i data-icon="inspect"></i></button
+          ><button id="export-map" aria-label="Export map image" title="Export a PNG (E)"><i data-icon="photo"></i></button>
         </div>
         <div id="inspect-panel" hidden></div>
-        <div id="legend" class="floating" aria-live="polite"></div>
+        <div id="legend" aria-live="polite"></div>
         <div class="attribution">
-          <span id="map-credit"></span>
-          <span> / </span> Basemap · Natural Earth
+          <span id="map-credit"></span><span> / </span>Basemap · Natural Earth
         </div>
       </section>
-      <div
-        id="cmp-split"
-        role="separator"
-        tabindex="0"
-        aria-label="Resize comparison panel"
-        aria-controls="cmp-panel"
-        hidden
-      ></div>
+      <div id="cmp-split" role="separator" tabindex="0" aria-label="Resize comparison panel" aria-controls="cmp-panel" hidden></div>
       <aside id="cmp-panel" aria-label="Compare areas" hidden>
         <header>
           <h1>Compare areas</h1>
-          <button id="cmp-export" class="small-btn">
-            <i data-icon="download"></i>CSV
-          </button>
+          <button id="cmp-export" class="small-btn"><i data-icon="download"></i>CSV</button>
         </header>
-        <label for="cmp-layer">Polygon layer</label
-        ><select id="cmp-layer"></select>
+        <label for="cmp-layer">Polygon layer</label><select id="cmp-layer"></select>
         <p id="cmp-count" role="status"></p>
         <div id="cmp-results" hidden>
           <details id="cmp-settings" open>
@@ -178,11 +159,8 @@
             <form id="cmp-form">
               <div id="cmp-components"></div>
               <div class="cmp-actions">
-                <button type="button" class="small-btn" id="cmp-add">
-                  Add indicator</button
-                ><button type="button" class="small-btn" id="cmp-remove">
-                  Remove third
-                </button>
+                <button type="button" class="small-btn" id="cmp-add">Add indicator</button
+                ><button type="button" class="small-btn" id="cmp-remove">Remove third</button>
                 <button class="primary" id="cmp-apply">Apply</button>
               </div>
               <p id="cmp-error" role="alert"></p>
@@ -196,12 +174,7 @@
           <section>
             <h2>Indicator comparison</h2>
             <p id="cmp-axes"></p>
-            <svg
-              id="cmp-plot"
-              viewBox="0 0 400 185"
-              role="group"
-              aria-label="Indicator scatterplot"
-            ></svg>
+            <svg id="cmp-plot" viewBox="0 0 400 185" role="group" aria-label="Indicator scatterplot"></svg>
             <p id="cmp-medians"></p>
           </section>
           <section id="cmp-details" aria-live="polite"></section>
@@ -211,13 +184,9 @@
               <button id="cmp-clear" class="small-btn">Clear selection</button>
             </div>
             <div class="cmp-actions">
-              <label class="checkbox"
-                ><input id="cmp-unranked" type="checkbox" />Unranked only</label
-              >
+              <label class="checkbox"><input id="cmp-unranked" type="checkbox" />Unranked only</label>
               <span id="cmp-selection" role="status"></span
-              ><label class="checkbox"
-                ><input type="checkbox" id="cmp-only" />Selected only</label
-              >
+              ><label class="checkbox"><input type="checkbox" id="cmp-only" />Selected only</label>
             </div>
             <div class="cmp-scroll">
               <table id="cmp-table">
@@ -233,8 +202,7 @@
               </table>
             </div>
             <div class="cmp-actions">
-              <button id="cmp-prev" class="small-btn">Previous</button
-              ><span id="cmp-page"></span
+              <button id="cmp-prev" class="small-btn">Previous</button><span id="cmp-page"></span
               ><button id="cmp-next" class="small-btn">Next</button>
             </div>
           </section>
@@ -250,35 +218,52 @@
         <div class="side-heading">
           <h1 id="workside-title">Data library</h1>
         </div>
-        <button id="import-data" class="primary full">
-          <i data-icon="upload"></i>Import files
-        </button>
+        <button id="import-data" class="primary full"><i data-icon="upload"></i>Import files</button>
         <div id="table-list"></div>
       </aside>
       <section id="work-content"></section>
     </main>
-    <footer>
-      <div>
-        <span class="status-dot"></span
+    <footer class="statusbar">
+      <div class="status-main">
+        <span class="status-dot"></span><span class="status-label" id="sb-state">BOOT</span
         ><span id="foot-status" role="status">Opening map…</span>
       </div>
+      <div class="readouts">
+        <button class="readout" id="sb-coords" title="Cursor position. Click to switch decimal degrees and degrees-minutes-seconds.">
+          <b>POS</b><span>—</span>
+        </button>
+        <span class="readout" id="sb-zoom" title="Map zoom"><b>Z</b><span>—</span></span>
+        <span class="readout" id="sb-time" title="Last query or analysis"><b>Δ</b><span>—</span></span>
+        <span class="readout" id="sb-db" title="DuckDB, the SQL engine, loads on first use"><b>DB</b><span>idle</span></span>
+        <span class="readout" id="sb-net" title="Network and offline cache"><b>NET</b><span>—</span></span>
+      </div>
       <span id="foot-context"></span>
+      <button id="sb-palette" title="Command palette">⌘K</button>
     </footer>
     <div id="toast" role="status" hidden></div>
-    <input
-      type="file"
-      accept=".csv,.parquet,.geoparquet,.geojson,.json"
-      id="file-picker"
-      multiple
-      hidden
+    <div id="drop" hidden><div>Drop to open data or a project</div></div>
+    <input type="file" accept=".csv,.parquet,.geoparquet,.geojson,.json" id="file-picker" multiple hidden
     /><input type="file" accept=".rumb,.bgis,.zip" id="project-picker" hidden />
     <dialog id="dialog">
       <div id="dialog-content"></div>
       <form method="dialog">
-        <button class="iconbtn dialog-close" aria-label="Close dialog">
-          <i data-icon="close"></i>
-        </button>
+        <button class="iconbtn dialog-close" aria-label="Close dialog"><i data-icon="close"></i></button>
       </form>
+    </dialog>
+    <dialog id="palette" aria-label="Command palette">
+      <input
+        id="palette-input"
+        type="text"
+        role="combobox"
+        aria-controls="palette-list"
+        aria-expanded="true"
+        aria-autocomplete="list"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="Type a command, layer, field, place or theme…"
+      />
+      <ul id="palette-list" role="listbox"></ul>
+      <div class="palette-foot"><span><kbd>↑↓</kbd> move</span><span><kbd>↵</kbd> run</span><span><kbd>esc</kbd> close</span></div>
     </dialog>
     <script type="module" src="./app.js"></script>
   </body>

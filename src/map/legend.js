@@ -2,10 +2,9 @@
 // extents and class breaks, or a list of categories.
 import { number } from "../catalog/format.js";
 import { h } from "../ui/dom.js";
-import { NA_COLOR } from "./classify.js";
 
 /** Legend entries for classed colors: "< 10", "10–<20", …, "≥ 40", then Unavailable. */
-export function classItems(colors, cuts) {
+export function classItems(colors, cuts, na) {
   const fmt = (v) => number(v, 2);
   return colors
     .map((color, i) => ({
@@ -19,7 +18,7 @@ export function classItems(colors, cuts) {
               ? "≥ " + fmt(cuts.at(-1))
               : fmt(cuts[i - 1]) + "–<" + fmt(cuts[i]),
     }))
-    .concat({ color: NA_COLOR, text: "Unavailable", missing: true });
+    .concat({ color: na, text: "Unavailable", missing: true });
 }
 
 const chip = (color) => h("i", { class: "chip", style: { background: color } });
@@ -57,10 +56,9 @@ export function renderLegend(el, { kind, title, items, extents, unit = "", missi
           h("span", { text: number(extents[1]) + unit }),
         ),
       );
-    if (missing != null)
-      parts.push(
-        h("div", { class: "legend-note" }, chip(NA_COLOR), number(missing) + " unavailable"),
-      );
+    const na = items.find((x) => x.missing);
+    if (missing != null && na)
+      parts.push(h("div", { class: "legend-note" }, chip(na.color), number(missing) + " unavailable"));
     if (shown.length > 1)
       parts.push(
         h(

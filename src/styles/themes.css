@@ -1,0 +1,195 @@
+/* ---- themes: each theme's decoration, off with <html data-decor="off"> ----
+   Colors and fonts are in tokens.css; this file only adds ornament. */
+
+/* Field Terminal (and its Night and Daylight variants): corner ticks on the
+   floating cards, a caret before section titles, optional scanlines. */
+:root:not([data-decor="off"]):is([data-theme="terminal"], [data-theme="terminal-night"], [data-theme="terminal-day"], :not([data-theme]))
+  :is(.map-title, #legend, #inspect-panel, .tool-card) {
+  background-image:
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent));
+  background-size:
+    8px 1px,
+    1px 8px,
+    8px 1px,
+    1px 8px;
+  background-position:
+    right 0 top 0,
+    right 0 top 0,
+    left 0 bottom 0,
+    left 0 bottom 0;
+  background-repeat: no-repeat;
+}
+:root:not([data-decor="off"]):is([data-theme="terminal"], [data-theme="terminal-night"], :not([data-theme]))
+  .side-section
+  > h2::before {
+  content: "▸";
+  color: var(--text3);
+  margin-right: -2px;
+}
+:root[data-scanlines="on"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 2px,
+    rgb(0 0 0 / 0.16) 3px
+  );
+}
+:root[data-theme="terminal-day"] .appbar {
+  border-bottom-width: 2px;
+}
+
+/* Tactical HUD: bracketed cards, a hairline grid behind the map and panels. */
+:root[data-theme="hud"]:not([data-decor="off"]) :is(.map-title, #legend, #inspect-panel, .tool-card, .map-controls) {
+  border-color: transparent;
+  background-color: var(--panel);
+  background-image:
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent));
+  background-size:
+    12px 1px,
+    1px 12px,
+    12px 1px,
+    1px 12px,
+    12px 1px,
+    1px 12px,
+    12px 1px,
+    1px 12px;
+  background-position:
+    left top,
+    left top,
+    right top,
+    right top,
+    left bottom,
+    left bottom,
+    right bottom,
+    right bottom;
+  background-repeat: no-repeat;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+:root[data-theme="hud"]:not([data-decor="off"]) :is(.sidebar, .workside, #cmp-panel, #work-content) {
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 24px 24px;
+  background-position: -1px -1px;
+}
+:root[data-theme="hud"] .appbar nav button.active {
+  box-shadow: inset 0 -2px 0 var(--accent-2);
+  color: var(--accent);
+}
+:root[data-theme="hud"] .map-title h2,
+:root[data-theme="hud"] .score {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Rugged Field Kit: a hazard stripe along the top, stencil titles, heavy rules. */
+:root[data-theme="fieldkit"]:not([data-decor="off"]) .appbar {
+  border-top: 5px solid transparent;
+  border-image: repeating-linear-gradient(
+      -45deg,
+      var(--accent) 0 10px,
+      #10120e 10px 20px
+    )
+    5;
+}
+:root[data-theme="fieldkit"] :is(.map-title h2, .work-header h1, .inspection-head h3, #cmp-details h2) {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 400;
+}
+:root[data-theme="fieldkit"] :is(.map-title, #legend, #inspect-panel, .tool-card, .map-controls, .layer, .secondary, .small-btn) {
+  border-width: 2px;
+}
+:root[data-theme="fieldkit"]:not([data-decor="off"]) .side-section > h2 {
+  padding: 3px 8px;
+  margin-left: -8px;
+  background: var(--line-strong);
+  color: var(--text1);
+  border-left: 4px solid var(--accent);
+}
+
+/* Starship: console bands and elbows after Plank's Starship theme. */
+:root[data-theme="starship"] .appbar {
+  border-bottom: 0;
+  padding-top: 6px;
+  align-items: stretch;
+  gap: 8px;
+}
+:root[data-theme="starship"]:not([data-decor="off"]) .brand {
+  background: var(--ss-orange);
+  color: #000;
+  border: 0;
+  border-bottom-right-radius: 26px;
+  padding-right: 26px;
+}
+:root[data-theme="starship"]:not([data-decor="off"]) .brand .wordmark,
+:root[data-theme="starship"]:not([data-decor="off"]) .brand .tag {
+  color: #000;
+}
+:root[data-theme="starship"] .brand .wordmark {
+  font-family: var(--display-font);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+:root[data-theme="starship"] .appbar nav button,
+:root[data-theme="starship"] .project-actions button {
+  border-radius: 999px;
+  align-self: center;
+}
+:root[data-theme="starship"]:not([data-decor="off"]) .appbar nav button {
+  background: var(--ss-lilac);
+  color: #000;
+}
+:root[data-theme="starship"]:not([data-decor="off"]) .appbar nav button.active {
+  background: var(--ss-orange);
+  box-shadow: none;
+}
+:root[data-theme="starship"]:not([data-decor="off"]) .appbar nav button kbd {
+  background: transparent;
+  color: #000;
+  border-color: rgb(0 0 0 / 0.4);
+}
+:root[data-theme="starship"]:not([data-decor="off"]) .side-section > h2 {
+  color: #000;
+  background: var(--ss-blue);
+  border-radius: 999px;
+  padding: 3px 12px;
+  border-left: 18px solid var(--ss-orange);
+}
+:root[data-theme="starship"]:not([data-decor="off"]) .side-section:nth-of-type(2) > h2 {
+  background: var(--ss-lilac);
+}
+:root[data-theme="starship"]:not([data-decor="off"]) .side-section:nth-of-type(3) > h2 {
+  background: var(--ss-peach);
+}
+:root[data-theme="starship"]:not([data-decor="off"]) .side-section > h2 kbd {
+  background: transparent;
+  color: #000;
+  border-color: rgb(0 0 0 / 0.4);
+}
+:root[data-theme="starship"]:not([data-decor="off"]) .statusbar {
+  border-top: 0;
+  border-left: 18px solid var(--ss-lilac);
+  border-top-left-radius: 26px;
+}
+:root[data-theme="starship"] .rail button {
+  border-radius: 999px;
+}
+:root[data-theme="starship"] .map-title {
+  border-left: 18px solid var(--ss-orange);
+}

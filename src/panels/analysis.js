@@ -124,6 +124,7 @@ export function createAnalysis(app) {
       );
       if (control.signal.aborted) return;
       app.timings.lastAnalysis = Math.round(performance.now() - started);
+      app.statusbar?.timing();
       app.store.set({ result: { ...res, studyName }, mode: "cluster", inspector: true });
       $("settings").classList.remove("open");
       app.draw();

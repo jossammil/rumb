@@ -169,6 +169,7 @@ export function createWorkbench(app) {
             const started = performance.now();
             const r = await (await app.ws.db()).query(sql);
             app.timings.lastQuery = Math.round(performance.now() - started);
+            app.statusbar?.timing();
             if (edit.isConnected && edit.value === sql) {
               lastPreview = { sql, result: r };
               showPreview(r);
