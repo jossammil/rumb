@@ -1,17 +1,15 @@
-// Run against a production preview after generating fixtures with benchmark-db.R.
+// Run against a production build (npm run build, then npm run serve) after
+// generating fixtures with benchmark-db.R.
 import assert from "node:assert/strict";
-import { readdir, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium } from "playwright";
 
-const [directory, url = "http://127.0.0.1:4180/"] = process.argv.slice(2);
+const [directory, url = "http://127.0.0.1:4180/rumb/"] = process.argv.slice(2);
 if (!directory)
   throw Error(
     "Pass the directory containing points50.parquet and points500.parquet.",
   );
-const bundle = (await readdir("dist/assets")).find(
-  (s) => s.startsWith("database-") && s.endsWith(".js"),
-);
 const browser = await chromium.launch({
   channel: "chrome",
   args: ["--enable-unsafe-swiftshader", "--use-angle=swiftshader"],
@@ -28,21 +26,11 @@ try {
         .querySelector("#foot-status")
         .textContent.includes("878 features"),
     );
-    await page.waitForFunction(
-      () => performance.getEntriesByName("field-atlas-first-map").length,
-    );
-    const mapReadyMs = await page.evaluate(() =>
-      Math.round(
-        performance.getEntriesByName("field-atlas-first-map")[0].startTime,
-      ),
-    );
-    await page.evaluate(
-      async (path) => {
-        const m = await import(path);
-        window.benchDB = await m.openDatabase();
-      },
-      new URL("assets/" + bundle, url).href,
-    );
+    await page.waitForFunction(() => window.rumb?.timings.firstMap);
+    const mapReadyMs = await page.evaluate(() => window.rumb.timings.firstMap);
+    await page.evaluate(async () => {
+      window.benchDB = await window.rumb.openDatabase();
+    });
     const worker = page
       .workers()
       .find((w) => w.url().includes("duckdb-browser-eh.worker"));

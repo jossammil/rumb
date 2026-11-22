@@ -1,0 +1,512 @@
+/* ---- panels: Compare, and the Data and SQL workbench ---------------------- */
+
+/* Compare */
+.comparing #mobile-settings,
+.comparing #find-feature,
+.comparing #inspect-panel,
+.comparing .rail {
+  display: none;
+}
+#cmp-panel {
+  flex: 0 0 var(--cmp-size, 45%);
+  min-width: 0;
+  overflow: auto;
+  background: var(--bg2);
+  padding: 16px clamp(12px, 2vw, 26px);
+  font-size: 0.9rem;
+}
+#cmp-panel header,
+.cmp-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+#cmp-panel h1 {
+  font-size: 1.15rem;
+  color: var(--accent);
+  font-family: var(--label-font);
+  text-transform: var(--label-case);
+  letter-spacing: var(--label-spacing);
+}
+#cmp-panel h2 {
+  font-size: 0.82rem;
+  color: var(--accent);
+}
+#cmp-details h2 {
+  font-size: 1rem;
+  color: var(--text1);
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--display-font);
+}
+#cmp-panel section,
+#cmp-panel details {
+  border-top: 1px solid var(--line);
+  margin-top: 14px;
+  padding-top: 12px;
+}
+#cmp-panel p {
+  line-height: 1.5;
+  margin: 7px 0;
+  color: var(--text2);
+}
+#cmp-count {
+  font-family: var(--mono-font);
+  color: var(--text1) !important;
+}
+#cmp-panel #cmp-error {
+  color: var(--sem-error);
+}
+.cmp-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.25fr) minmax(56px, 0.65fr);
+  gap: 8px;
+}
+.cmp-fields label {
+  margin-top: 8px;
+  font-size: 0.7rem;
+}
+.cmp-fields select,
+.cmp-fields input {
+  margin-top: 4px;
+  font: 0.86rem var(--ui-font);
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text1);
+}
+.cmp-actions {
+  margin-top: 10px;
+}
+.cmp-actions label {
+  margin: 0;
+}
+#cmp-apply {
+  margin-left: auto;
+}
+#cmp-plot {
+  display: block;
+  width: 100%;
+  max-height: 215px;
+  background: var(--plot-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+#cmp-plot circle {
+  cursor: pointer;
+  fill-opacity: 0.75;
+  filter: var(--data-filter);
+}
+#cmp-plot circle.chosen {
+  fill-opacity: 1;
+  stroke: var(--sel);
+  stroke-width: 2;
+  r: 5;
+}
+.cmp-ticks {
+  font-size: 10px;
+}
+#cmp-axes,
+#cmp-medians {
+  font-family: var(--mono-font);
+  font-size: 0.78rem;
+}
+.cmp-scroll {
+  overflow: auto;
+}
+#cmp-table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 8px;
+  font-size: 0.84rem;
+}
+#cmp-table th {
+  text-align: left;
+  font: 600 0.7rem var(--label-font);
+  text-transform: var(--label-case);
+  letter-spacing: var(--label-spacing);
+  color: var(--text2);
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--line-strong);
+}
+#cmp-table th button {
+  font: inherit;
+  color: inherit;
+  padding: 0;
+}
+#cmp-table td {
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+#cmp-table td:first-child,
+#cmp-table td:nth-child(3) {
+  font-family: var(--mono-font);
+  font-variant-numeric: tabular-nums;
+}
+#cmp-table td button {
+  font-size: inherit;
+  text-align: left;
+  padding: 1px 0;
+  justify-content: flex-start;
+  color: var(--text1);
+}
+#cmp-table td small {
+  display: block;
+  color: var(--text2);
+  font-size: 0.74rem;
+}
+#cmp-table tr[data-id] {
+  cursor: pointer;
+}
+#cmp-table tr[data-id]:hover {
+  background: var(--hover);
+}
+#cmp-table .chosen {
+  background: var(--sel-soft);
+  box-shadow: inset 3px 0 var(--sel);
+}
+#cmp-table th[aria-sort="ascending"] button::after {
+  content: " ↑";
+}
+#cmp-table th[aria-sort="descending"] button::after {
+  content: " ↓";
+}
+#cmp-split {
+  flex: none;
+  width: 10px;
+  background: var(--bg1);
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  position: relative;
+  cursor: col-resize;
+  touch-action: none;
+}
+#cmp-split::after {
+  content: "";
+  position: absolute;
+  inset: 45% 3px;
+  background: var(--line-strong);
+}
+#cmp-split:hover::after,
+#cmp-split:focus-visible::after {
+  background: var(--accent);
+}
+#cmp-split:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Data and SQL */
+#work-view {
+  background: var(--bg1);
+}
+.workside {
+  padding: 0 12px 14px;
+}
+.workside .side-heading {
+  padding-left: 4px;
+  padding-right: 4px;
+}
+.workside .primary {
+  margin-bottom: 12px;
+}
+#work-content {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: 22px clamp(16px, 3vw, 40px);
+}
+.work-header {
+  margin-bottom: 16px;
+}
+.work-header h1 {
+  font-size: 1.4rem;
+  color: var(--text1);
+}
+.work-header p {
+  margin-top: 4px;
+  color: var(--text2);
+}
+.tool-card {
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  background: var(--bg2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+}
+.tool-card h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+.preview-head h2 {
+  margin-bottom: 2px;
+}
+.work-label {
+  margin-top: 4px;
+}
+.scroll-sql {
+  min-height: 150px;
+  resize: vertical;
+  font: 0.92rem/1.55 var(--mono-font);
+  color: var(--accent-2);
+  background: var(--bg0);
+  caret-color: var(--accent);
+  tab-size: 2;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.form-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.form-row > div {
+  flex: 1;
+  min-width: 200px;
+}
+.data-status {
+  margin-top: 10px;
+  font-family: var(--mono-font);
+  font-size: 0.86rem;
+}
+.table-scroll {
+  overflow: auto;
+  max-height: 60vh;
+  border: 1px solid var(--line);
+}
+.data-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.84rem;
+}
+.data-table th {
+  position: sticky;
+  top: 0;
+  text-align: left;
+  padding: 6px 10px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--line-strong);
+  white-space: nowrap;
+  font-weight: 600;
+}
+.data-table td {
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.data-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--bg3) 45%, transparent);
+}
+.field-tag {
+  margin-left: 6px;
+  font: 500 0.66rem var(--mono-font);
+  color: var(--text3);
+  text-transform: uppercase;
+}
+
+/* Narrow screens */
+@media (max-width: 1100px) {
+  .palette-trigger {
+    min-width: 0;
+  }
+  .palette-trigger span {
+    display: none;
+  }
+}
+@media (max-width: 900px) {
+  :root {
+    --side-w: 260px;
+  }
+  .appbar {
+    gap: 8px;
+  }
+  .appbar nav button kbd,
+  .project-actions span,
+  #sb-time,
+  #sb-db {
+    display: none;
+  }
+  #inspect-panel {
+    width: 250px;
+  }
+}
+@media (max-width: 760px) {
+  :root {
+    --appbar-h: 46px;
+  }
+  .appbar {
+    gap: 4px;
+    padding-right: 6px;
+  }
+  .brand {
+    padding: 0 8px;
+  }
+  .brand .tag {
+    display: none;
+  }
+  .appbar nav button {
+    padding: 5px 7px;
+    font-size: 0.74rem;
+  }
+  .appbar nav svg {
+    display: none;
+  }
+  .project-actions button {
+    padding: 5px 7px;
+  }
+  .rail {
+    display: none;
+  }
+  .mobile-only {
+    display: inline-flex;
+  }
+  .sidebar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 5;
+    transform: translateX(-102%);
+    width: min(310px, 90vw);
+    box-shadow: var(--shadow);
+  }
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  #mobile-settings {
+    position: absolute;
+    z-index: 3;
+    top: 12px;
+    left: 10px;
+    width: 34px;
+    height: 34px;
+  }
+  .map-title {
+    top: 12px;
+    left: 52px;
+    padding: 6px 10px;
+  }
+  .map-title h2 {
+    font-size: 1.05rem;
+  }
+  .map-title p {
+    font-size: 0.74rem;
+  }
+  #legend {
+    bottom: 24px;
+    left: 10px;
+    width: 190px;
+    padding: 8px;
+  }
+  .map-controls {
+    top: 12px;
+    right: 10px;
+  }
+  #inspect-panel {
+    top: 12px;
+    right: 54px;
+    width: 230px;
+    max-width: 70vw;
+    max-height: calc(100% - 200px);
+  }
+  #foot-context,
+  .readouts {
+    display: none;
+  }
+  .workside {
+    width: 170px;
+    padding: 0 8px;
+  }
+  #work-content {
+    padding: 16px;
+  }
+  .comparing {
+    flex-direction: column;
+  }
+  .comparing #canvas-area {
+    min-height: 0;
+  }
+  #cmp-split {
+    height: 12px;
+    width: 100%;
+    cursor: row-resize;
+    border: 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  #cmp-split::after {
+    inset: 4px 44%;
+  }
+  #cmp-panel {
+    min-height: 0;
+    padding: 12px 14px;
+  }
+  .comparing .map-title {
+    left: 10px;
+    max-width: 65%;
+  }
+  .comparing #legend {
+    left: 8px;
+    bottom: 18px;
+    width: min(70%, 240px);
+  }
+}
+@media (max-width: 530px) {
+  #work-view {
+    flex-direction: column;
+  }
+  .workside {
+    width: 100%;
+    max-height: 150px;
+    padding: 8px 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+  }
+  .workside .side-heading {
+    padding: 0;
+  }
+  .workside .primary {
+    margin: 0 0 0 auto;
+    width: auto;
+  }
+  #table-list {
+    width: 100%;
+    display: flex;
+    gap: 5px;
+    overflow: auto;
+  }
+  #table-list .layer {
+    min-width: 140px;
+    width: auto;
+    margin: 0;
+  }
+  .brand .wordmark {
+    display: none;
+  }
+}
+@media (max-width: 400px) {
+  .appbar nav button {
+    padding: 4px 5px;
+  }
+  /* The status bar's ⌘K button opens the palette on small phones. */
+  .palette-trigger {
+    display: none !important;
+  }
+}

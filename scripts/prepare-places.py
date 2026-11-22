@@ -103,8 +103,8 @@ def extract(csv_path, atlas_path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, epilog=f"Public national input: {DOWNLOAD}")
     parser.add_argument("csv", type=Path, help="Downloaded CDC PLACES 2025 GIS-friendly census tract CSV")
-    parser.add_argument("--atlas", type=Path, default=ROOT / "public/data/tracts.geojson")
-    parser.add_argument("--output", type=Path, default=ROOT / "public/data/places-2025.json")
+    parser.add_argument("--atlas", type=Path, default=ROOT / "public/data/ms/tracts.geojson")
+    parser.add_argument("--output", type=Path, default=ROOT / "public/data/ms/places-2025.json")
     args = parser.parse_args()
     data = extract(args.csv, args.atlas)
     args.output.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")

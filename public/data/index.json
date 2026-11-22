@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "default": "ms",
+  "regions": [
+    { "id": "ms", "name": "Mississippi", "path": "ms/" }
+  ]
+}

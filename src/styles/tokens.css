@@ -1,0 +1,410 @@
+/* ---- tokens: every color, font and size the app uses ------------------------
+   Rules elsewhere use only these variables. A theme is a set of values chosen
+   with <html data-theme="…"> (ui/themes.js); Field Terminal is the default.
+   Data palettes (map/classify.js) are the same in every theme. */
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url("../../node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Antonio";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 700;
+  src: url("../../node_modules/@fontsource-variable/antonio/files/antonio-latin-wght-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Chakra Petch";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("../../node_modules/@fontsource/chakra-petch/files/chakra-petch-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Chakra Petch";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url("../../node_modules/@fontsource/chakra-petch/files/chakra-petch-latin-600-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Saira Stencil One";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("../../node_modules/@fontsource/saira-stencil-one/files/saira-stencil-one-latin-400-normal.woff2") format("woff2");
+}
+
+:root {
+  --mono-font: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sans-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --ui-size: 13.5px;
+  --dur-fast: 120ms;
+  --appbar-h: 50px;
+  --statusbar-h: 28px;
+  --rail-w: 46px;
+  --side-w: 300px;
+  --control-h: 30px;
+}
+:root[data-size="small"] {
+  --ui-size: 12.5px;
+}
+:root[data-size="large"] {
+  --ui-size: 15px;
+}
+
+/* Field Terminal: black glass, amber readouts, phosphor-green selection. */
+:root,
+:root[data-theme="terminal"] {
+  color-scheme: dark;
+  --bg0: #000000;
+  --bg1: #050505;
+  --bg2: #0b0b09;
+  --bg3: #16150f;
+  --text1: #ece6d6;
+  --text2: #a39b88;
+  --text3: #6b6556;
+  --line: #24221b;
+  --line-strong: #3d3a2c;
+  --accent: #ffb000;
+  --accent-2: #33ff99;
+  --accent-fg: #0a0700;
+  --sel: #33ff99;
+  --sem-error: #ff5f4a;
+  --sem-warn: #ffcc4d;
+  --sem-ok: #33ff99;
+  --sem-info: #6ad4ff;
+  --ui-font: var(--mono-font);
+  --display-font: var(--mono-font);
+  --label-font: var(--mono-font);
+  --label-case: uppercase;
+  --label-spacing: 0.08em;
+  --radius: 2px;
+  --radius-lg: 3px;
+  --shadow: 0 0 0 1px #000, 0 10px 30px rgb(0 0 0 / 0.7);
+  --glow: 0 0 8px color-mix(in srgb, var(--accent) 45%, transparent);
+  --data-filter: none;
+  --map-water: #050807;
+  --map-land: #10110d;
+  --map-river: #173430;
+  --map-boundary: #4d4632;
+  --map-outline: #000000;
+  --map-label: #8f8774;
+  --map-region-label: #5e5848;
+  --map-halo: #050505;
+  --map-town: #8f8774;
+  --map-neighbor: #ffb000;
+  --map-selected: #33ff99;
+  --map-point-stroke: #050505;
+  --plot-bg: #0b0b09;
+  --plot-axis: #3d3a2c;
+  --plot-fit: #ffb000;
+  --plot-mark: #33ff99;
+  --plot-text: #a39b88;
+  --plot-dot: #6b6556;
+  --na: #1e1d18;
+  --cluster-ns: #3a3830;
+  --print-bg: #050505;
+  --print-ink: #ece6d6;
+  --print-title-font: "JetBrains Mono", Menlo, monospace;
+  --print-font: "JetBrains Mono", Menlo, monospace;
+}
+
+/* Terminal · Night: dim red only, to keep night vision. The map and data
+   chips are filtered to red too (--data-filter); saved images are not. */
+:root[data-theme="terminal-night"] {
+  color-scheme: dark;
+  --bg0: #000000;
+  --bg1: #030000;
+  --bg2: #080101;
+  --bg3: #130302;
+  --text1: #c4443a;
+  --text2: #9a3027;
+  --text3: #64201a;
+  --line: #240806;
+  --line-strong: #3f0f0b;
+  --accent: #c8342a;
+  --accent-2: #d9503f;
+  --accent-fg: #0a0000;
+  --sel: #d9503f;
+  --sem-error: #ff3b2f;
+  --sem-warn: #e0574a;
+  --sem-ok: #c2402f;
+  --sem-info: #c2402f;
+  --ui-font: var(--mono-font);
+  --display-font: var(--mono-font);
+  --label-font: var(--mono-font);
+  --label-case: uppercase;
+  --label-spacing: 0.08em;
+  --radius: 2px;
+  --radius-lg: 3px;
+  --shadow: 0 0 0 1px #000, 0 10px 30px rgb(0 0 0 / 0.8);
+  --glow: none;
+  --data-filter: grayscale(1) sepia(1) saturate(6) hue-rotate(-50deg) brightness(0.48);
+  --map-water: #020000;
+  --map-land: #0b0201;
+  --map-river: #2a0806;
+  --map-boundary: #4a1510;
+  --map-outline: #000000;
+  --map-label: #8a2d24;
+  --map-region-label: #5a1a14;
+  --map-halo: #030000;
+  --map-town: #8a2d24;
+  --map-neighbor: #c8342a;
+  --map-selected: #d9503f;
+  --map-point-stroke: #030000;
+  --plot-bg: #080101;
+  --plot-axis: #3f0f0b;
+  --plot-fit: #c8342a;
+  --plot-mark: #d9503f;
+  --plot-text: #9a3027;
+  --plot-dot: #64201a;
+  --na: #120302;
+  --cluster-ns: #2a0a07;
+  --print-bg: #050505;
+  --print-ink: #ece6d6;
+  --print-title-font: "JetBrains Mono", Menlo, monospace;
+  --print-font: "JetBrains Mono", Menlo, monospace;
+}
+
+/* Terminal · Daylight: black on paper with heavy rules, readable in sun. */
+:root[data-theme="terminal-day"] {
+  color-scheme: light;
+  --bg0: #e9e4d6;
+  --bg1: #f7f3e8;
+  --bg2: #fffdf6;
+  --bg3: #ece6d4;
+  --text1: #000000;
+  --text2: #3c382d;
+  --text3: #6b6556;
+  --line: #b9b19c;
+  --line-strong: #1a1814;
+  --accent: #a34f00;
+  --accent-2: #00703c;
+  --accent-fg: #ffffff;
+  --sel: #00703c;
+  --sem-error: #b3200f;
+  --sem-warn: #8a5a00;
+  --sem-ok: #00703c;
+  --sem-info: #005a8a;
+  --ui-font: var(--mono-font);
+  --display-font: var(--mono-font);
+  --label-font: var(--mono-font);
+  --label-case: uppercase;
+  --label-spacing: 0.08em;
+  --radius: 2px;
+  --radius-lg: 3px;
+  --shadow: 0 0 0 2px #000, 0 6px 0 rgb(0 0 0 / 0.15);
+  --glow: none;
+  --data-filter: none;
+  --map-water: #cfdad6;
+  --map-land: #f4f0e3;
+  --map-river: #8fb2ad;
+  --map-boundary: #6e6040;
+  --map-outline: #ffffff;
+  --map-label: #2b281f;
+  --map-region-label: #6b6556;
+  --map-halo: #f7f3e8;
+  --map-town: #2b281f;
+  --map-neighbor: #a34f00;
+  --map-selected: #000000;
+  --map-point-stroke: #ffffff;
+  --plot-bg: #f7f3e8;
+  --plot-axis: #b9b19c;
+  --plot-fit: #a34f00;
+  --plot-mark: #000000;
+  --plot-text: #3c382d;
+  --plot-dot: #8a8270;
+  --na: #a39d8c;
+  --cluster-ns: #d6d1c3;
+  --print-bg: #fffdf6;
+  --print-ink: #000000;
+  --print-title-font: "JetBrains Mono", Menlo, monospace;
+  --print-font: "JetBrains Mono", Menlo, monospace;
+}
+
+/* Tactical HUD: deep slate, cyan and magenta, condensed caps, bracketed panels. */
+:root[data-theme="hud"] {
+  color-scheme: dark;
+  --bg0: #03060c;
+  --bg1: #070c16;
+  --bg2: #0b1220;
+  --bg3: #12203a;
+  --text1: #d7f3ff;
+  --text2: #7fa3b8;
+  --text3: #4a6a80;
+  --line: #142339;
+  --line-strong: #24405f;
+  --accent: #22e5ff;
+  --accent-2: #ff2bd6;
+  --accent-fg: #03060c;
+  --sel: #ff2bd6;
+  --sem-error: #ff4d6d;
+  --sem-warn: #ffd23f;
+  --sem-ok: #3dffb0;
+  --sem-info: #22e5ff;
+  --ui-font: "Chakra Petch", var(--sans-font);
+  --display-font: "Chakra Petch", var(--sans-font);
+  --label-font: "Chakra Petch", var(--sans-font);
+  --label-case: uppercase;
+  --label-spacing: 0.12em;
+  --radius: 0px;
+  --radius-lg: 0px;
+  --shadow: 0 0 0 1px #24405f, 0 0 24px rgb(34 229 255 / 0.08);
+  --glow: 0 0 10px rgb(34 229 255 / 0.45);
+  --data-filter: none;
+  --map-water: #040912;
+  --map-land: #0a1322;
+  --map-river: #12324a;
+  --map-boundary: #1f4a6b;
+  --map-outline: #03060c;
+  --map-label: #5f86a3;
+  --map-region-label: #33526b;
+  --map-halo: #03060c;
+  --map-town: #5f86a3;
+  --map-neighbor: #22e5ff;
+  --map-selected: #ff2bd6;
+  --map-point-stroke: #03060c;
+  --plot-bg: #070c16;
+  --plot-axis: #24405f;
+  --plot-fit: #22e5ff;
+  --plot-mark: #ff2bd6;
+  --plot-text: #7fa3b8;
+  --plot-dot: #4a6a80;
+  --na: #0d1626;
+  --cluster-ns: #1d2c44;
+  --print-bg: #070c16;
+  --print-ink: #d7f3ff;
+  --print-title-font: "Chakra Petch", Arial, sans-serif;
+  --print-font: "Chakra Petch", Arial, sans-serif;
+}
+
+/* Rugged Field Kit: charcoal and olive drab, safety orange, stencil headings. */
+:root[data-theme="fieldkit"] {
+  color-scheme: dark;
+  --bg0: #10120e;
+  --bg1: #171a14;
+  --bg2: #1e221a;
+  --bg3: #2a2f24;
+  --text1: #e8e3d0;
+  --text2: #a8a48f;
+  --text3: #737260;
+  --line: #333a2a;
+  --line-strong: #4b5320;
+  --accent: #ff6a13;
+  --accent-2: #c8b560;
+  --accent-fg: #10120e;
+  --sel: #ff6a13;
+  --sem-error: #ff4b33;
+  --sem-warn: #ffc233;
+  --sem-ok: #9fd356;
+  --sem-info: #c8b560;
+  --ui-font: var(--sans-font);
+  --display-font: "Saira Stencil One", "Arial Narrow", var(--sans-font);
+  --label-font: var(--sans-font);
+  --label-case: uppercase;
+  --label-spacing: 0.1em;
+  --radius: 3px;
+  --radius-lg: 4px;
+  --shadow: 0 0 0 2px #0b0d09, 0 8px 18px rgb(0 0 0 / 0.55);
+  --glow: none;
+  --data-filter: none;
+  --map-water: #11160f;
+  --map-land: #1c2018;
+  --map-river: #2e3b2a;
+  --map-boundary: #5d6634;
+  --map-outline: #10120e;
+  --map-label: #9a9a80;
+  --map-region-label: #656753;
+  --map-halo: #10120e;
+  --map-town: #9a9a80;
+  --map-neighbor: #c8b560;
+  --map-selected: #ff6a13;
+  --map-point-stroke: #10120e;
+  --plot-bg: #171a14;
+  --plot-axis: #4b5320;
+  --plot-fit: #c8b560;
+  --plot-mark: #ff6a13;
+  --plot-text: #a8a48f;
+  --plot-dot: #737260;
+  --na: #22261d;
+  --cluster-ns: #3c4232;
+  --print-bg: #171a14;
+  --print-ink: #e8e3d0;
+  --print-title-font: "Saira Stencil One", Arial, sans-serif;
+  --print-font: Arial, sans-serif;
+}
+
+/* Starship: Plank's console theme (plank.css), black with orange, lilac and
+   blue bands, Antonio condensed caps and rounded elbows. */
+:root[data-theme="starship"] {
+  color-scheme: dark;
+  --bg0: #000000;
+  --bg1: #000000;
+  --bg2: #07050a;
+  --bg3: #1f1630;
+  --text1: #ffcc99;
+  --text2: #c49ac4;
+  --text3: #8a6a8a;
+  --line: #2b1d2e;
+  --line-strong: #5d4360;
+  --accent: #ff9900;
+  --accent-2: #9999ff;
+  --accent-fg: #000000;
+  --sel: #9999ff;
+  --sem-error: #ff6655;
+  --sem-warn: #ffcc66;
+  --sem-ok: #99cc99;
+  --sem-info: #9999ff;
+  --ss-orange: #ff9900;
+  --ss-lilac: #cc99cc;
+  --ss-blue: #9999ff;
+  --ss-peach: #ffcc99;
+  --ui-font: var(--sans-font);
+  --display-font: "Antonio", "Arial Narrow", "Roboto Condensed", var(--sans-font);
+  --label-font: "Antonio", "Arial Narrow", "Roboto Condensed", var(--sans-font);
+  --label-case: uppercase;
+  --label-spacing: 0.06em;
+  --radius: 14px;
+  --radius-lg: 22px;
+  --shadow: 0 8px 28px rgb(0 0 0 / 0.85), 0 0 0 1px #5d4360;
+  --glow: none;
+  --data-filter: none;
+  --map-water: #000000;
+  --map-land: #0b0910;
+  --map-river: #2c2142;
+  --map-boundary: #5d4360;
+  --map-outline: #000000;
+  --map-label: #c49ac4;
+  --map-region-label: #8a6a8a;
+  --map-halo: #000000;
+  --map-town: #c49ac4;
+  --map-neighbor: #ff9900;
+  --map-selected: #9999ff;
+  --map-point-stroke: #000000;
+  --plot-bg: #07050a;
+  --plot-axis: #5d4360;
+  --plot-fit: #ff9900;
+  --plot-mark: #9999ff;
+  --plot-text: #c49ac4;
+  --plot-dot: #8a6a8a;
+  --na: #140e1c;
+  --cluster-ns: #2c2142;
+  --print-bg: #000000;
+  --print-ink: #ffcc99;
+  --print-title-font: "Antonio", "Arial Narrow", sans-serif;
+  --print-font: Arial, sans-serif;
+}
+
+/* Derived tokens, computed from whichever theme is active. */
+:root {
+  --hover: color-mix(in srgb, var(--text1) 8%, transparent);
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --sel-soft: color-mix(in srgb, var(--sel) 18%, transparent);
+  --error-soft: color-mix(in srgb, var(--sem-error) 16%, transparent);
+  --panel: color-mix(in srgb, var(--bg2) 94%, transparent);
+}

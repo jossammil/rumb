@@ -1,0 +1,39 @@
+name: Test rumb
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    # Pinned like Pocket R's: Playwright browsers install reliably on 24.04.
+    runs-on: ubuntu-24.04
+    # WebKit has not run in CI yet; until it passes there, its failures are warnings.
+    continue-on-error: ${{ matrix.browser == 'webkit' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Unit tests
+        run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Browser tests (${{ matrix.browser }}), served under /rumb/ like GitHub Pages
+        run: npm run e2e
+        env:
+          BROWSER: ${{ matrix.browser }}
+          SHOTS: e2e-shots
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: e2e-shots-${{ matrix.browser }}
+          path: e2e-shots

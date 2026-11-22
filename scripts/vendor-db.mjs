@@ -1,5 +1,7 @@
-// Stage the matching single-threaded browser runtime and official signed extensions.
-// Cache entries are checked before reuse, including on subsequent offline builds.
+// Stage the matching single-threaded DuckDB browser runtime and the official
+// signed extensions in .cache/vendor/duckdb-<version>/, which scripts/build.mjs
+// copies into dist/vendor/. Cache entries are checked before reuse, including
+// on later offline builds. Run on its own with `npm run vendor`.
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -7,7 +9,6 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const target = join(here, "../public/vendor/duckdb");
 const dist = dirname(
   createRequire(import.meta.url).resolve("@duckdb/duckdb-wasm"),
 );
@@ -21,6 +22,8 @@ const hash = (b) => createHash("sha256").update(b).digest("hex");
 const packageInfo = JSON.parse(
   await readFile(join(dist, "../package.json"), "utf8"),
 );
+export const folder = "duckdb-" + packageInfo.version;
+const target = join(here, "../.cache/vendor", folder);
 if (packageInfo.version !== "1.32.0")
   throw new Error("Update extension pins alongside the DuckDB-Wasm version.");
 await mkdir(join(target, "extensions", extensionPath), { recursive: true });
@@ -46,4 +49,4 @@ await Promise.all(
     await rename(temporary, file);
   }),
 );
-console.log("DuckDB 1.4.3 browser assets verified.");
+console.log("DuckDB " + packageInfo.version + " browser assets and 1.4.3 extensions verified.");
