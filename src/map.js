@@ -356,7 +356,7 @@ export function initMap(onSelect) {
       );
       if (!blob)
         throw new Error("This browser could not encode the map image.");
-      saveBlob(blob, "field-atlas-map.png");
+      saveBlob(blob, "rumb-map.png");
     },
   };
 }

@@ -809,7 +809,7 @@ async function saveProject() {
     files["places-2025.json"] = await asset("places-2025.json");
   const saved = { ...state, camera: atlas.camera() };
   const blob = await packProject(saved, inputs, files);
-  saveBlob(blob, "field-atlas.bgis");
+  saveBlob(blob, "project.rumb");
   notify("Project exported with its source data and settings.");
 }
 async function restore(file) {
@@ -953,7 +953,7 @@ async function start() {
   renderAll();
   atlas.map.once("idle", () => {
     if (atlas.map.queryRenderedFeatures({ layers: ["areas"] }).length) {
-      performance.mark("field-atlas-first-map");
+      performance.mark("rumb-first-map");
     }
   });
   for (const b of document.querySelectorAll("#nav button"))
@@ -1038,7 +1038,7 @@ async function start() {
     ev.preventDefault();
     const files = [...ev.dataTransfer.files];
     perform(null, () =>
-      files.length === 1 && /\.bgis$/i.test(files[0].name)
+      files.length === 1 && /\.(rumb|bgis)$/i.test(files[0].name)
         ? restore(files[0])
         : importFiles(files),
     );

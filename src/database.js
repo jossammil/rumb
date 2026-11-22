@@ -336,7 +336,7 @@ export async function openDatabase({ tractsFile, tractDisplay } = {}) {
     const attrs = columns
       .filter((c) => !isGeo(c.type))
       .map((c) => ident(c.name));
-    let gname = "__bgis_geometry";
+    let gname = "__rumb_geometry";
     while (columns.some((c) => c.name === gname)) gname += "_";
     const select = [...attrs];
     if (geom)
@@ -457,7 +457,7 @@ export async function openDatabase({ tractsFile, tractDisplay } = {}) {
   }
   async function exportCSV(input) {
     const sql = await selectStatement(input);
-    const file = "bgis_export_" + crypto.randomUUID() + ".csv";
+    const file = "rumb_export_" + crypto.randomUUID() + ".csv";
     // Prefer on-disk staging for large exports, including Safari's worker-accessible OPFS.
     let directory, handle;
     try {

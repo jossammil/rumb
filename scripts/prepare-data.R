@@ -5,7 +5,7 @@
 suppressPackageStartupMessages(library(sf))
 args <- commandArgs(trailingOnly = TRUE)
 stopifnot(length(args) %in% c(0L, 2L))
-stage <- tempfile("bgis-prepare-")
+stage <- tempfile("rumb-prepare-")
 dir.create(stage)
 output <- "public/data"
 dir.create(output, recursive = TRUE, showWarnings = FALSE)

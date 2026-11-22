@@ -118,10 +118,12 @@ const shot = (name, p = page) =>
   shots ? p.screenshot({ path: path.join(shots, `${which}-${name}.png`) }) : null;
 const waitText = (selector, text, p = page) =>
   p.locator(selector).filter({ hasText: text }).first().waitFor();
+let lastDownloadName = "";
 async function download(selector, p = page) {
   const [file] = await Promise.all([p.waitForEvent("download"), p.click(selector)]);
   const bytes = await readFile(await file.path());
   expect(bytes.length > 0, `empty download from ${selector}`);
+  lastDownloadName = file.suggestedFilename();
   return bytes;
 }
 const noOverflow = (p = page) =>
@@ -291,12 +293,13 @@ await check("join", async () => {
   await page.fill("#find-term", ids[0]);
   await page.locator("#find-results button").first().click();
   savedProject = await download("#save-project");
+  expect(/\.rumb$/.test(lastDownloadName), `project saved as ${lastDownloadName}`);
 });
 
 await check("restore", async () => {
   if (!savedProject) return "skip";
   const p = await openPage({ width: 1280, height: 850 });
-  await restore(p, savedProject);
+  await restore(p, savedProject, "measures.rumb");
   await waitText("#map-title", "measures by tract", p);
   await waitText("#inspect-panel", "Global Moran", p);
   await waitText("#inspect-panel", ids[0], p);
@@ -473,6 +476,11 @@ await check("legacy-project", async () => {
   const p = await openPage();
   await restore(p, await legacyProject());
   expect((await p.inputValue("#measure")) === "child_poverty_pct", "legacy measure");
+  // A project saved by today's writer still opens when it carries the old .bgis name.
+  if (savedProject) {
+    await restore(p, savedProject, "measures.bgis");
+    await waitText("#map-title", "measures by tract", p);
+  }
   await p.context().close();
 });
 

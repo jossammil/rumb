@@ -1,4 +1,4 @@
-name: Publish Field Atlas
+name: Publish rumb
 on:
   push:
     branches: [main]

@@ -8,6 +8,8 @@ import {
 } from "@zip.js/zip.js/lib/zip-core-native.js";
 
 const options = { useWebWorkers: false, level: 0 };
+// "field-atlas" is the format name written before the app was renamed rumb.
+const FORMATS = ["rumb", "field-atlas"];
 export async function packProject(state, inputs, baseFiles) {
   const zip = new ZipWriter(new BlobWriter("application/zip"), options);
   const files = [...inputs].map(([table, file], i) => ({
@@ -19,7 +21,7 @@ export async function packProject(state, inputs, baseFiles) {
   await zip.add(
     "project.json",
     new TextReader(
-      JSON.stringify({ format: "field-atlas", version: 1, state, files }),
+      JSON.stringify({ format: "rumb", version: 1, state, files }),
     ),
   );
   for (const item of files)
@@ -42,12 +44,14 @@ export async function unpackProject(file) {
     };
     const m = JSON.parse(await read("project.json", new TextWriter()));
     if (
-      m.format !== "field-atlas" ||
+      !FORMATS.includes(m.format) ||
       m.version !== 1 ||
       !m.state ||
       !Array.isArray(m.files)
     )
-      throw new Error("Choose a Field Atlas version 1 project.");
+      throw new Error(
+        "Choose a rumb project (.rumb) or a Field Atlas project (.bgis).",
+      );
     const inputs = new Map();
     for (const f of m.files) {
       if (

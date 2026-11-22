@@ -29,11 +29,11 @@ try {
         .textContent.includes("878 features"),
     );
     await page.waitForFunction(
-      () => performance.getEntriesByName("field-atlas-first-map").length,
+      () => performance.getEntriesByName("rumb-first-map").length,
     );
     const mapReadyMs = await page.evaluate(() =>
       Math.round(
-        performance.getEntriesByName("field-atlas-first-map")[0].startTime,
+        performance.getEntriesByName("rumb-first-map")[0].startTime,
       ),
     );
     await page.evaluate(
