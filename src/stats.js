@@ -1,4 +1,13 @@
 // Moran statistics use row-standardized first-order weights over the analysis universe.
+
+// The browser build puts GeoDaLib's wasm in a versioned folder beside the
+// worker (scripts/build.mjs); tests in Node read it from node_modules.
+function lisaWasm() {
+  if (typeof __LISA_WASM__ !== "undefined")
+    return new URL(__LISA_WASM__, self.location.href).href;
+  return new URL("../node_modules/@geoda/lisa/wasm/geoda-lisa.wasm", import.meta.url).href;
+}
+
 const average = (values) =>
   values.reduce((sum, value) => sum + value, 0) / values.length;
 
@@ -195,10 +204,7 @@ export async function analyze({
   const sd = Math.sqrt(squared / (n - 1));
   const z = data.map((value) => (value - mean) / sd);
   const lisa = await import("@geoda/lisa");
-  lisa.setDeliveryWASM(
-    new URL("../node_modules/@geoda/lisa/wasm/geoda-lisa.wasm", import.meta.url)
-      .href,
-  );
+  lisa.setDeliveryWASM(lisaWasm());
   // GeoDa supplies observed statistics and lags. Inference below uses an explicit
   // two-sided rule that counts ties and gives invariant permutations a p-value of 1.
   const observed = await lisa.localMoran({

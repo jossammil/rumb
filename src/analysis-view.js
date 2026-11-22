@@ -2,7 +2,7 @@ import { clusters, escape as e, icon, number } from "./ui.js";
 
 export function callStats(request, signal) {
   return new Promise((resolve, reject) => {
-    const w = new Worker(new URL("./stats-worker.js", import.meta.url), {
+    const w = new Worker(new URL("stats-worker.js", document.baseURI), {
       type: "module",
     });
     const end = (fn, arg) => {

@@ -56,19 +56,21 @@ function columnList(table) {
   }));
 }
 
+// The build copies DuckDB into a folder named for its version (scripts/build.mjs).
+const DUCKDB = __DUCKDB_FOLDER__;
 async function startRuntime() {
   const worker = new Worker(
-    appURL("vendor/duckdb/duckdb-browser-eh.worker.js"),
+    appURL(DUCKDB + "/duckdb-browser-eh.worker.js"),
   );
   const engine = new AsyncDuckDB(new ConsoleLogger(LogLevel.WARNING), worker);
   try {
-    await engine.instantiate(appURL("vendor/duckdb/duckdb-eh.wasm"));
+    await engine.instantiate(appURL(DUCKDB + "/duckdb-eh.wasm"));
     await engine.open({
       maximumThreads: 1,
       query: { castDecimalToDouble: true },
     });
     const conn = await engine.connect();
-    const repo = appURL("vendor/duckdb/extensions");
+    const repo = appURL(DUCKDB + "/extensions");
     await conn.query("SET custom_extension_repository = " + sqlString(repo));
     await conn.query("LOAD parquet; LOAD json; LOAD spatial");
     return { engine, conn };

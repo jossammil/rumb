@@ -65,6 +65,7 @@ let currentColors = [],
   userGeometries = new Map(),
   ready = false;
 let atlas, bench, comparison;
+const timings = {};
 const styleName = (f) => fieldNames[f] || f?.replaceAll("_", " ") || "Features";
 const layer = () =>
   state.active === MS
@@ -954,8 +955,20 @@ async function start() {
   atlas.map.once("idle", () => {
     if (atlas.map.queryRenderedFeatures({ layers: ["areas"] }).length) {
       performance.mark("rumb-first-map");
+      timings.firstMap = Math.round(performance.now());
     }
   });
+  // For debugging in the console, the e2e checks and scripts/benchmark-browser.mjs.
+  window.rumb = {
+    version: __RUMB_VERSION__,
+    timings,
+    map: atlas.map,
+    get state() {
+      return state;
+    },
+    openDatabase: (options) =>
+      import("./database.js").then((m) => m.openDatabase(options)),
+  };
   for (const b of document.querySelectorAll("#nav button"))
     b.onclick = () => setView(b.dataset.view);
   for (const id of ["add-data", "import-data"])
