@@ -66,15 +66,29 @@ export function addIcons(root = document) {
 }
 
 let toastTimer = 0;
-/** One message at a time; errors use role=alert and stay longer. */
-export function toast(message, { error = false, ms } = {}) {
+/**
+ * One message at a time; errors use role=alert and stay longer. An `action`
+ * adds a button (label, default "Undo") and keeps the message up longer.
+ */
+export function toast(message, { error = false, ms, action, label = "Undo" } = {}) {
   const el = $("toast");
   clearTimeout(toastTimer);
   el.classList.toggle("error", error);
   el.setAttribute("role", error ? "alert" : "status");
-  el.textContent = message;
+  el.replaceChildren(message);
+  if (action)
+    el.append(
+      h("button", {
+        class: "toast-action",
+        text: label,
+        onclick: () => {
+          el.hidden = true;
+          action();
+        },
+      }),
+    );
   el.hidden = false;
-  toastTimer = setTimeout(() => (el.hidden = true), ms ?? (error ? 11000 : 5200));
+  toastTimer = setTimeout(() => (el.hidden = true), ms ?? (action ? 12000 : error ? 11000 : 5200));
 }
 
 export function report(error) {

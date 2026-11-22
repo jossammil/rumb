@@ -7,6 +7,7 @@
 //   npm run dev            build, then rebuild on change and serve at http://127.0.0.1:4180/bgis/
 import { build, context } from "esbuild";
 import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 
 const debug = process.env.RUMB_DEBUG === "1";
@@ -58,6 +59,8 @@ const options = {
   sourcemap: debug || watch ? "linked" : false,
   define: {
     __RUMB_VERSION__: JSON.stringify(pkg.version),
+    // The dev server skips the service worker so edits show on reload.
+    __RUMB_DEV__: JSON.stringify(watch),
     __DUCKDB_FOLDER__: JSON.stringify(`vendor/${duckdbFolder}`),
     __LISA_WASM__: JSON.stringify(`vendor/${lisaFolder}/geoda-lisa.wasm`),
   },
@@ -68,6 +71,16 @@ const options = {
   metafile: true,
   logLevel: "warning",
 };
+
+async function walk(dir) {
+  const out = [];
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...(await walk(full)));
+    else out.push(full);
+  }
+  return out;
+}
 
 if (watch) {
   // Static files are copied again on each rebuild (data/ only at the start).
@@ -107,6 +120,42 @@ if (watch) {
   }
   await writeFile("dist/bundle-report.txt", `${report.join("\n")}\n`);
 
+  // 5. The service worker and the offline list. The shell (everything but
+  //    vendor/ and data/) is precached; its hash is the app version, so any
+  //    change installs a new worker. Data has its own version, from its bytes.
+  const rel = (f) => path.relative("dist", f).split(path.sep).join("/");
+  const files = (await walk("dist")).map(rel).sort();
+  const skip = (f) => f === "sw.js" || /\.(LEGAL\.txt|map)$/.test(f) || f === "bundle-report.txt";
+  const shellFiles = files.filter((f) => !f.startsWith("vendor/") && !f.startsWith("data/") && !skip(f));
+  const dataFiles = files.filter((f) => f.startsWith("data/") && !f.endsWith("/reference.json"));
+  const vendorFiles = files.filter((f) => f.startsWith("vendor/") && !/LICENSE$/.test(f));
+  const digest = async (files) => {
+    const hash = createHash("sha256");
+    for (const file of files) hash.update(file).update(await readFile(path.join("dist", file)));
+    return hash.digest("hex").slice(0, 10);
+  };
+  const version = `${pkg.version}-${await digest(shellFiles)}${debug ? "-debug" : ""}`;
+  const dataVersion = await digest(dataFiles);
+  // Precached data: each region's catalog, display geography and backdrop.
+  const index = JSON.parse(await readFile("dist/data/index.json", "utf8"));
+  const predata = ["data/index.json"];
+  for (const region of index.regions) {
+    const base = "data/" + region.path;
+    const catalog = JSON.parse(await readFile("dist/" + base + "catalog.json", "utf8"));
+    predata.push(base + "catalog.json", base + catalog.layers[0].files.display);
+    if (catalog.region.backdrop?.context) predata.push(base + catalog.region.backdrop.context);
+  }
+  await writeFile(
+    "dist/offline.json",
+    JSON.stringify({ version, dataVersion, files: [...vendorFiles, ...dataFiles] }, null, 1) + "\n",
+  );
+  const sw = (await readFile("public/sw.js", "utf8"))
+    .replace('"__VERSION__"', JSON.stringify(version))
+    .replace('"__DATA_VERSION__"', JSON.stringify(dataVersion))
+    .replace('"__PRECACHE__"', JSON.stringify(["./", ...shellFiles, "offline.json"]))
+    .replace('"__PREDATA__"', JSON.stringify(predata));
+  await writeFile("dist/sw.js", sw);
+
   const outputs = Object.entries(result.metafile.outputs);
   const js = outputs.filter(([f]) => f.endsWith(".js"));
   const first = result.metafile.outputs["dist/app.js"].bytes;
@@ -119,5 +168,8 @@ if (watch) {
   );
   console.log(
     `  MapLibre ${maplibrePkg.version}; ${duckdbFolder} and ${lisaFolder} in dist/vendor/, loaded on first use`,
+  );
+  console.log(
+    `  service worker ${version}: ${shellFiles.length} shell files and ${predata.length} data files precached; ${vendorFiles.length + dataFiles.length} more in offline.json`,
   );
 }

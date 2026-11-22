@@ -16,6 +16,7 @@ import { THEMES } from "./core/settings.js";
 import { defaults, LAYER_VIEW_KEYS, layerViewDefaults } from "./core/state.js";
 import { createStore } from "./core/store.js";
 import { createWorkspace } from "./core/workspace.js";
+import { createOffline } from "./data/offline.js";
 import { exportMapImage } from "./map/export-png.js";
 import { initMap } from "./map/map.js";
 import { createAnalysis } from "./panels/analysis.js";
@@ -73,7 +74,7 @@ async function start() {
     get state() {
       return store.state;
     },
-    notify: (message, error = false) => toast(message, { error }),
+    notify: (message, options = {}) => toast(message, options === true ? { error: true } : options),
     fail: report,
     status,
     label: (field) => fieldLabel(catalog, field),
@@ -222,6 +223,14 @@ async function start() {
   app.compare = createCompare(app);
   app.files = createFiles(app);
   app.statusbar = createStatusbar(app);
+  const offline = createOffline({
+    status,
+    notify: app.notify,
+    onState: (state) =>
+      app.statusbar.network({ partial: "cached", ready: "offline ready" }[state] || "online", state === "ready"),
+  });
+  if (offline.supported) app.offline = offline;
+  offline.register(__RUMB_DEV__);
   onSettings(() => {
     app.atlas.retheme();
     if (store.state.view === "compare") app.setView("compare", true);
@@ -299,7 +308,7 @@ function wire(app) {
     open: () => $("project-picker").click(),
     save: () => app.perform($("save-project"), app.files.saveProject),
     export: () => inMap() && $("export-map").click(),
-    offline: () => app.offline?.download(),
+    offline: () => app.offline && app.perform(null, app.offline.download),
     "theme-next": () => {
       const s = cycleTheme();
       app.notify("Theme: " + THEMES.find((t) => t.id === s.theme).name);

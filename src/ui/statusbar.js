@@ -25,9 +25,14 @@ export function createStatusbar(app) {
     value("sb-db").textContent = state;
     $("sb-db").classList.toggle("on", state === "ready");
   }
-  function network(text, on = navigator.onLine) {
-    value("sb-net").textContent = text || (navigator.onLine ? "online" : "offline");
-    $("sb-net").classList.toggle("on", on);
+  // Network state, plus what the offline cache holds ("cached", "offline ready").
+  let cache = "",
+    ready = false;
+  function network(state = cache, isReady = ready) {
+    cache = state === "online" ? "" : state;
+    ready = isReady;
+    value("sb-net").textContent = (navigator.onLine ? "online" : "OFFLINE") + (cache ? " · " + cache : "");
+    $("sb-net").classList.toggle("on", ready);
   }
 
   $("sb-coords").addEventListener("click", () => {

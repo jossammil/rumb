@@ -586,6 +586,41 @@ await check("narrow", async () => {
   await p.context().close();
 });
 
+// ---- offline -------------------------------------------------------------------
+await check("offline", async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 850 }, serviceWorkers: "allow" });
+  const p = await ctx.newPage();
+  p.setDefaultTimeout(60000);
+  p.on("pageerror", (e) => errors.push(e.message));
+  await p.goto(base);
+  await ready(p);
+  const controlled = await p
+    .waitForFunction(() => navigator.serviceWorker?.controller, null, { timeout: 20000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!controlled) {
+    await ctx.close();
+    return "skip"; // this browser build does not run service workers under automation
+  }
+  await p.evaluate(() => window.rumb.runCommand("offline"));
+  await waitText("#sb-net", "offline ready", p);
+  await ctx.setOffline(true);
+  await p.reload();
+  await ready(p);
+  await waitText("#foot-status", "878 features", p);
+  await waitText("#sb-net", "OFFLINE", p);
+  // DuckDB, its extensions and the GeoParquet come from the cache.
+  await p.keyboard.press("4");
+  await p.click("#run-query");
+  await waitText("#query-grid", "Census Tract", p);
+  // So do the statistics worker and GeoDaLib.
+  await p.keyboard.press("1");
+  await p.click("#analyze");
+  await waitText("#inspect-panel", "0.2768", p);
+  await ctx.setOffline(false);
+  await ctx.close();
+});
+
 // ---- across all checks --------------------------------------------------------
 await check("same-origin", async () => {
   expect(external.size === 0, `requests to ${[...external].join(", ")}`);

@@ -383,6 +383,15 @@ main {
   line-height: 1.45;
   white-space: pre-line;
 }
+.toast-action {
+  margin-left: 14px;
+  padding: 2px 10px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-family: var(--label-font);
+  text-transform: var(--label-case);
+  letter-spacing: var(--label-spacing);
+}
 #toast.error {
   border-left-color: var(--sem-error);
   background: color-mix(in srgb, var(--sem-error) 12%, var(--bg3));
