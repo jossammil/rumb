@@ -5,7 +5,7 @@ import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium } from "playwright";
 
-const [directory, url = "http://127.0.0.1:4180/bgis/"] = process.argv.slice(2);
+const [directory, url = "http://127.0.0.1:4180/rumb/"] = process.argv.slice(2);
 if (!directory)
   throw Error(
     "Pass the directory containing points50.parquet and points500.parquet.",

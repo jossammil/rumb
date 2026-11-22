@@ -88,7 +88,7 @@ DuckDB (about 59 MB) or the statistics code when the reader first needs them.
 ## 3. Repository map
 
 ```
-rumb (this repository, bgis on GitHub)
+rumb (this repository, jossammil/rumb; it was jossammil/bgis)
 ├── public/                  copied to dist/ as is
 │   ├── index.html           the page: all static markup and element ids
 │   ├── sw.js                service worker template (the build fills it in)
@@ -342,7 +342,7 @@ the README's credits table.
 ## 12. Tools and the build cycle
 
 ```sh
-npm run dev          # build once, rebuild src/ and public/ on change, serve /bgis/
+npm run dev          # build once, rebuild src/ and public/ on change, serve /rumb/
 npm run build        # production build (minified); prints sizes
 npm run build:debug  # readable build with source maps
 npm run serve        # serve dist/ like GitHub Pages (RUMB_BASE, RUMB_PORT)
@@ -380,25 +380,26 @@ Build constants: `__RUMB_VERSION__`, `__RUMB_DEV__`, `__DUCKDB_FOLDER__`,
   - **Compare:** all 870 scores, ranks and quadrants against R;
   - **pure modules:** catalog against data, store, classes, CSV, keys,
     settings, palette ranking.
-- `npm run e2e` runs `tests/e2e/e2e.mjs` against `dist/`, served under `/bgis/`
+- `npm run e2e` runs `tests/e2e/e2e.mjs` against `dist/`, served under `/rumb/`
   with no special headers. It prints PASS, FAIL or SKIP for each check.
   - Switches: `BROWSER=webkit`, `SHOTS=dir` (screenshots; always on failure),
-    `ONLY=clusters,keys`, `HEADED=1`, `RUMB_BASE=/rumb/`.
+    `ONLY=clusters,keys`, `HEADED=1`, `RUMB_BASE=/other/` (another subpath).
   - What it checks: the map before any analytics load; queen and rook global
     I; imports, joins and mapped queries; project save and restore (including
     old Field Atlas projects); Compare; themes; the palette; keys; the status
     bar; 320px layouts; offline reload; and that every request stays on the
     site's own origin.
 - CI (`.github/workflows/test.yml`) runs both on Chromium and WebKit (WebKit
-  allowed to fail for now), plus Chromium under `/rumb/`.
+  allowed to fail for now).
 
 ## 15. Publishing on GitHub Pages
 
 `.github/workflows/pages.yml` runs on every push to `main`: `npm ci`,
-`npm test`, `npm run build`, then deploys `dist/`. All paths are relative, so
-the same build works under `/bgis/` today and under `/rumb/` once the
-repository is renamed (GitHub redirects the old repository URL, but not the
-old Pages address).
+`npm test`, `npm run build`, then deploys `dist/` to
+<https://jossammil.github.io/rumb/>. All paths are relative, so the same build
+works under any subpath. The repository was renamed from `bgis` in November
+2026; GitHub redirects the old repository URL but not the old Pages address
+(`/bgis/` no longer serves).
 
 ## 16. Debugging
 

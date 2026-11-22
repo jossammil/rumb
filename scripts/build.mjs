@@ -4,7 +4,7 @@
 // (what is in each JavaScript file, by library).
 //   npm run build          minified, for publishing
 //   npm run build:debug    readable code with source maps, for studying and debugging
-//   npm run dev            build, then rebuild on change and serve at http://127.0.0.1:4180/bgis/
+//   npm run dev            build, then rebuild on change and serve at http://127.0.0.1:4180/rumb/
 import { build, context } from "esbuild";
 import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";

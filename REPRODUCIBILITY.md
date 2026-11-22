@@ -9,15 +9,15 @@ The baseline below is the first release with **Compare areas**, Field Atlas comm
 Use a terminal with Git, Node.js and npm. CI uses Node 24. The clean-checkout verification also passed with Node 26.12.0 and npm 11.20.0. Run these commands in a fresh directory. The detached checkout fixes the application, data and dependency lockfile to the baseline.
 
 ```sh
-git clone https://github.com/jossammil/bgis.git
-cd bgis
+git clone https://github.com/jossammil/rumb.git
+cd rumb
 npm ci
 npm test
 npm run build
 npm run serve
 ```
 
-Open `http://127.0.0.1:4180/bgis/` (the same subpath GitHub Pages uses) and leave the server running while testing. Run subsequent commands from the repository root in a second terminal. To edit the application with automatic rebuilds, use `npm run dev` instead.
+Open `http://127.0.0.1:4180/rumb/` (the same subpath GitHub Pages uses) and leave the server running while testing. Run subsequent commands from the repository root in a second terminal. To edit the application with automatic rebuilds, use `npm run dev` instead.
 
 To run the Field Atlas baseline commit itself, check it out with `git switch --detach 4cbfc4a9bdfff33b6f831f5ded8b74edbaf2ae44`, then use `npm ci`, `npm test`, `npm run build` and `npm run preview -- --port 4180 --strictPort` (that version built with Vite) and open `http://127.0.0.1:4180/`.
 
@@ -148,7 +148,7 @@ npm run build
 
 The data moved from `public/data/` to `public/data/ms/` after the baseline; `-M` reports those as renames, so an unchanged rebuild lists only the moves and the new `catalog.json` and `index.json`. The unit tests include agreement with R for 872 local Moran statistics under each neighbor rule and for all 870 default comparison results. They also exercise missing data, ties, constant fields, direction reversal, polygon topology, permutations and FDR. If results differ, compare raw hashes, eligibility and GEOIDs before updating the fixtures. Regenerating both a dataset and its expected results can conceal an input change. [Statistics tests](tests/stats.test.js) · [Comparison tests](tests/compare.test.js)
 
-For browser verification, build first. The browser checks start their own server under `/bgis/`, as GitHub Pages does. They use the installed Google Chrome when present, otherwise Playwright's Chromium (`npx playwright install chromium`). Install the matching Playwright WebKit build with `npx playwright install webkit`. On a Linux test host, Playwright may also need browser system dependencies.
+For browser verification, build first. The browser checks start their own server under `/rumb/`, as GitHub Pages does. They use the installed Google Chrome when present, otherwise Playwright's Chromium (`npx playwright install chromium`). Install the matching Playwright WebKit build with `npx playwright install webkit`. On a Linux test host, Playwright may also need browser system dependencies.
 
 ```sh
 npm run e2e

@@ -27,16 +27,11 @@ jobs:
         run: npm test
       - run: npm run build
       - run: npx playwright install --with-deps ${{ matrix.browser }}
-      - name: Browser tests (${{ matrix.browser }}), served under /bgis/ like GitHub Pages
+      - name: Browser tests (${{ matrix.browser }}), served under /rumb/ like GitHub Pages
         run: npm run e2e
         env:
           BROWSER: ${{ matrix.browser }}
           SHOTS: e2e-shots
-      - name: Browser tests under /rumb/, for after the repository is renamed
-        if: matrix.browser == 'chromium'
-        run: npm run e2e
-        env:
-          RUMB_BASE: /rumb/
       - uses: actions/upload-artifact@v7
         if: failure()
         with:

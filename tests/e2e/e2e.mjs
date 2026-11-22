@@ -22,7 +22,7 @@ import {
 const which = process.env.BROWSER || "chromium";
 const shots = process.env.SHOTS;
 const only = process.env.ONLY ? new Set(process.env.ONLY.split(",")) : null;
-const basePath = (process.env.RUMB_BASE || "/bgis/").replace(/\/?$/, "/");
+const basePath = (process.env.RUMB_BASE || "/rumb/").replace(/\/?$/, "/");
 const port = 4500 + Math.floor(Math.random() * 400);
 const base = `http://127.0.0.1:${port}${basePath}`;
 

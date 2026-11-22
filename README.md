@@ -2,7 +2,7 @@
 
 A field GIS that runs entirely in your browser: maps, spatial SQL and cluster
 statistics, with no server, no install and nothing uploaded. Open it from
-[GitHub Pages](https://jossammil.github.io/bgis/), drop in your own files, and
+[GitHub Pages](https://jossammil.github.io/rumb/), drop in your own files, and
 keep working offline. The starter kit is all 878 Mississippi census tracts with
 ACS poverty and CDC PLACES measures. rumb is named for the rhumb line, a
 navigator's course of constant bearing. It was called Field Atlas (repository
@@ -53,7 +53,7 @@ navigator's course of constant bearing. It was called Field Atlas (repository
 
 ## Use it
 
-Open [rumb](https://jossammil.github.io/bgis/). The tract map appears first; the
+Open [rumb](https://jossammil.github.io/rumb/). The tract map appears first; the
 SQL engine (DuckDB, about 59 MB) and the statistics code load only when you
 first use them. Drop data files or a `.rumb` project anywhere on the page.
 Press **?** for help, or Ctrl/⌘ K and start typing.
@@ -131,7 +131,7 @@ Use Node.js 24 or later.
 
 ```sh
 npm ci              # exact dependency versions
-npm run dev         # build, rebuild on change, serve at http://127.0.0.1:4180/bgis/
+npm run dev         # build, rebuild on change, serve at http://127.0.0.1:4180/rumb/
 npm test            # unit tests, including statistics checked against R
 npm run build       # production build in dist/ (fetches and checks DuckDB's extensions)
 npm run serve       # serve dist/ the way GitHub Pages does

@@ -21,7 +21,7 @@ const browser = await chromium.launch({
   args: ["--use-angle=swiftshader"],
 });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-await page.goto(`http://127.0.0.1:${port}/bgis/`);
+await page.goto(`http://127.0.0.1:${port}/rumb/`);
 await page.waitForFunction(() => window.rumb?.timings.firstMap, null, { timeout: 60000 });
 let n = 0;
 const shot = (name) => page.screenshot({ path: `${dir}/${++n}-${name}.jpg`, type: "jpeg", quality: 82 });

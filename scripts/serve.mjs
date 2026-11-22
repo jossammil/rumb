@@ -1,5 +1,5 @@
 // A small static server for dist/ that behaves like GitHub Pages: the site
-// lives under a subpath (RUMB_BASE, default /bgis/), no special headers are
+// lives under a subpath (RUMB_BASE, default /rumb/), no special headers are
 // sent, and byte ranges are honored (DuckDB and the service worker read
 // parquet files in ranges).
 //   RUMB_BASE=/rumb/ RUMB_PORT=4180 node scripts/serve.mjs
@@ -9,7 +9,7 @@ import path from "node:path";
 
 const root = path.resolve(process.env.RUMB_ROOT || "dist");
 const port = Number(process.env.RUMB_PORT || 4180);
-const base = (process.env.RUMB_BASE || "/bgis/").replace(/\/?$/, "/");
+const base = (process.env.RUMB_BASE || "/rumb/").replace(/\/?$/, "/");
 const types = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript",
