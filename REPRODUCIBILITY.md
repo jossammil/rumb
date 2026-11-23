@@ -92,6 +92,20 @@ python3 scripts/prepare-places.py .cache/sources/us/PLACES_tract_GIS_2025.csv --
 Rscript scripts/compare-region.R public/data/ms "$out"
 ```
 
+### Building states
+
+[`scripts/build-regions.mjs`](scripts/build-regions.mjs) runs the scripts in order for each state (data, layers, tables, outline, backdrop, the PLACES comparison file), writes its `catalog.json` ([`scripts/region-catalog.mjs`](scripts/region-catalog.mjs)) and checks the folder ([`scripts/check-region.mjs`](scripts/check-region.mjs)). The check runs the app's own catalog, library and table validators, confirms that every named file exists and that ids agree across files, that neighbors are symmetric, and that no file exceeds 100 MB.
+
+```sh
+node scripts/build-regions.mjs de                # one state into .cache/data/de
+node scripts/build-regions.mjs --all --jobs 3    # every state and DC
+node scripts/check-region.mjs public/data/ms public/data/de
+```
+
+A new state's catalog copies Mississippi's reference-layer fields, takes its bounds from the tracts (padded by 1% and rounded outward to 0.01°) and its backdrop from `prepare-basemap.R`. Its projection is a transverse Mercator centred on the state, with the scale factor chosen so the scale error is split evenly between the centre and the east and west edges (at most ±0.26%, in Texas). Alaska uses the Alaska Albers system (EPSG:3338). The GeoParquet copy outside Mississippi is simplified with shared arcs at a 10 m interval: Delaware's falls from 1.1 MB to 366 KB. Mississippi keeps its full-resolution file and its hand-edited catalog.
+
+`public/data/de/` (Delaware: 262 tracts, 3 counties, 1.3 MB) is committed as the second, small region, built by this pipeline. CI rebuilds both committed regions and compares them by meaning.
+
 ### Census geography, poverty and spatial weights
 
 ```sh

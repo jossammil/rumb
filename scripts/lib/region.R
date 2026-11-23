@@ -133,6 +133,8 @@ pin <- function(ctx, key, url, path, counts = list(), national = FALSE) {
   pins <- pins_read(file, if (national) "us" else ctx$id)
   entry <- c(list(url = url, sha256 = sha), counts)
   if (ctx$pin) {
+    # Write only on a change, so parallel builds only read national.json.
+    if (identical(lapply(pins[[key]], as.character), lapply(entry, as.character))) return(invisible(sha))
     pins[[key]] <- entry
     pins <- pins[c("version", "region", sort(setdiff(names(pins), c("version", "region"))))]
     dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)

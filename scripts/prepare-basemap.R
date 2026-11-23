@@ -110,7 +110,7 @@ merged <- do.call(rbind, lapply(split(seq_len(nrow(roads)), key), function(rows)
   line <- st_line_merge(st_cast(st_union(st_geometry(roads)[rows]), "MULTILINESTRING"))
   st_sf(class = roads$class[rows[1]], name = roads$ref[rows[1]], ref = roads$ref[rows[1]], geometry = line)
 }))
-merged <- st_transform(st_simplify(merged, dTolerance = 40, preserveTopology = FALSE), "OGC:CRS84")
+merged <- region_lonlat(st_transform(st_simplify(merged, dTolerance = 40, preserveTopology = FALSE), "OGC:CRS84"), ctx)
 merged <- merged[!st_is_empty(merged), ]
 merged <- merged[order(merged$class == "primary", merged$ref), ]
 st_write(merged, file.path(ctx$out, "roads.geojson"), quiet = TRUE, delete_dsn = TRUE,

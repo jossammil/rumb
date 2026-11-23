@@ -4,7 +4,7 @@
 #   Rscript scripts/prepare-data.R [--state MS] [--out DIR] [--cache DIR] [--pin]
 # (options in scripts/lib/region.R). Inputs: the state's 2024 TIGER/Line tracts
 # and the ACS S1701 export for all its tracts from data.census.gov.
-# R packages: sf, spdep, arrow, jsonlite, digest, rmapshaper, httr2.
+# R packages: sf, spdep, arrow, jsonlite, digest, rmapshaper, geojsonsf, httr2.
 suppressPackageStartupMessages(library(sf))
 source("scripts/lib/region.R")
 ctx <- region_context()
@@ -64,7 +64,7 @@ write_json <- function(x, filename) write_json_file(x, file.path(stage, filename
 write_json(lapply(graphs, by_id), "neighbors.json")
 
 # The display asset and analytical source share stable IDs. Only display is simplified.
-full <- st_sf(measures, geometry = st_transform(st_geometry(shapes), "OGC:CRS84"))
+full <- region_lonlat(st_sf(measures, geometry = st_transform(st_geometry(shapes), "OGC:CRS84")), ctx)
 display <- rmapshaper::ms_simplify(full, keep = 0.02, keep_shapes = TRUE, snap = FALSE)
 stopifnot(identical(display$GEOID, ids), all(!st_is_empty(display)))
 display$feature_id <- display$GEOID
@@ -72,12 +72,24 @@ st_write(display, file.path(stage, "tracts.geojson"), driver = "GeoJSON", quiet 
          layer_options = c("ID_FIELD=feature_id", "ID_TYPE=String",
                            "RFC7946=YES", "COORDINATE_PRECISION=5"))
 
+# The analytical copy for spatial SQL. Mississippi keeps full TIGER resolution
+# (10.7 MB); other states simplify with shared arcs to a 10 m interval, which
+# keeps all states within GitHub Pages' size limit and moves no boundary more
+# than about 10 m (Mississippi at 10 m: 151k of 983k vertices, 2.4 MB of WKB).
+analytical <- full
+if (ctx$fips != "28") {
+  # rmapshaper runs commands on GeoJSON text (an sf input returns nothing).
+  text <- geojsonsf::sf_geojson(full["GEOID"], digits = 15)
+  analytical <- geojsonsf::geojson_sf(rmapshaper::apply_mapshaper_commands(text, "-simplify interval=10 keep-shapes"))
+  stopifnot(identical(analytical$GEOID, ids), all(!st_is_empty(analytical)))
+  analytical <- st_sf(measures, geometry = st_cast(st_geometry(analytical), "MULTIPOLYGON"))
+}
 # GeoParquet 1.1 uses OGC:CRS84 when the metadata omits crs. Physical storage is WKB.
-wkb <- st_as_binary(st_geometry(full), EWKB = FALSE)
+wkb <- st_as_binary(st_geometry(analytical), EWKB = FALSE)
 geometry_column <- arrow::as_arrow_array(unclass(wkb), type = arrow::binary())
 table <- arrow::Table$create(measures, geometry = geometry_column)
 geo <- list(version = "1.1.0", primary_column = "geometry", columns = list(geometry = list(
-  encoding = "WKB", geometry_types = I("MultiPolygon"), bbox = unname(as.numeric(st_bbox(full)))
+  encoding = "WKB", geometry_types = I("MultiPolygon"), bbox = unname(as.numeric(st_bbox(analytical)))
 )))
 table <- table$ReplaceSchemaMetadata(list(geo = jsonlite::toJSON(geo, auto_unbox = TRUE, digits = 15)))
 arrow::write_parquet(table, file.path(stage, "tracts.parquet"), compression = "zstd", chunk_size = 64)
@@ -113,6 +125,7 @@ source_info <- list(
                     below = "S1701_C02_002E", universe = "S1701_C01_002E")),
   methods = list(weights = paste0("Undirected, first-order, within ", ctx$name, "; queen shares at least one boundary point, rook a boundary segment, evaluated with GEOS on original TIGER vertices."),
     display = "Mapshaper shared-arc simplification at 2% retained removable vertices, preserving small features; coordinates rounded to 5 decimal places.",
+    analytical = if (ctx$fips != "28") "GeoParquet geometry simplified with Mapshaper shared arcs at a 10 m interval, preserving small features.",
     statistics = "Reference for poverty_pct: exclude missing estimates and islands, row-standardize weights, spdep::moran and spdep::localmoran(mlvar=FALSE)."),
   packages = lapply(setNames(c("sf", "spdep", "arrow", "rmapshaper"), c("sf", "spdep", "arrow", "rmapshaper")),
                     function(p) as.character(packageVersion(p))),

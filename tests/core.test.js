@@ -86,6 +86,18 @@ test("feature helpers", () => {
   assert.deepEqual(groups(features, null), []);
 });
 
+test("every committed region passes the region checks", async () => {
+  const { checkRegion } = await import("../scripts/check-region.mjs");
+  const index = read("../public/data/index.json");
+  assert.ok(index.regions.length >= 2);
+  for (const region of index.regions) {
+    const dir = new URL("../public/data/" + region.path, import.meta.url).pathname;
+    const { problems } = checkRegion(dir);
+    assert.deepEqual(problems, [], region.id);
+    assert.equal(read("../public/data/" + region.path + "catalog.json").region.id, region.id);
+  }
+});
+
 test("the Mississippi catalog matches the data files it describes", () => {
   validateCatalog(catalog);
   const ref = referenceLayer(catalog);

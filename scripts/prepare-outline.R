@@ -16,7 +16,7 @@ pin(ctx, "cb_states", url, zip, national = TRUE)
 states <- st_read(paste0("/vsizip/", zip), quiet = TRUE)
 state <- states[states$STATEFP == ctx$fips, "NAME"]
 stopifnot(nrow(state) == 1)
-state <- st_transform(state, "OGC:CRS84")
+state <- region_lonlat(st_transform(state, "OGC:CRS84"), ctx)
 outline <- rmapshaper::ms_simplify(state, keep = 0.08, keep_shapes = TRUE)
 out <- file.path(ctx$out, "outline.geojson")
 st_write(outline, out, driver = "GeoJSON", delete_dsn = TRUE, quiet = TRUE,

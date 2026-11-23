@@ -106,7 +106,7 @@ neighbor_graphs <- function(geometry, ids) {
 }
 
 write_layer <- function(x, id, geometry, keep) {
-  x <- st_transform(x, "OGC:CRS84")
+  x <- region_lonlat(st_transform(x, "OGC:CRS84"), ctx)
   if (geometry == "point") {
     if (any(st_geometry_type(x) == "MULTIPOINT")) {
       coords <- st_coordinates(x)

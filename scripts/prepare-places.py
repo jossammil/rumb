@@ -63,6 +63,10 @@ def extract(csv_path, atlas_path, region):
                 raise ValueError(f"Unexpected or duplicate {region['name']} tract {geoid!r}")
             record = {"adult_population_2020": int(row["TotalPop18plus"].replace(",", ""))}
             for key, field in measures.items():
+                # Some states' 2025 release lacks a measure, and a few tracts lack one
+                # estimate; those stay out of the record.
+                if not row[field["estimateColumn"]].strip() and not row[field["intervalColumn"]].strip():
+                    continue
                 estimate = float(row[field["estimateColumn"]])
                 interval = re.fullmatch(r"\(\s*([\d.]+),\s*([\d.]+)\s*\)", row[field["intervalColumn"]])
                 if interval is None:
@@ -75,6 +79,8 @@ def extract(csv_path, atlas_path, region):
             by_id[geoid] = record
     if not by_id:
         raise ValueError(f"No CDC tracts joined to the {len(tract_ids)} {region['name']} tracts.")
+    published = {key for record in by_id.values() for key in record}
+    measures = {key: field for key, field in measures.items() if key in published}
     checksum = hashlib.sha256()
     with csv_path.open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):

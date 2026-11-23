@@ -1,0 +1,192 @@
+{
+ "version": 1,
+ "region": {
+  "id": "de",
+  "name": "Delaware",
+  "bounds": [
+   [
+    -75.8,
+    38.43
+   ],
+   [
+    -74.97,
+    39.86
+   ]
+  ],
+  "credit": "U.S. Census Bureau · Natural Earth",
+  "projection": {
+   "name": "Transverse Mercator centred on Delaware (NAD83)",
+   "tmerc": {
+    "lat0": 39.15,
+    "lon0": -75.39,
+    "k0": 0.9999924,
+    "x0": 500000,
+    "y0": 0,
+    "a": 6378137,
+    "rf": 298.257222101
+   },
+   "proj": "+proj=tmerc +lat_0=39.15 +lon_0=-75.39 +k=0.9999924 +x_0=500000 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+   "scaleError": 0.00001
+  },
+  "outline": "outline.geojson",
+  "backdrop": {
+   "context": "context.geojson",
+   "world": "world-land.geojson",
+   "roads": "roads.geojson",
+   "extent": [
+    -82,
+    34,
+    -69,
+    44
+   ],
+   "labels": [
+    [
+     "MARYLAND",
+     -76.75,
+     38.82
+    ],
+    [
+     "NEW JERSEY",
+     -74.38,
+     40.14
+    ],
+    [
+     "PENNSYLVANIA",
+     -77.82,
+     40.99
+    ],
+    [
+     "VIRGINIA",
+     -78.46,
+     38
+    ],
+    [
+     "NEW YORK",
+     -76.6,
+     42.27
+    ],
+    [
+     "CONNECTICUT",
+     -72.66,
+     41.52
+    ],
+    [
+     "MASSACHUSETTS",
+     -72.1,
+     42.18
+    ],
+    [
+     "WEST VIRGINIA",
+     -80.3,
+     38.92
+    ],
+    [
+     "Atlantic Ocean",
+     -74.5,
+     37.5
+    ]
+   ]
+  }
+ },
+ "library": "layers/library.json",
+ "layers": [
+  {
+   "id": "tracts",
+   "name": "Delaware tracts",
+   "noun": "tract",
+   "nouns": "census tracts",
+   "title": "Delaware",
+   "subtitle": "Census tracts · ACS 2020–2024",
+   "summary": "2020–2024 ACS · Delaware census tracts",
+   "credit": "Boundaries & estimates · U.S. Census Bureau",
+   "context": "ACS 2020–2024 · U.S. Census Bureau",
+   "studyAll": "All Delaware tracts",
+   "files": {
+    "display": "tracts.geojson",
+    "parquet": "tracts.parquet",
+    "neighbors": "neighbors.json",
+    "sources": "sources.json"
+   },
+   "tables": "tables/index.json",
+   "populationField": "acs_population",
+   "idField": "GEOID",
+   "idLabel": "11-character tract GEOID",
+   "labelField": "name",
+   "groupField": "county",
+   "moeLevel": 90,
+   "measures": [
+    "poverty_pct",
+    "child_poverty_pct"
+   ],
+   "fields": {
+    "poverty_pct": {
+     "label": "Population below poverty",
+     "unit": "%",
+     "moe": "poverty_moe",
+     "count": "poverty_count",
+     "universe": "poverty_universe",
+     "countLabel": "Below poverty",
+     "universeLabel": "Population in universe",
+     "source": "ACS S1701",
+     "vintage": "2020–2024"
+    },
+    "child_poverty_pct": {
+     "label": "Children below poverty",
+     "unit": "%",
+     "moe": "child_poverty_moe",
+     "count": "child_poverty_count",
+     "universe": "child_poverty_universe",
+     "countLabel": "Below poverty",
+     "universeLabel": "Population in universe",
+     "source": "ACS S1701",
+     "vintage": "2020–2024"
+    },
+    "poverty_universe": {
+     "label": "Poverty universe"
+    },
+    "child_poverty_universe": {
+     "label": "Child poverty universe"
+    },
+    "poverty_count": {
+     "label": "People below poverty"
+    },
+    "child_poverty_count": {
+     "label": "Children below poverty (count)"
+    },
+    "poverty_moe": {
+     "label": "Poverty margin of error"
+    },
+    "child_poverty_moe": {
+     "label": "Child poverty margin of error"
+    }
+   },
+   "compare": {
+    "reference": "places-2025.json",
+    "lead": [
+     "poverty_pct",
+     "transportation_barrier_pct",
+     "child_poverty_pct"
+    ],
+    "credit": "U.S. Census Bureau · CDC PLACES",
+    "imageCredit": "ACS 2020–2024 · CDC PLACES 2025 · Natural Earth",
+    "notes": [
+     "ACS 2020–2024 estimates cover people for whom poverty status was determined, with a separate under-18 measure. Margins of error use 90% confidence. CDC PLACES 2025 reports modeled crude prevalence for adults 18 and older using 2023 BRFSS, with 95% confidence intervals. PLACES models can include county-level poverty as a predictor. Pairing a modeled indicator with ACS poverty can give related information extra weight. Scores use point estimates."
+    ],
+    "links": [
+     {
+      "label": "ACS S1701",
+      "url": "https://data.census.gov/table/ACSST5Y2024.S1701"
+     },
+     {
+      "label": "CDC PLACES tract estimates",
+      "url": "https://data.cdc.gov/d/yjkw-uj5s"
+     },
+     {
+      "label": "Model methodology",
+      "url": "https://www.cdc.gov/places/methodology/index.html"
+     }
+    ]
+   }
+  }
+ ]
+}
