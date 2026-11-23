@@ -107,7 +107,10 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
     const ids = interactiveLayers().filter((id) => map.getLayer(id));
     return ids.length ? map.queryRenderedFeatures(point, { layers: ids }) : [];
   };
+  // A tool (measuring, drawing, placing) can take the map's clicks and moves.
+  let captured = null;
   map.on("click", (e) => {
+    if (captured) return captured.click?.(e.lngLat.toArray(), e);
     // Every layer hit at the point, top first, one feature per layer.
     const seen = new Set();
     const found = [];
@@ -121,6 +124,11 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
       onSelect({ ...found[0], hits: found, lngLat: e.lngLat, additive: e.originalEvent?.shiftKey || false });
   });
   map.on("mousemove", (e) => {
+    if (captured) {
+      captured.move?.(e.lngLat.toArray());
+      onPointer(e.lngLat);
+      return;
+    }
     map.getCanvas().style.cursor = hits(e.point).length ? "pointer" : "";
     onPointer(e.lngLat);
   });
@@ -140,6 +148,25 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
     map,
     ready,
     fit,
+    /** Hands clicks and moves to a tool ({ click(lonlat), move(lonlat) }), or back with null. */
+    capture(handlers) {
+      captured = handlers;
+      map.getCanvas().style.cursor = handlers ? "crosshair" : "";
+      if (handlers) map.doubleClickZoom.disable();
+      else map.doubleClickZoom.enable();
+    },
+    /** Draws a tool's shape: GeoJSON features (points, a line, a polygon). */
+    setSketch(features) {
+      map.getSource("sketch").setData(collection(features || []));
+    },
+    /** Marks positions: features with properties.kind "me" (with an accuracy polygon) or "place". */
+    setLocate(features) {
+      map.getSource("locate").setData(collection(features || []));
+    },
+    /** Flies to a [lon, lat] at a zoom (never zooming out). */
+    flyTo(lonlat, zoom = 12) {
+      map.flyTo({ center: lonlat, zoom: Math.max(map.getZoom(), zoom), duration: 700 });
+    },
     /** Opens a popup holding `content` (an element) at a position; closes any other. */
     popup(lngLat, content) {
       popupNow?.remove();

@@ -335,3 +335,43 @@
 .map-popup a {
   color: var(--accent);
 }
+
+/* A field tool's readout (measuring), under the map title. */
+#tool-card {
+  position: absolute;
+  z-index: 3;
+  top: 96px;
+  left: 14px;
+  width: 270px;
+  padding: 9px 12px 10px;
+  font-size: 0.8rem;
+}
+#tool-card[hidden] {
+  display: none;
+}
+.tool-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--accent);
+  font: 700 0.74rem/1.4 var(--mono-font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.tool-head .dismiss {
+  width: 22px;
+  height: 22px;
+  font-size: 15px;
+}
+#tool-card .metrics {
+  margin: 6px 0 4px;
+}
+#tool-card .metrics dd {
+  font-family: var(--mono-font);
+  font-variant-numeric: tabular-nums;
+}
+.tool-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}

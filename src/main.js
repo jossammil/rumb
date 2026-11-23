@@ -13,7 +13,7 @@ import { featureTitle, popupRows } from "./catalog/popup.js";
 import { bindCommands, COMMANDS } from "./core/commands.js";
 import { featureId } from "./core/features.js";
 import { drawnIds, moveLayer, setVisible, stackEntry, withLayer, withoutLayer } from "./core/stack.js";
-import { SHORTCUTS, shortcutFor } from "./core/keys.js";
+import { isTyping, SHORTCUTS, shortcutFor } from "./core/keys.js";
 import { THEMES } from "./core/settings.js";
 import { defaults, LAYER_VIEW_KEYS, layerViewDefaults } from "./core/state.js";
 import { createStore } from "./core/store.js";
@@ -30,6 +30,9 @@ import { findFeatures, openFind } from "./panels/find.js";
 import { createInspector } from "./panels/inspector.js";
 import { describeLayer, openLibrary, renderLayers } from "./panels/layers.js";
 import { createStyle } from "./panels/style.js";
+import { createTools } from "./panels/tools.js";
+import { parseCoordinate } from "./geo/coords.js";
+import { formatPosition } from "./core/settings.js";
 import { createWorkbench } from "./panels/workbench.js";
 import { $, addIcons, h, on, report, toast } from "./ui/dom.js";
 import { setupDrop } from "./ui/drop.js";
@@ -384,6 +387,7 @@ async function start() {
   app.compare = createCompare(app);
   app.files = createFiles(app);
   app.statusbar = createStatusbar(app);
+  app.tools = createTools(app);
   const offline = createOffline({
     status,
     notify: app.notify,
@@ -498,6 +502,14 @@ function wire(app) {
       store.set({ roads: app.state.roads === "below" ? "above" : "below" });
       app.renderAll();
     },
+    measure: () => {
+      if (app.state.view !== "map" && app.state.view !== "compare") app.setView("map");
+      app.tools.measure();
+    },
+    locate: () => {
+      if (app.state.view !== "map") app.setView("map");
+      return app.tools.locate();
+    },
     "layer-down": () => stepFocus(app, -1),
     "layer-up": () => stepFocus(app, 1),
   });
@@ -548,6 +560,17 @@ function wire(app) {
           run: () => app.perform(null, () => app.addLibraryLayer(meta.id)),
         });
     const ranked = rankItems(items, query, 40);
+    // A typed coordinate offers to go there.
+    const at = parseCoordinate(query);
+    if (at)
+      ranked.unshift({
+        group: "Go to",
+        label: formatPosition(at[1], at[0], getSettings().coords),
+        run: () => {
+          if (app.state.view !== "map") app.setView("map");
+          app.tools.goto(at);
+        },
+      });
     if (query.trim().length < 2) return ranked;
     const fields = app.searchFields(app.layer());
     const places = findFeatures(app.records(), query, fields, 8).map((f) => {
@@ -694,6 +717,11 @@ function wire(app) {
     ),
   );
   document.addEventListener("keydown", (e) => {
+    // A drawing tool takes Enter, Backspace and Esc first.
+    if (!$("dialog").open && !palette.isOpen && !isTyping(e.target) && app.tools.key(e)) {
+      e.preventDefault();
+      return;
+    }
     if (e.key === "Escape") {
       // Dialogs close themselves; otherwise close the drawer and leave any text box.
       if ($("dialog").open || palette.isOpen) return;

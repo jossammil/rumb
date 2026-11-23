@@ -12,6 +12,8 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { formatMiles, measurePath } from "../../src/geo/measure.js";
+import { transverseMercator } from "../../src/geo/project.js";
 import {
   BlobReader,
   BlobWriter,
@@ -518,6 +520,65 @@ await check("classes", async () => {
   await waitText("#legend .breaks", "20–<40", p);
   await waitText("#legend .breaks", "≥ 40", p);
   expect((await p.evaluate(() => window.rumb.state.breaks.join())) === "10,20,40", "breaks kept");
+  await p.context().close();
+});
+
+await check("measure", async () => {
+  const p = await openPage();
+  await p.evaluate(() => window.rumb.map.jumpTo({ center: [-90.15, 32.3], zoom: 9 }));
+  await p.keyboard.press("m");
+  await p.locator("#tool-card:not([hidden])").waitFor();
+  const box = await p.locator("#map").boundingBox();
+  for (const pt of [[-90.3, 32.2], [-90.0, 32.2], [-90.0, 32.4]]) {
+    const xy = await p.evaluate((q) => window.rumb.map.project(q), pt);
+    await p.mouse.click(box.x + xy.x, box.y + xy.y);
+  }
+  await p.keyboard.press("Enter");
+  await waitText("#tool-card", "Measure again", p);
+  // The readout matches the same measurement made outside the browser.
+  const points = await p.evaluate(() => window.rumb.app.tools.sketch.points);
+  expect(points.length === 3, "three points");
+  const region = JSON.parse(await dataFile("catalog.json")).region;
+  const m = measurePath(points, transverseMercator(region.projection.tmerc));
+  expect((await p.textContent("#measure-distance")) === formatMiles(m.miles), "distance");
+  expect((await p.textContent("#measure-area")) === formatMiles(m.squareMiles, "sq mi"), "area");
+  expect(m.miles > 25 && m.miles < 35, "about 31 miles: " + m.miles);
+  // Clicks while measuring do not select features.
+  expect((await p.evaluate(() => window.rumb.state.selected)) == null, "measuring selected a feature");
+  await p.context().close();
+});
+
+await check("locate", async () => {
+  const ctx = await browser.newContext({
+    viewport: { width: 1280, height: 850 },
+    geolocation: { latitude: 32.3, longitude: -90.18, accuracy: 30 },
+    permissions: ["geolocation"],
+  });
+  const p = await ctx.newPage();
+  p.setDefaultTimeout(35000);
+  p.on("pageerror", (e) => errors.push(e.message));
+  await p.goto(base);
+  await ready(p);
+  await p.keyboard.press("g");
+  await waitText("#toast", "You are at", p);
+  const me = await p.evaluate(() => window.rumb.app.tools.located);
+  expect(Math.abs(me.lonlat[0] + 90.18) < 1e-6 && Math.abs(me.lonlat[1] - 32.3) < 1e-6, "position");
+  await p.waitForFunction(() => window.rumb.map.querySourceFeatures("locate").length >= 2);
+  // Your position is never part of the saved state.
+  expect(!JSON.stringify(await p.evaluate(() => window.rumb.state)).includes("-90.18"), "position in state");
+  await ctx.close();
+});
+
+await check("goto", async () => {
+  const p = await openPage();
+  await p.keyboard.press("Control+k");
+  await p.keyboard.type("32.3, -90.18");
+  await p.locator("#palette-list li", { hasText: "90.18000" }).first().click();
+  await waitText("#toast", "Showing", p);
+  await p.waitForFunction(() => {
+    const c = window.rumb.map.getCenter();
+    return Math.abs(c.lng + 90.18) < 0.01 && Math.abs(c.lat - 32.3) < 0.01;
+  });
   await p.context().close();
 });
 
