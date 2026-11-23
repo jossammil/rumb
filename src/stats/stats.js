@@ -1,4 +1,9 @@
-// Moran statistics use row-standardized first-order weights over the analysis universe.
+// Moran statistics use row-standardized weights over the analysis universe:
+// first-order contiguity (queen or rook, from a neighbor graph) or distance
+// weights (k nearest, a band, inverse distance) built between the eligible
+// areas' projected points. Binary rows keep GeoDa's arithmetic exactly;
+// weighted rows divide each weighted sum by the row's total.
+import { DISTANCE_KINDS, describeWeights, distanceWeights, weightsSpec, weightsSummary } from "./neighbors.js";
 import { randomGenerator } from "./random.js";
 
 // The browser build puts GeoDaLib's wasm in a versioned folder beside the
@@ -25,12 +30,13 @@ export function adjustFdr(pValues) {
   return adjusted;
 }
 
-function analysisUniverse(values, neighbors, studyIds, denominators) {
+function analysisUniverse(values, neighbors, studyIds, denominators, spec, points) {
   const study = studyIds == null ? null : new Set(studyIds.map(String));
   const byId = Object.create(null);
   const eligible = new Set();
+  const byDistance = DISTANCE_KINDS.has(spec.kind);
   const allIds = [
-    ...new Set([...Object.keys(values), ...Object.keys(neighbors)]),
+    ...new Set([...Object.keys(values), ...Object.keys(byDistance ? points || {} : neighbors || {})]),
   ].sort();
   for (const id of allIds) {
     const value = Number.isFinite(values[id]) ? values[id] : null;
@@ -38,6 +44,7 @@ function analysisUniverse(values, neighbors, studyIds, denominators) {
     if (study && !study.has(id)) reason = "Outside study area";
     else if (denominators?.[id] === 0) reason = "Zero denominator";
     else if (value === null) reason = "Missing estimate";
+    else if (byDistance && !points?.[id]) reason = "No location";
     byId[id] = {
       value,
       z: null,
@@ -51,6 +58,7 @@ function analysisUniverse(values, neighbors, studyIds, denominators) {
     };
     if (!reason) eligible.add(id);
   }
+  if (byDistance) return distanceUniverse([...eligible], byId, spec, points);
   const ids = [];
   for (const id of eligible) {
     const adjacent = [...new Set((neighbors[id] ?? []).map(String))]
@@ -69,18 +77,58 @@ function analysisUniverse(values, neighbors, studyIds, denominators) {
   if (rows.some((row, i) => row.some((j) => !edges[j]?.has(i)))) {
     throw new Error("Contiguity must be symmetric. Check the neighbor file.");
   }
-  return { ids, byId, rows };
+  return { ids, byId, rows, w: null, threshold: null };
 }
 
-function globalI(z, rows, sumSquares) {
+// Distance weights are built among the eligible areas only, so every area
+// keeps its k neighbors inside the study area. Areas a band leaves alone drop out.
+function distanceUniverse(candidates, byId, spec, points) {
+  const built = distanceWeights(spec, candidates.map((id) => points[id]));
+  const keep = candidates.map((_, i) => built.rows[i].length > 0);
+  const position = new Map();
+  candidates.forEach((id, i) => {
+    if (keep[i]) position.set(i, position.size);
+    else byId[id].reason = "No eligible neighbors";
+  });
+  const ids = candidates.filter((_, i) => keep[i]);
+  const rows = [],
+    w = built.w ? [] : null;
+  candidates.forEach((id, i) => {
+    if (!keep[i]) return;
+    rows.push(built.rows[i].map((j) => position.get(j)));
+    if (w) w.push(built.w[i]);
+    byId[id].neighbors = built.rows[i].map((j) => candidates[j]).sort();
+  });
+  return { ids, byId, rows, w, threshold: built.threshold, symmetric: built.symmetric };
+}
+
+// Row totals of the weights, or null for binary rows (whose total is the count).
+const rowTotals = (w) => w && w.map((row) => row.reduce((s, x) => s + x, 0));
+
+function globalI(z, rows, sumSquares, w = null, totals = null) {
   let product = 0;
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     let sum = 0;
-    for (let k = 0; k < row.length; k++) sum += z[row[k]];
-    product += (z[i] * sum) / row.length;
+    if (w) {
+      const wi = w[i];
+      for (let k = 0; k < row.length; k++) sum += wi[k] * z[row[k]];
+      product += (z[i] * sum) / totals[i];
+    } else {
+      for (let k = 0; k < row.length; k++) sum += z[row[k]];
+      product += (z[i] * sum) / row.length;
+    }
   }
   return product / sumSquares;
+}
+
+/** The spatial lag of z: each row's weighted mean. */
+function spatialLag(z, rows, w, totals) {
+  return rows.map((row, i) => {
+    let sum = 0;
+    for (let k = 0; k < row.length; k++) sum += (w ? w[i][k] : 1) * z[row[k]];
+    return sum / (w ? totals[i] : row.length);
+  });
 }
 
 function extremeThreshold(observed, expected) {
@@ -96,6 +144,8 @@ function globalPermutationP(
   observed,
   permutations,
   random,
+  w = null,
+  totals = null,
 ) {
   const expected = -1 / (z.length - 1);
   const threshold = extremeThreshold(observed, expected);
@@ -108,13 +158,13 @@ function globalPermutationP(
       shuffled[i] = shuffled[j];
       shuffled[j] = tmp;
     }
-    if (Math.abs(globalI(shuffled, rows, sumSquares) - expected) >= threshold)
+    if (Math.abs(globalI(shuffled, rows, sumSquares, w, totals) - expected) >= threshold)
       extreme++;
   }
   return (extreme + 1) / (permutations + 1);
 }
 
-function localPermutationP(z, rows, observed, permutations, random) {
+function localPermutationP(z, rows, observed, permutations, random, w = null, totals = null) {
   // Each focal value stays fixed. Sample its neighbor count without replacement
   // from all other eligible areas, using a reversible partial Fisher-Yates shuffle.
   const pool = Int32Array.from({ length: z.length }, (_, i) => i);
@@ -122,7 +172,9 @@ function localPermutationP(z, rows, observed, permutations, random) {
   return rows.map((row, i) => {
     const expected = (-z[i] * z[i]) / (z.length - 1);
     const threshold = extremeThreshold(observed[i], expected);
-    if (threshold <= 0 || row.length === z.length - 1) return 1;
+    // With equal weights, an area next to every other one cannot vary.
+    if (threshold <= 0 || (!w && row.length === z.length - 1)) return 1;
+    const wi = w?.[i];
     pool[i] = z.length - 1;
     let extreme = 0;
     for (let draw = 0; draw < permutations; draw++) {
@@ -133,9 +185,9 @@ function localPermutationP(z, rows, observed, permutations, random) {
         const selected = pool[j];
         pool[j] = pool[k];
         pool[k] = selected;
-        sum += z[selected];
+        sum += wi ? wi[k] * z[selected] : z[selected];
       }
-      const simulated = (z[i] * sum) / row.length;
+      const simulated = (z[i] * sum) / (wi ? totals[i] : row.length);
       if (Math.abs(simulated - expected) >= threshold) extreme++;
       for (let k = row.length - 1; k >= 0; k--) {
         const j = swaps[k];
@@ -152,6 +204,8 @@ function localPermutationP(z, rows, observed, permutations, random) {
 export async function analyze({
   values,
   neighbors,
+  points,
+  weights,
   studyIds,
   denominators,
   permutations = 999,
@@ -170,12 +224,16 @@ export async function analyze({
     throw new Error("Use an unsigned 32-bit seed.");
   if (!(alpha > 0 && alpha < 1))
     throw new Error("Choose a significance level between 0 and 1.");
-  const { ids, byId, rows } = analysisUniverse(
+  const spec = weightsSpec(weights);
+  const { ids, byId, rows, w, threshold } = analysisUniverse(
     values,
     neighbors,
     studyIds,
     denominators,
+    spec,
+    points,
   );
+  const totals = rowTotals(w);
   const n = ids.length;
   if (n < 3)
     throw new Error(
@@ -193,16 +251,23 @@ export async function analyze({
   }
   const sd = Math.sqrt(squared / (n - 1));
   const z = data.map((value) => (value - mean) / sd);
-  const lisa = await import("@geoda/lisa");
-  lisa.setDeliveryWASM(lisaWasm());
-  // GeoDa supplies observed statistics and lags. Inference below uses an explicit
-  // two-sided rule that counts ties and gives invariant permutations a p-value of 1.
-  const observed = await lisa.localMoran({
-    data,
-    neighbors: rows,
-    permutation: 0,
-    seed,
-  });
+  // For binary rows GeoDa supplies observed statistics and lags; weighted rows
+  // use the same formula here. Inference below uses an explicit two-sided rule
+  // that counts ties and gives invariant permutations a p-value of 1.
+  let observed;
+  if (w) {
+    const lagValues = spatialLag(z, rows, w, totals);
+    observed = { isValid: true, lagValues, lisaValues: z.map((zi, i) => zi * lagValues[i]) };
+  } else {
+    const lisa = await import("@geoda/lisa");
+    lisa.setDeliveryWASM(lisaWasm());
+    observed = await lisa.localMoran({
+      data,
+      neighbors: rows,
+      permutation: 0,
+      seed,
+    });
+  }
   if (
     !observed.isValid ||
     observed.lisaValues.length !== n ||
@@ -213,7 +278,7 @@ export async function analyze({
     );
   }
   const sumSquares = z.reduce((sum, v) => sum + v * v, 0);
-  const statistic = globalI(z, rows, sumSquares);
+  const statistic = globalI(z, rows, sumSquares, w, totals);
   const random = randomGenerator(seed);
   const globalP = globalPermutationP(
     z,
@@ -222,6 +287,8 @@ export async function analyze({
     statistic,
     permutations,
     random,
+    w,
+    totals,
   );
   const p = localPermutationP(
     z,
@@ -229,6 +296,8 @@ export async function analyze({
     observed.lisaValues,
     permutations,
     random,
+    w,
+    totals,
   );
   const q = adjustFdr(p);
   ids.forEach((id, i) => {
@@ -258,6 +327,7 @@ export async function analyze({
     alpha,
     fdr,
     byId,
+    weights: { ...spec, threshold, label: describeWeights(spec, threshold), summary: weightsSummary(rows) },
     method:
       "GeoDa sample-standardized Local Moran I; row-standardized weights; two-sided global shuffles and local conditional permutations about the null expectation, with ties included; Benjamini-Hochberg adjusted q-values.",
   };

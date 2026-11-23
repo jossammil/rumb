@@ -821,18 +821,23 @@ function wire(app) {
     ["classification", "classification", String],
     ["class-count", "count", Number],
     ["rule", "rule", String],
+    ["k", "k", (v) => Math.min(30, Math.max(1, Math.round(Number(v) || 6)))],
+    ["band", "band", (v) => (Number(v) >= 0.1 ? Math.min(200, Number(v)) : null)],
+    ["power", "power", Number],
     ["study", "study", String],
     ["permutations", "permutations", Number],
     ["seed", "seed", Number],
   ];
   for (const [id, key, cast] of controls)
     on(id, "change", (ev) => {
+      // Read the control first: clearing a result redraws the analysis controls.
+      const value = cast(ev.target.value);
       // Classes only restyle the map; analysis settings invalidate a result.
       if (key !== "classification" && key !== "count") app.analysis.clearResults();
       // Manual breaks start from the breaks on the map, rounded.
       if (key === "classification" && ev.target.value === "manual" && !app.state.breaks?.length)
         store.set({ breaks: app.style.cuts().map((c) => Number(c.toPrecision(3))) });
-      store.set({ [key]: cast(ev.target.value) });
+      store.set({ [key]: value });
       app.renderAll();
     });
   on("manual-breaks", "change", (ev) => {
@@ -842,8 +847,15 @@ function wire(app) {
     app.renderAll();
   });
   on("fdr", "change", (ev) => {
+    const fdr = ev.target.checked;
     app.analysis.clearResults();
-    store.set({ fdr: ev.target.checked });
+    store.set({ fdr });
+    app.renderAll();
+  });
+  on("symmetric", "change", (ev) => {
+    const symmetric = ev.target.checked;
+    app.analysis.clearResults();
+    store.set({ symmetric });
     app.renderAll();
   });
   on("zoom-in", "click", () => app.atlas.map.zoomIn());
@@ -867,7 +879,7 @@ function wire(app) {
         others: app.style.legendOthers(),
         notes:
           (clustered
-            ? state.result.studyName + " · " + state.rule + " · " + (state.fdr ? "FDR q" : "p") + " ≤ 0.05 · "
+            ? state.result.studyName + " · " + (state.result.weights?.label || state.rule) + " · " + (state.fdr ? "FDR q" : "p") + " ≤ " + (state.result.alpha ?? 0.05) + " · "
             : "") +
           [app.layer().meta?.credit, ...app.style.legendOthers().map((o) => o.credit), app.catalog.region.credit]
             .filter((c, i, all) => c && all.indexOf(c) === i)

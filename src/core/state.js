@@ -12,6 +12,10 @@ export const LAYER_VIEW_KEYS = [
   "count",
   "breaks",
   "rule",
+  "k",
+  "band",
+  "power",
+  "symmetric",
   "study",
   "permutations",
   "seed",
@@ -37,7 +41,14 @@ export function defaults(catalog) {
     count: 5,
     // Manual class breaks, used when classification is "manual".
     breaks: null,
+    // Spatial weights: queen or rook contiguity, or k nearest (k), a distance
+    // band (band, in miles; null finds the smallest that leaves no area alone)
+    // or inverse distance within that band (power 1 or 2). See stats/neighbors.js.
     rule: "queen",
+    k: 6,
+    band: null,
+    power: 1,
+    symmetric: false,
     study: "all",
     permutations: 999,
     seed: 12345,

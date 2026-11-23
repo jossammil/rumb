@@ -291,6 +291,49 @@ await check("clusters", async () => {
   await download("#export-map");
 });
 
+await check("weights", async () => {
+  const ref = JSON.parse(await readFile("tests/stats-reference.json", "utf8")).weights.moran;
+  const p = await openPage();
+  const run = async (expected) => {
+    await p.click("#analyze");
+    await waitText("#inspect-panel", expected.toFixed(4), p);
+  };
+  // k nearest between 2020 centers of population, as spdep finds them.
+  await p.selectOption("#rule", "knn");
+  await p.waitForSelector("#k", { state: "visible" });
+  await run(ref.knn6);
+  await waitText("#weights-note", "6 neighbors each · no islands · from 2020 centers of population", p);
+  await p.check("#symmetric");
+  await run(ref.knn6sym);
+  await p.selectOption("#rule", "band");
+  await run(ref.connected);
+  await waitText("#weights-note", "Every area within 14.8 mi", p);
+  await p.fill("#band", "25");
+  await p.press("#band", "Enter");
+  await run(ref.band25);
+  await p.selectOption("#rule", "idw");
+  await p.selectOption("#power", "2");
+  await p.fill("#band", "");
+  await p.press("#band", "Enter");
+  await run(ref.idw2);
+  await p.click("#find-feature");
+  await p.fill("#find-term", ids[0]);
+  await p.locator("#find-results button").first().click();
+  await waitText("#inspect-panel", "Eligible neighbors", p);
+  // The weights travel in a share link.
+  await p.evaluate(() => window.rumb.runCommand("share"));
+  await p.locator("#share-link").waitFor();
+  const url = await p.inputValue("#share-link");
+  await p.context().close();
+  const q = await openPage();
+  await q.goto(url.replace(/^https?:\/\/[^/]+/, origin));
+  await ready(q);
+  await waitText("#toast", "Opened a shared map", q);
+  const kept = await q.evaluate(() => [window.rumb.state.rule, window.rumb.state.power, window.rumb.state.band].join());
+  expect(kept === "idw,2,", "shared weights " + kept);
+  await q.context().close();
+});
+
 await check("identity", async () => {
   const p = await openPage();
   const ids = ["lyr-tracts-fill", "lyr-tracts-outline", "anchor-areas", "anchor-points", "anchor-labels", "sel-line"];

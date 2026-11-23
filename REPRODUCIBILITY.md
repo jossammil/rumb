@@ -203,8 +203,9 @@ the committed data files, so rerun them only when those files change.
 | `scripts/reference-geo.R` | `tests/geo-reference.json` | 259 NAD83 positions projected to EPSG:3814 by PROJ |
 | `scripts/reference-filters.R` | `tests/filter-reference.json` | GEOS radius, buffer and polygon filters on the display files, in EPSG:3814 |
 | `scripts/reference-counts.R` | `tests/counts-reference.json` | GEOS point-in-polygon counts per tract and county; pooled County Health Rankings measures by map_project's rules |
+| `scripts/reference-stats.R` | `tests/stats-reference.json` | R's distribution functions and quantiles (deep tails included) and `poisson.test` limits; spdep k-nearest, distance-band and inverse-distance weights between tract centers of population projected by PROJ, with Moran's I on each; GEOS centroids of tract and county polygons |
 
-The scripts need the R package `classInt` besides those above.
+The scripts need the R packages `classInt` and `spdep` besides those above. The statistics fixtures were written with spdep 1.4-3 (installed November 23, 2026; `prepare-data.R`'s spdep reference reproduces with it to 4e-16).
 
 ## 4. Verify the rebuild
 

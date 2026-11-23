@@ -7,10 +7,14 @@
 // Format: "1." + base64url(deflate-raw(JSON)), or "0." + base64url(JSON)
 // where the browser cannot compress. Pure apart from CompressionStream.
 import { normalizeFilter } from "../geo/filter.js";
+import { WEIGHT_KINDS } from "../stats/neighbors.js";
 
 /** Longest link part rumb writes (characters after #state=). */
 export const SHARE_LIMIT = 8000;
-const VIEW_KEYS = ["measure", "category", "palette", "classification", "count", "breaks", "rule", "study", "permutations", "seed", "fdr"];
+const VIEW_KEYS = [
+  "measure", "category", "palette", "classification", "count", "breaks",
+  "rule", "k", "band", "power", "symmetric", "study", "permutations", "seed", "fdr",
+];
 const LOOK_KEYS = ["color", "opacity", "size", "shape", "outline", "outlineColor"];
 
 const toBase64Url = (bytes) => {
@@ -130,7 +134,11 @@ export function readShare(data, { known, palettes, region }) {
         classification: ["quantile", "equal", "jenks", "sd", "manual"].includes(w.classification) ? w.classification : undefined,
         count: num(w.count, 2, 9),
         breaks: Array.isArray(w.breaks) ? w.breaks.filter(Number.isFinite).slice(0, 8) : undefined,
-        rule: ["queen", "rook"].includes(w.rule) ? w.rule : undefined,
+        rule: WEIGHT_KINDS.includes(w.rule) ? w.rule : undefined,
+        k: num(w.k, 1, 30),
+        band: num(w.band, 0.1, 200),
+        power: [1, 2].includes(w.power) ? w.power : undefined,
+        symmetric: typeof w.symmetric === "boolean" ? w.symmetric : undefined,
         study: str(w.study, 200),
         permutations: num(w.permutations, 99, 9999),
         seed: num(w.seed, 0, 2 ** 31),

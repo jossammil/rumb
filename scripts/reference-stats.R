@@ -3,7 +3,7 @@
 # committed data files, so the JS can be checked against independent code.
 # Writes tests/stats-reference.json. Run at the repository root:
 #   Rscript scripts/reference-stats.R
-# R packages: jsonlite (sections added later use sf and spdep).
+# R packages: jsonlite, sf, spdep.
 out <- list(R = R.version.string)
 
 # ---- probability distributions -------------------------------------------------
@@ -37,6 +37,61 @@ counts <- c(0, 1, 4, 10, 19, 20, 57, 300, 5000, 560000)
 ci <- t(vapply(counts, function(k) poisson.test(k)$conf.int, numeric(2)))
 cases$poissonCI <- data.frame(count = counts, lower = ci[, 1], upper = ci[, 2])
 out$distributions <- cases
+
+# ---- distance weights and Moran's I on tract centers of population ---------------
+suppressPackageStartupMessages({
+  library(sf)
+  library(spdep)
+})
+centers <- jsonlite::read_json("public/data/ms/tables/tracts-centers.json", simplifyVector = TRUE)
+tracts <- st_read("public/data/ms/tracts.geojson", quiet = TRUE)
+x <- tracts$poverty_pct[match(centers$ids, tracts$GEOID)]
+ok <- is.finite(x)
+ids <- centers$ids[ok]
+stopifnot(!is.unsorted(ids))
+# Census centers are NAD83 longitude and latitude; EPSG:3814 is NAD83 / Mississippi TM.
+pts <- st_transform(st_as_sf(data.frame(lon = centers$lon[ok], lat = centers$lat[ok]),
+                             coords = c("lon", "lat"), crs = 4269), 3814)
+xy <- unname(st_coordinates(pts))
+v <- x[ok]
+index_lists <- function(nb) lapply(nb, function(j) I(as.integer(j) - 1L))
+moran_I <- function(nb, glist = NULL) {
+  # Inverse squared distances give some rows tiny totals, which nb2listw warns
+  # about; the statistic still matches matrix algebra to 1e-13.
+  lw <- suppressWarnings(nb2listw(nb, glist = glist, style = "W"))
+  moran(v, lw, length(nb), Szero(lw))$I
+}
+k6 <- knn2nb(knearneigh(xy, k = 6))
+k6s <- make.sym.nb(k6)
+nearest <- knn2nb(knearneigh(xy, k = 1))
+threshold <- max(unlist(nbdists(nearest, xy))) * (1 + 1e-9)
+connected <- suppressWarnings(dnearneigh(xy, 0, threshold))  # three sub-graphs, none alone
+band25 <- suppressWarnings(dnearneigh(xy, 0, 25 * 1609.344))
+stopifnot(all(card(connected) > 0), all(card(band25) > 0))
+inverse <- function(nb, p) lapply(nbdists(nb, xy), function(d) 1 / pmax(d, 1)^p)
+out$weights <- list(
+  ids = I(ids), xy = xy, values = v,
+  knn6 = index_lists(k6), knn6sym = index_lists(k6s),
+  threshold = threshold, connected = index_lists(connected), band25cards = I(card(band25)),
+  moran = list(
+    knn6 = moran_I(k6), knn6sym = moran_I(k6s), connected = moran_I(connected), band25 = moran_I(band25),
+    idw1 = moran_I(connected, inverse(connected, 1)), idw2 = moran_I(connected, inverse(connected, 2)),
+    idw25 = moran_I(band25, inverse(band25, 1))
+  )
+)
+
+# Area-weighted centroids of display polygons in EPSG:3814 (GEOS).
+centroid_of <- function(file, n = Inf) {
+  g <- st_read(file, quiet = TRUE)
+  g <- g[seq_len(min(n, nrow(g))), ]
+  c <- st_coordinates(st_centroid(st_geometry(st_transform(g, 3814))))
+  unname(c)
+}
+out$centroids <- list(
+  counties = centroid_of("public/data/ms/layers/chr_counties_2025.geojson"),
+  tracts = centroid_of("public/data/ms/tracts.geojson", 120)
+)
+out$packages <- list(sf = as.character(packageVersion("sf")), spdep = as.character(packageVersion("spdep")))
 
 jsonlite::write_json(out, "tests/stats-reference.json", digits = NA, auto_unbox = TRUE, dataframe = "rows")
 message("Wrote tests/stats-reference.json")

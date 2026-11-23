@@ -80,14 +80,18 @@ export function createInspector(app) {
 
   /** The selected ids: the inspected feature and any others picked with Shift. */
   const selection = () => [...new Set([...(app.state.picks || []), app.state.selected].filter(Boolean).map(String))];
-  /** The focus layer's neighbor graph for the current rule, once loaded. */
+  /**
+   * The focus layer's contiguity graph for the current rule, once loaded.
+   * Distance-based rules pool a selection with the areas that touch it (queen).
+   */
   function graphOf(l) {
-    const { state } = app;
+    const { state } = app,
+      rule = state.rule === "rook" ? "rook" : "queen";
     return l.reference
-      ? app.ws.neighborData?.[state.rule]
+      ? app.ws.neighborData?.[rule]
       : l.library
-        ? app.ws.layerNeighbors(l.id)?.[state.rule]
-        : app.ws.graphs.get(l.id + "-" + state.rule);
+        ? app.ws.layerNeighbors(l.id)?.[rule]
+        : app.ws.graphs.get(l.id + "-" + rule);
   }
 
   /** Outlines the selection and dashes its neighbors; returns the inspected feature's neighbors. */
@@ -278,7 +282,7 @@ export function createInspector(app) {
       "section",
       { class: "inspect-block" },
       h("div", { class: "inspection-head" }, h("h3", { text: "Cluster analysis" })),
-      h("p", { class: "subtle", text: result.studyName + " · " + state.rule + " neighbors" }),
+      h("p", { class: "subtle", text: result.studyName + " · " + (result.weights?.label || state.rule + " neighbors") }),
       h(
         "dl",
         { class: "metrics" },

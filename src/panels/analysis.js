@@ -2,7 +2,9 @@
 // the statistics worker, and the statistics CSV.
 import { featureId, groups, isPolygon } from "../core/features.js";
 import { csvText } from "../data/csv.js";
+import { projectedIndex } from "../geo/filter.js";
 import { callStats } from "../stats/client.js";
+import { centroid, DISTANCE_KINDS, summaryText } from "../stats/neighbors.js";
 import { $, icon, options, saveBlob } from "../ui/dom.js";
 
 const CSV_FIELDS = [
@@ -43,6 +45,7 @@ export function createAnalysis(app) {
   function clearResults() {
     cancel();
     app.store.set({ result: null, mode: "value", inspector: !!app.state.selected });
+    renderWeights();
   }
 
   /** Fills the study-area list and syncs the controls with the state. */
@@ -66,9 +69,55 @@ export function createAnalysis(app) {
     }))
       $(id).value = String(value);
     $("fdr").checked = state.fdr;
+    renderWeights();
+    // Contiguity needs polygons; distance weights work between any features.
+    const byDistance = DISTANCE_KINDS.has(state.rule);
     button.disabled =
-      !fields.length || !state.measure || !!state.category || running != null || !records.every(isPolygon);
-    button.title = button.disabled ? "Choose a polygon layer with a numeric measure." : "";
+      !fields.length ||
+      !state.measure ||
+      !!state.category ||
+      running != null ||
+      (!byDistance && !records.every(isPolygon));
+    button.title = button.disabled
+      ? byDistance
+        ? "Choose a numeric measure."
+        : "Choose a polygon layer with a numeric measure, or distance-based neighbors."
+      : "";
+  }
+
+  /** The weights inputs for the chosen kind, and what the last run's weights were like. */
+  function renderWeights() {
+    const { state } = app,
+      rule = state.rule;
+    $("weights-params").hidden = !DISTANCE_KINDS.has(rule);
+    $("k-field").hidden = rule !== "knn";
+    $("symmetric-field").hidden = rule !== "knn";
+    $("band-field").hidden = rule !== "band" && rule !== "idw";
+    $("power-field").hidden = rule !== "idw";
+    $("k").value = String(state.k);
+    $("band").value = state.band == null ? "" : String(state.band);
+    $("power").value = String(state.power);
+    $("symmetric").checked = state.symmetric;
+    const w = state.result?.weights;
+    $("weights-note").textContent = w
+      ? w.label + " · " + summaryText(w.summary) + (w.from ? " · from " + w.from : "")
+      : DISTANCE_KINDS.has(rule)
+        ? "Distances run between centers of population where the data has them, otherwise area centroids, in the region's projection."
+        : "";
+  }
+
+  /**
+   * Each feature's location in the region's projected plane: 2020 centers of
+   * population for layers that ship them, otherwise area-weighted centroids.
+   */
+  async function locations(l, items) {
+    const projection = app.tools.projection;
+    const centers = l.reference || l.library ? await app.ws.centers(l.id).catch(() => null) : null;
+    const points = {};
+    if (centers) centers.ids.forEach((id, i) => (points[id] = projection.forward([centers.lon[i], centers.lat[i]])));
+    for (const f of projectedIndex(l.collection, projection, featureId))
+      if (!points[f.id]) points[f.id] = centroid(f.geometry);
+    return { points, from: centers ? "2020 centers of population" : "area centroids" };
   }
 
   async function run() {
@@ -84,20 +133,25 @@ export function createAnalysis(app) {
         l = app.layer(),
         items = app.records(),
         cacheKey = l.id + "-" + state.rule;
-      // Reference and library polygons ship their neighbors; other layers compute them once.
-      let graph = l.reference
-        ? (await app.ws.neighbors())[state.rule]
-        : l.library && l.meta.neighbors
-          ? (await app.ws.loadLayerNeighbors(l.id))[state.rule]
-          : app.ws.graphs.get(cacheKey);
-      if (!graph) {
-        graph = await callStats({ type: "weights", features: items, rule: state.rule }, control.signal);
-        app.ws.graphs.set(cacheKey, graph);
-      }
+      const weights = { kind: state.rule, k: state.k, miles: state.band, power: state.power, symmetric: state.symmetric };
       const ids = new Set(items.map(featureId));
-      const neighbors = Object.fromEntries(
-        items.map((f) => [featureId(f), (graph[featureId(f)] || []).filter((id) => ids.has(id))]),
-      );
+      let neighbors, points, from;
+      if (DISTANCE_KINDS.has(state.rule)) ({ points, from } = await locations(l, items));
+      else {
+        // Reference and library polygons ship their neighbors; other layers compute them once.
+        let graph = l.reference
+          ? (await app.ws.neighbors())[state.rule]
+          : l.library && l.meta.neighbors
+            ? (await app.ws.loadLayerNeighbors(l.id))[state.rule]
+            : app.ws.graphs.get(cacheKey);
+        if (!graph) {
+          graph = await callStats({ type: "weights", features: items, rule: state.rule }, control.signal);
+          app.ws.graphs.set(cacheKey, graph);
+        }
+        neighbors = Object.fromEntries(
+          items.map((f) => [featureId(f), (graph[featureId(f)] || []).filter((id) => ids.has(id))]),
+        );
+      }
       const values = Object.fromEntries(items.map((f) => [featureId(f), f.properties[state.measure]]));
       let studyIds,
         studyName = $("study").selectedOptions[0].textContent;
@@ -121,6 +175,8 @@ export function createAnalysis(app) {
           type: "analyze",
           values,
           neighbors,
+          points,
+          weights,
           denominators,
           studyIds,
           permutations: state.permutations,
@@ -132,7 +188,9 @@ export function createAnalysis(app) {
       if (control.signal.aborted) return;
       app.timings.lastAnalysis = Math.round(performance.now() - started);
       app.statusbar?.timing();
+      if (from) res.weights.from = from;
       app.store.set({ result: { ...res, studyName }, mode: "cluster", inspector: true });
+      renderWeights();
       $("settings").classList.remove("open");
       app.draw();
     } catch (err) {
@@ -163,7 +221,7 @@ export function createAnalysis(app) {
       r.neighbors.join(" "),
       r.reason,
       a.studyName,
-      state.rule,
+      a.weights?.label || state.rule,
       a.globalI,
       a.globalP,
       a.permutations,
