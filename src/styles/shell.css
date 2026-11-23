@@ -586,3 +586,14 @@ dialog::backdrop {
 .mobile-only {
   display: none;
 }
+
+/* The share dialog. */
+.share #share-link {
+  width: 100%;
+  margin: 6px 0;
+  font-family: var(--mono-font);
+  font-size: 0.75rem;
+}
+.share .warn {
+  color: var(--sem-warn);
+}

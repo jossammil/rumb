@@ -680,6 +680,64 @@ await check("pooled", async () => {
   await p.context().close();
 });
 
+await check("share", async () => {
+  const p = await openPage();
+  await p.keyboard.press("n");
+  await p.click('[data-library="fire_stations_2020"]');
+  await waitText("#toast", "Added Fire stations", p);
+  await p.click("#look summary");
+  await p.selectOption("#look-shape", "diamond");
+  await p.click('[data-layer="tracts"]');
+  await p.click('[data-palette="Viridis"]');
+  await p.selectOption("#classification", "jenks");
+  await p.evaluate(() => window.rumb.app.filter.set({ kind: "radius", center: [-90.18, 32.3], miles: 25 }));
+  await p.evaluate((id) => window.rumb.app.selectFeature(id), ids[0]);
+  await p.evaluate(() => window.rumb.map.jumpTo({ center: [-89.5, 32.1], zoom: 8.25 }));
+  await p.keyboard.press("u");
+  await p.locator("#share-link").waitFor();
+  const url = await p.inputValue("#share-link");
+  expect(/#state=1\.[A-Za-z0-9_-]+$/.test(url) && url.length < 1200, "link " + url.length);
+  // Another browser opens it; the state never leaves the address bar.
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 850 } });
+  const q = await ctx.newPage();
+  q.setDefaultTimeout(35000);
+  q.on("pageerror", (e) => errors.push(e.message));
+  const sent = [];
+  q.on("request", (r) => sent.push(r.url()));
+  await q.goto(url.replace(/^https?:\/\/[^/]+/, origin));
+  await ready(q);
+  await waitText("#toast", "Opened a shared map", q);
+  const got = await q.evaluate(() => {
+    const s = window.rumb.state;
+    const c = window.rumb.map.getCenter();
+    return {
+      stack: s.stack.map((e) => e.id + (e.style?.shape ? ":" + e.style.shape : "")).join(),
+      active: s.active,
+      palette: s.palette,
+      classification: s.classification,
+      filter: s.filter?.kind + " " + s.filter?.miles,
+      selected: s.selected,
+      camera: [c.lng.toFixed(2), c.lat.toFixed(2), window.rumb.map.getZoom().toFixed(2)].join(),
+      hash: location.hash,
+    };
+  });
+  const want = {
+    stack: "tracts,fire_stations_2020:diamond",
+    active: "tracts",
+    palette: "Viridis",
+    classification: "jenks",
+    filter: "radius 25",
+    selected: ids[0],
+    camera: "-89.50,32.10,8.25",
+    hash: "",
+  };
+  expect(JSON.stringify(got) === JSON.stringify(want), "opened " + JSON.stringify(got));
+  await waitText('[data-count="fire_stations_2020"]', "88 of", q);
+  expect(!sent.some((u) => /state=/.test(u)), "the shared state reached a server");
+  await ctx.close();
+  await p.context().close();
+});
+
 // ---- compare -----------------------------------------------------------------
 await check("compare", async () => {
   const p = await openPage();

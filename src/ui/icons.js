@@ -20,6 +20,7 @@ export const icons = {
   chart: '<path d="M4 3v17h17M8 15l4-5 3 2 5-7"/>',
   play: '<path d="m7 4 13 8-13 8z"/>',
   check: '<path d="m4 12 5 5L20 6"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
   filter: '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>',
   eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   "eye-off":

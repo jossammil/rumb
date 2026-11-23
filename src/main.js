@@ -32,6 +32,7 @@ import { describeLayer, openLibrary, renderLayers } from "./panels/layers.js";
 import { createStyle } from "./panels/style.js";
 import { createTools } from "./panels/tools.js";
 import { createFilter } from "./panels/filter.js";
+import { createShare } from "./panels/share.js";
 import { parseCoordinate } from "./geo/coords.js";
 import { countPoints } from "./geo/counts.js";
 import { projectedIndex } from "./geo/filter.js";
@@ -472,6 +473,7 @@ async function start() {
   app.statusbar = createStatusbar(app);
   app.tools = createTools(app);
   app.filter = createFilter(app);
+  app.share = createShare(app);
   const offline = createOffline({
     status,
     notify: app.notify,
@@ -497,6 +499,8 @@ async function start() {
     }
   });
   wire(app);
+  // A link with #state= opens its shared map once the first map is up.
+  app.share.fromAddress();
 
   // For debugging in the console, the e2e checks and scripts/benchmark-browser.mjs.
   window.rumb = {
@@ -625,6 +629,7 @@ function wire(app) {
     },
     "filter-clear": () => app.filter.clear(),
     "count-points": () => toggleCounts(app),
+    share: () => app.perform(null, app.share.copyLink),
     "layer-down": () => stepFocus(app, -1),
     "layer-up": () => stepFocus(app, 1),
   });
@@ -757,6 +762,7 @@ function wire(app) {
   });
   on("filter-clear", "click", () => app.filter.clear());
   on("count-points", "click", () => runCommand("count-points"));
+  on("share-map", "click", () => runCommand("share"));
   on("look-reset", "click", () => {
     const { stack, active } = store.state;
     store.set({ stack: stack.map((e) => (e.id === active ? { id: e.id, visible: e.visible } : e)) });

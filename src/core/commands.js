@@ -35,6 +35,7 @@ export const COMMANDS = [
   { id: "open", label: "Open a project", group: "File" },
   { id: "save", label: "Save the project", group: "File" },
   { id: "export", label: "Export the map as PNG", group: "File" },
+  { id: "share", label: "Copy a share link", group: "File" },
   { id: "offline", label: "Download for offline use", group: "File" },
   { id: "theme-next", label: "Next theme", group: "Appearance" },
   { id: "appearance", label: "Appearance…", group: "Appearance" },
