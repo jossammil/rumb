@@ -5,69 +5,12 @@ import { number } from "../catalog/format.js";
 import { formatValue, popupRows } from "../catalog/popup.js";
 import { featureId } from "../core/features.js";
 import { aggregate, coverageLabel, neighborsOf, poolOf } from "../stats/pool.js";
-import { clusters } from "../map/classify.js";
 import { basisOf, methodOf } from "../stats/methods.js";
 import { acsReliability, rateLimits, UNSTABLE_EVENTS } from "../stats/rates.js";
-import { $, fill, h, icon, s } from "../ui/dom.js";
+import { scatter } from "../ui/chart.js";
+import { $, fill, h, icon } from "../ui/dom.js";
 
 const row = (key, val) => h("div", null, h("dt", { text: key }), h("dd", { text: String(val) }));
-
-/** The Moran scatterplot: standardized value against the neighbor average. */
-export function scatter(result, selected, onPick, [xLabel, yLabel] = ["Standardized measure", "Neighbor average"]) {
-  const points = Object.entries(result.byId).filter(
-    ([, r]) => Number.isFinite(r.z) && Number.isFinite(r.lag),
-  );
-  const span = Math.max(0.1, ...points.flatMap(([, r]) => [Math.abs(r.z), Math.abs(r.lag)]));
-  const x = (z) => 125 + (z / span) * 93,
-    y = (lag) => 76 - (lag / span) * 57;
-  const dots = points.map(([id, r]) =>
-    s(
-      "circle",
-      {
-        "data-point": id,
-        cx: x(r.z),
-        cy: y(r.lag),
-        r: 2.9,
-        class: r.cluster === "NS" ? "ns-dot" : null,
-        fill: r.cluster === "NS" ? null : clusters[r.cluster][1],
-        opacity: 0.7,
-        onclick: () => onPick(id),
-      },
-      s("title", { text: id }),
-    ),
-  );
-  const sel = result.byId[selected];
-  return s(
-    "svg",
-    {
-      class: "scatter",
-      viewBox: "0 0 250 165",
-      role: "img",
-      "aria-label": "Moran scatterplot. Horizontal axis: " + xLabel + ". Vertical axis: " + yLabel + ".",
-    },
-    s("rect", { x: 26, y: 9, width: 199, height: 133, rx: 3, class: "plot-bg" }),
-    s("path", { d: "M26 76h199M125 9v133", class: "plot-axis", "stroke-dasharray": "3 3" }),
-    s("path", {
-      d: "M32 " + y(-span * result.globalI) + "L218 " + y(span * result.globalI),
-      class: "plot-fit",
-    }),
-    dots,
-    sel?.z != null &&
-      s("circle", {
-        cx: x(sel.z),
-        cy: y(sel.lag),
-        r: 5,
-        class: "plot-mark",
-        "pointer-events": "none",
-      }),
-    s(
-      "g",
-      { "font-size": 9, class: "plot-text", "text-anchor": "middle" },
-      s("text", { x: 125, y: 158, text: xLabel }),
-      s("text", { transform: "translate(12 76) rotate(-90)", text: yLabel }),
-    ),
-  );
-}
 
 const MEANING = {
   HH: "This is a high-value cluster.",

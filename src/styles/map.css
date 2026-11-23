@@ -160,6 +160,16 @@
   stroke: var(--plot-fit);
   stroke-width: 1.4;
 }
+.plot-band {
+  fill: var(--plot-fit);
+  opacity: 0.18;
+}
+.plot-bar {
+  fill: var(--plot-dot);
+}
+.chart {
+  cursor: default;
+}
 .plot-mark {
   fill: var(--plot-mark);
   stroke: var(--bg1);
