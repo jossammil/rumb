@@ -18,7 +18,7 @@ export function createStatusbar(app) {
     const t = app.timings;
     const parts = [];
     if (t.lastQuery != null) parts.push("sql " + t.lastQuery + " ms");
-    if (t.lastAnalysis != null) parts.push("lisa " + t.lastAnalysis + " ms");
+    if (t.lastAnalysis != null) parts.push((t.lastMethod || "lisa") + " " + t.lastAnalysis + " ms");
     value("sb-time").textContent = parts.join(" · ") || "—";
   }
   function database(state) {

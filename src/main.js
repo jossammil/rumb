@@ -631,6 +631,15 @@ function wire(app) {
       if (app.state.view !== "map") app.setView("map");
       if (!$("analyze").disabled) app.analysis.run();
     },
+    "hot-spots": () => {
+      if (app.state.view !== "map") app.setView("map");
+      if (app.state.method !== "gistar") {
+        app.analysis.clearResults();
+        store.set({ method: "gistar" });
+        app.renderAll();
+      }
+      if (!$("analyze").disabled) app.analysis.run();
+    },
     "export-stats": () => app.state.result && app.analysis.exportStats(),
     import: () => $("file-picker").click(),
     open: () => $("project-picker").click(),

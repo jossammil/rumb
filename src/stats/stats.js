@@ -131,7 +131,7 @@ function spatialLag(z, rows, w, totals) {
   });
 }
 
-function extremeThreshold(observed, expected) {
+export function extremeThreshold(observed, expected) {
   // Addition order changes at permutation time. Equal statistics include floating-point ties.
   const distance = Math.abs(observed - expected);
   return distance - 1e-12 * Math.max(1, distance);
@@ -201,6 +201,32 @@ function localPermutationP(z, rows, observed, permutations, random, w = null, to
   });
 }
 
+/** Throws a readable message for an inference setting out of range. */
+export function checkSettings({ permutations, seed, alpha }) {
+  if (!Number.isInteger(permutations) || permutations < 1 || permutations > 99999)
+    throw new Error("Choose a permutation count between 1 and 99,999.");
+  if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) throw new Error("Use an unsigned 32-bit seed.");
+  if (!(alpha > 0 && alpha < 1)) throw new Error("Choose a significance level between 0 and 1.");
+}
+
+/**
+ * The areas an analysis uses, from the same inputs as analyze(): { ids,
+ * byId, rows, w, weights }. Ineligible areas stay in byId with a reason.
+ */
+export function prepareUniverse({ values, neighbors, points, weights, studyIds, denominators }) {
+  const spec = weightsSpec(weights);
+  const universe = analysisUniverse(values, neighbors, studyIds, denominators, spec, points);
+  return {
+    ...universe,
+    weights: {
+      ...spec,
+      threshold: universe.threshold,
+      label: describeWeights(spec, universe.threshold),
+      summary: weightsSummary(universe.rows),
+    },
+  };
+}
+
 export async function analyze({
   values,
   neighbors,
@@ -213,17 +239,7 @@ export async function analyze({
   alpha = 0.05,
   fdr = false,
 }) {
-  if (
-    !Number.isInteger(permutations) ||
-    permutations < 1 ||
-    permutations > 99999
-  ) {
-    throw new Error("Choose a permutation count between 1 and 99,999.");
-  }
-  if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff)
-    throw new Error("Use an unsigned 32-bit seed.");
-  if (!(alpha > 0 && alpha < 1))
-    throw new Error("Choose a significance level between 0 and 1.");
+  checkSettings({ permutations, seed, alpha });
   const spec = weightsSpec(weights);
   const { ids, byId, rows, w, threshold } = analysisUniverse(
     values,

@@ -334,6 +334,34 @@ await check("weights", async () => {
   await q.context().close();
 });
 
+await check("hotspots", async () => {
+  const hs = JSON.parse(await readFile("tests/stats-reference.json", "utf8")).hotspots.queen;
+  const { pnorm } = await import("../../src/stats/dist.js");
+  const hot = hs.gi.filter((z) => z > 0 && 2 * pnorm(-Math.abs(z)) <= 0.1).length;
+  const p = await openPage();
+  // H switches the method to Gi* and runs it on the focus measure.
+  await p.keyboard.press("h");
+  await waitText("#inspect-panel", "Hot spot analysis", p);
+  await waitText("#legend", "Gi* hot and cold spots", p);
+  const shown = await p.$eval("#inspect-panel", (el) => el.textContent.match(/Hot spots(\d+)/)?.[1]);
+  expect(Number(shown) === hot, "hot spots " + shown + " vs " + hot);
+  await p.evaluate((id) => window.rumb.app.selectFeature(id), hs.ids[0]);
+  await waitText("#inspect-panel", "Gi* z-score" + hs.gi[0].toFixed(3), p);
+  const bytes = await download("#save-results", p);
+  expect(bytes.toString().startsWith("GEOID_or_feature_ID,measure,value,Gi_star_z"), "hot spot CSV header");
+  // Permutation inference with FDR runs too.
+  await p.selectOption("#gi-inference", "permutation");
+  await p.click("#inference summary");
+  await p.check("#fdr");
+  await p.click("#analyze");
+  await waitText("#inspect-panel", "Conditional permutations, FDR-adjusted", p);
+  const bins = await p.evaluate(() =>
+    window.rumb.map.querySourceFeatures("lyr-tracts").some((f) => /^[HC]9/.test(f.properties.__rumb_class)),
+  );
+  expect(bins, "hot spot bins on the map");
+  await p.context().close();
+});
+
 await check("identity", async () => {
   const p = await openPage();
   const ids = ["lyr-tracts-fill", "lyr-tracts-outline", "anchor-areas", "anchor-points", "anchor-labels", "sel-line"];

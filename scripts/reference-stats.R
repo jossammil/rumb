@@ -91,6 +91,45 @@ out$centroids <- list(
   counties = centroid_of("public/data/ms/layers/chr_counties_2025.geojson"),
   tracts = centroid_of("public/data/ms/tracts.geojson", 120)
 )
+# ---- hot spots: Gi*, General G and Geary's C -------------------------------------
+# Contiguity over the shipped queen graph among tracts with a value and an
+# eligible neighbor; distance weights over the centers above. Gi* includes
+# each tract in its own neighborhood; with inverse distance its self weight is
+# the row's largest weight.
+graph <- jsonlite::read_json("public/data/ms/neighbors.json")$queen
+all_ids <- tracts$GEOID
+valid <- all_ids[is.finite(tracts$poverty_pct)]
+connected_ids <- sort(valid[vapply(valid, function(id) any(unlist(graph[[id]]) %in% valid), logical(1))])
+queen <- structure(lapply(connected_ids, function(id) sort(match(intersect(unlist(graph[[id]]), connected_ids), connected_ids))),
+                   class = "nb", region.id = connected_ids)
+qx <- tracts$poverty_pct[match(connected_ids, all_ids)]
+self_weights <- function(nb, glist) lapply(seq_along(nb), function(i) c(max(glist[[i]]), glist[[i]]))
+gi <- function(nb, x, glist = NULL) {
+  nb_self <- include.self(nb)
+  if (!is.null(glist)) {
+    # include.self puts i first in each sorted row only by chance; place its weight by position.
+    glist <- lapply(seq_along(nb), function(i) {
+      w <- c(max(glist[[i]]), glist[[i]])[order(c(i, nb[[i]]))]
+      w
+    })
+  }
+  as.numeric(localG(x, nb2listw(nb_self, glist = glist, style = "B")))
+}
+global_g <- function(nb, x) {
+  t <- globalG.test(x, nb2listw(nb, style = "B"), alternative = "two.sided")
+  list(G = unname(t$estimate[1]), expected = unname(t$estimate[2]), variance = unname(t$estimate[3]))
+}
+geary_c <- function(nb, x) {
+  t <- geary.test(x, nb2listw(nb, style = "W"), randomisation = TRUE, alternative = "two.sided")
+  list(C = unname(t$estimate[1]), expected = unname(t$estimate[2]), variance = unname(t$estimate[3]))
+}
+out$hotspots <- list(
+  queen = list(ids = I(connected_ids), gi = gi(queen, qx), generalG = global_g(queen, qx), geary = geary_c(queen, qx)),
+  knn6 = list(gi = gi(k6, v), generalG = global_g(k6, v), geary = geary_c(k6, v)),
+  connected = list(gi = gi(connected, v)),
+  idw1 = list(gi = gi(connected, v, inverse(connected, 1)))
+)
+
 out$packages <- list(sf = as.character(packageVersion("sf")), spdep = as.character(packageVersion("spdep")))
 
 jsonlite::write_json(out, "tests/stats-reference.json", digits = NA, auto_unbox = TRUE, dataframe = "rows")

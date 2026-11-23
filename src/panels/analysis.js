@@ -12,7 +12,9 @@ import { $, icon, options, saveBlob } from "../ui/dom.js";
 
 // Controls a method adds below the menu, each loaded the first time its
 // method is chosen: id → () => import(...), whose module exports render(app, mount).
-const PANELS = {};
+const PANELS = {
+  gistar: () => import("./methods/gistar.js"),
+};
 
 export function createAnalysis(app) {
   let running = null;
@@ -174,6 +176,7 @@ export function createAnalysis(app) {
           neighbors,
           points,
           weights,
+          inference: state.inference,
           denominators,
           studyIds,
           permutations: state.permutations,
@@ -184,6 +187,7 @@ export function createAnalysis(app) {
       );
       if (control.signal.aborted) return;
       app.timings.lastAnalysis = Math.round(performance.now() - started);
+      app.timings.lastMethod = res.method === "gistar" ? "gi*" : res.method;
       app.statusbar?.timing();
       if (from) res.weights.from = from;
       app.store.set({ result: { ...res, studyName }, mode: "cluster", inspector: true });

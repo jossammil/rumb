@@ -91,6 +91,91 @@ export const METHODS = {
   },
 };
 
+// Hot and cold spots share the diverging red–blue of ColorBrewer RdBu.
+const hotCold = {
+  H99: ["Hot spot, 99% confidence", "#b2182b"],
+  H95: ["Hot spot, 95% confidence", "#ef8a62"],
+  H90: ["Hot spot, 90% confidence", "#fddbc7"],
+  NS: ["Not significant", "#c9d0cc"],
+  C90: ["Cold spot, 90% confidence", "#d1e5f0"],
+  C95: ["Cold spot, 95% confidence", "#67a9cf"],
+  C99: ["Cold spot, 99% confidence", "#2166ac"],
+  NA: ["Unavailable", "#8a918b"],
+};
+const countOf = (result, prefix) => Object.values(result.byId).filter((r) => r.cluster?.startsWith(prefix)).length;
+const globalText = (g, name) => (g ? fixed(g[name]) + " (z " + fixed(g.z, 2) + ", p " + fixed(g.p) + ")" : "Needs values ≥ 0");
+
+METHODS.gistar = {
+  id: "gistar",
+  label: "Hot and cold spots (Getis–Ord Gi*)",
+  title: "Hot spot analysis",
+  legendTitle: "Gi* hot and cold spots",
+  modeLabel: "Hot spots",
+  short: "hot spots",
+  request: "gistar",
+  file: "hot-spots.csv",
+  classes: () => hotCold,
+  swatches: ["H99", "H90", "C90", "C99"],
+  classOf: (record) => record?.cluster ?? "NA",
+  featureRows: (record, result) => [
+    ["Gi* z-score", fixed(record.gi, 3)],
+    [result?.inference === "permutation" ? "Permutation p" : "Normal p", fixed(record.p)],
+    ["FDR q", fixed(record.q)],
+    ["Classification", hotCold[record.cluster][0]],
+  ],
+  summaryRows: (result) => [
+    ["Hot spots", number(countOf(result, "H"), 0)],
+    ["Cold spots", number(countOf(result, "C"), 0)],
+    ["General G", globalText(result.generalG, "G")],
+    ["Geary’s C", globalText(result.geary, "C")],
+    ["Eligible areas", number(result.n, 0)],
+  ],
+  reportText: (result) =>
+    countOf(result, "H") + " hot and " + countOf(result, "C") + " cold spots (90% confidence or more) · " + result.studyName,
+  rule: (result) => (result.fdr ? "FDR q" : "p") + " ≤ 0.10, 0.05, 0.01",
+  ruleText: (result) =>
+    (result.inference === "permutation" ? "Conditional permutations" : "Normal approximation") +
+    (result.fdr ? ", FDR-adjusted" : "") +
+    " · bins at 90, 95 and 99% confidence",
+  csvFields: [
+    "GEOID_or_feature_ID",
+    "measure",
+    "value",
+    "Gi_star_z",
+    "p_value",
+    "FDR_q",
+    "hot_cold_bin",
+    ...SHARED_CSV.slice(0, 4),
+    "general_G",
+    "general_G_z",
+    "gearys_C",
+    "gearys_C_z",
+    "inference",
+    ...SHARED_CSV.slice(4),
+  ],
+  csvRow: (id, r, result, state) => {
+    const shared = sharedRow(r, result, state.rule);
+    return [
+      id,
+      state.measure,
+      r.value,
+      r.gi,
+      r.p,
+      r.q,
+      r.cluster,
+      ...shared.slice(0, 4),
+      result.generalG?.G,
+      result.generalG?.z,
+      result.geary?.C,
+      result.geary?.z,
+      result.inference,
+      ...shared.slice(4),
+    ];
+  },
+  scatter: false,
+  reading: false,
+};
+
 /** The methods in the order the menu lists them. */
 export const METHOD_LIST = Object.values(METHODS);
 

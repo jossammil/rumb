@@ -12,6 +12,7 @@ export const LAYER_VIEW_KEYS = [
   "count",
   "breaks",
   "method",
+  "inference",
   "rule",
   "k",
   "band",
@@ -47,6 +48,8 @@ export function defaults(catalog) {
     // or inverse distance within that band (power 1 or 2). See stats/neighbors.js.
     // The analysis to run (stats/methods.js).
     method: "lisa",
+    // How hot spot p-values are found: the normal approximation or permutations.
+    inference: "normal",
     rule: "queen",
     k: 6,
     band: null,
