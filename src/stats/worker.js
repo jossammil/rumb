@@ -1,4 +1,5 @@
-// The statistics worker: Moran analyses and polygon contiguity, off the main thread.
+// The statistics worker: Moran analyses, polygon contiguity and buffer
+// outlines, off the main thread.
 import { analyze } from "./stats.js";
 
 self.onmessage = async ({ data }) => {
@@ -9,6 +10,9 @@ self.onmessage = async ({ data }) => {
     else if (type === "weights") {
       const { polygonNeighbors } = await import("./weights.js");
       result = polygonNeighbors(data.features, data.rule);
+    } else if (type === "buffer") {
+      const { bufferOutline } = await import("./buffer.js");
+      result = bufferOutline(data.geometries, data.metres);
     } else throw new Error("Unknown statistics request.");
     self.postMessage({ id, ok: true, result });
   } catch (error) {

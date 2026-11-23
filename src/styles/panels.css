@@ -510,3 +510,203 @@
     display: none !important;
   }
 }
+
+/* The layer stack: one row per layer on the map, top first. */
+.stack-row {
+  display: flex;
+  align-items: stretch;
+  gap: 3px;
+  margin-bottom: 4px;
+}
+.stack-row .layer {
+  margin-bottom: 0;
+  min-width: 0;
+  flex: 1;
+}
+.stack-row .eye,
+.stack-tools .iconbtn {
+  width: 24px;
+  min-width: 24px;
+  height: auto;
+  padding: 0;
+  border: 1px solid var(--line);
+  background: var(--bg1);
+  color: var(--text2);
+}
+.stack-row .eye[aria-pressed="false"] {
+  color: var(--text3);
+}
+.stack-row .eye:disabled {
+  opacity: 0.45;
+}
+.stack-tools {
+  display: grid;
+  grid-template-rows: 1fr 1fr 1fr;
+  gap: 1px;
+}
+.stack-tools .iconbtn {
+  width: 22px;
+  min-width: 22px;
+  min-height: 0;
+}
+.stack-tools .iconbtn:disabled {
+  opacity: 0.3;
+}
+.stack-row.hidden-layer .layer {
+  opacity: 0.55;
+}
+.stack-note {
+  margin: 8px 0 4px;
+  color: var(--text3);
+  font: 600 0.7rem/1 var(--mono-font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.layer-swatch {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  background: var(--swatch, var(--accent));
+  border: 1px solid var(--line-strong);
+}
+.layer-swatch.point {
+  border-radius: 50%;
+  transform: scale(0.8);
+}
+.layer-swatch.line {
+  height: 4px;
+}
+.layer-swatch.polygon {
+  opacity: 0.85;
+}
+.layer-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 6px 0 8px;
+}
+#library-results {
+  max-height: min(56vh, 520px);
+  overflow-y: auto;
+  margin-top: 10px;
+}
+.library-group {
+  margin: 12px 0 6px;
+  color: var(--accent);
+  font: 600 0.72rem/1 var(--mono-font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+#library-results .layer:disabled {
+  opacity: 0.6;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Layer look: color, opacity, size, shape, outline and labels of the focus layer. */
+.look {
+  margin-top: 12px;
+}
+.look summary {
+  cursor: pointer;
+  color: var(--text2);
+  font: 600 0.72rem/1.6 var(--mono-font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.look-grid {
+  display: grid;
+  grid-template-columns: minmax(70px, auto) 1fr;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 8px 0 4px;
+}
+.look-grid label {
+  margin: 0;
+}
+.look-grid input[type="color"] {
+  width: 100%;
+  height: 26px;
+  padding: 0 2px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg1);
+}
+.look-grid input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.look-grid [hidden] {
+  display: none;
+}
+
+/* The spatial filter panel. */
+#filter-kind {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-bottom: 8px;
+}
+.filter-slider {
+  display: grid;
+  grid-template-columns: auto 1fr 52px;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 6px;
+}
+.filter-slider label {
+  margin: 0;
+}
+.filter-slider input {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.filter-slider output {
+  text-align: right;
+  font-family: var(--mono-font);
+  font-variant-numeric: tabular-nums;
+}
+.filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+}
+#filter-summary .metrics {
+  margin: 6px 0;
+}
+.filter-what {
+  margin-top: 8px;
+  color: var(--accent);
+  font-size: 0.8rem;
+}
+.nearest {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  color: var(--text1);
+  text-align: left;
+  font-size: 0.8rem;
+}
+.nearest:hover {
+  background: var(--hover);
+}
+.nearest span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nearest small {
+  color: var(--text2);
+  font-family: var(--mono-font);
+  white-space: nowrap;
+}

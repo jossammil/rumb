@@ -12,6 +12,8 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { formatMiles, measurePath } from "../../src/geo/measure.js";
+import { transverseMercator } from "../../src/geo/project.js";
 import {
   BlobReader,
   BlobWriter,
@@ -67,7 +69,7 @@ async function openPage(viewport = { width: 1440, height: 960 }) {
   const ctx = await browser.newContext({ viewport, acceptDownloads: true });
   const p = await ctx.newPage();
   p.setDefaultTimeout(35000);
-  p.on("pageerror", (e) => errors.push(e.message));
+  p.on("pageerror", (e) => errors.push(e.message + " @ " + (e.stack || "").split("\n").slice(1, 3).join(" ").trim()));
   p.on("request", (r) => {
     const u = new URL(r.url());
     if (/^https?:$/.test(u.protocol) && u.origin !== origin) external.add(u.origin);
@@ -234,7 +236,7 @@ await check("boot", async () => {
   });
   page = await ctx.newPage();
   page.setDefaultTimeout(35000);
-  page.on("pageerror", (e) => errors.push(e.message));
+  page.on("pageerror", (e) => errors.push(e.message + " @ " + (e.stack || "").split("\n").slice(1, 3).join(" ").trim()));
   page.on("request", (r) => {
     requests.push(r.url());
     const u = new URL(r.url());
@@ -244,11 +246,24 @@ await check("boot", async () => {
   await page.goto(base);
   await waitText("#foot-status", "878 features");
   await ready(page);
-  await page.waitForFunction(() => document.querySelector("#measure")?.options.length === 2);
+  await page.waitForFunction(
+    () => document.querySelectorAll('#measure optgroup[label="Measure"] option').length === 2,
+  );
   expect(
     !requests.some((u) => /duckdb|geoda-lisa.*wasm/.test(u)),
     "analytics downloaded before the first map",
   );
+  // Roads and add-on layers wait for the first map; roads then draw on their own.
+  await page.waitForFunction(() => window.rumb.map.querySourceFeatures("roads").length > 0);
+  const late = await page.evaluate(() => {
+    const first = window.rumb.timings.firstMap;
+    return performance
+      .getEntriesByType("resource")
+      .filter((e) => /roads\.geojson|\/layers\//.test(e.name))
+      .every((e) => e.startTime >= first - 1);
+  });
+  expect(late, "roads or layer files were requested before the first map");
+  expect(!requests.some((u) => /\/layers\//.test(u)), "add-on layers loaded without being asked for");
   await page.waitForTimeout(500);
   await shot("map");
 });
@@ -271,6 +286,24 @@ await check("clusters", async () => {
   await page.waitForTimeout(500);
   await shot("clusters");
   await download("#export-map");
+});
+
+await check("identity", async () => {
+  const p = await openPage();
+  const ids = ["lyr-tracts-fill", "lyr-tracts-outline", "anchor-areas", "anchor-points", "anchor-labels", "sel-line"];
+  const has = await p.evaluate(
+    (list) => list.every((id) => window.rumb.map.getLayer(id)) && !window.rumb.map.getLayer("areas"),
+    ids,
+  );
+  expect(has, "stacked map layers missing");
+  // A click picks the feature under the cursor through its layer.
+  const box = await p.locator("#map").boundingBox();
+  await p.mouse.click(box.x + box.width * 0.62, box.y + box.height * 0.55);
+  await p.locator("#inspect-panel:not([hidden])").waitFor();
+  const selected = await p.evaluate(() => window.rumb.state.selected);
+  expect(/^28\d{9}$/.test(selected || ""), "a click did not select a tract");
+  await p.waitForFunction(() => window.rumb.map.querySourceFeatures("selection").length > 0);
+  await p.context().close();
 });
 
 await check("join", async () => {
@@ -359,6 +392,405 @@ await check("mobile", async () => {
   await p.waitForTimeout(400);
   expect(await noOverflow(p), "page wider than a 390px phone");
   await shot("mobile", p);
+  await p.context().close();
+});
+
+await check("layers", async () => {
+  const p = await openPage();
+  await p.click("#add-layer");
+  await p.click('[data-library="fire_stations_2020"]');
+  await waitText("#toast", /Added Fire stations/, p);
+  await p.keyboard.press("n");
+  await p.click('[data-library="chr_counties_2025"]');
+  await waitText("#toast", /Added County Health Rankings/, p);
+  const ids = () => p.evaluate(() => window.rumb.state.stack.map((e) => e.id + (e.visible ? "" : ":hidden")).join());
+  expect((await ids()) === "tracts,fire_stations_2020,chr_counties_2025", "stack " + (await ids()));
+  // The newest layer is the focus, so its measures fill the style panel.
+  expect((await p.inputValue("#measure")) === "v085_rawvalue", "County Health Rankings lead measure");
+  await waitText("#legend", "Uninsured", p);
+  // Areas draw below the roads and points above them, whatever the stack order.
+  const bands = await p.evaluate(() => {
+    const order = window.rumb.map.getStyle().layers.map((l) => l.id);
+    return ["lyr-tracts-fill", "lyr-chr_counties_2025-fill", "roads-primary", "lyr-fire_stations_2020-point"].map((id) =>
+      order.indexOf(id),
+    );
+  });
+  expect(bands.every((v, i) => v >= 0 && (i === 0 || v > bands[i - 1])), "layer bands " + bands);
+  await p.click('[data-row="chr_counties_2025"] [aria-label^="Move down"]');
+  await p.click('[data-row="chr_counties_2025"] [aria-label^="Move down"]');
+  await p.click('[data-row="fire_stations_2020"] .eye');
+  expect((await ids()) === "chr_counties_2025,tracts,fire_stations_2020:hidden", "moved and hidden " + (await ids()));
+  expect(
+    (await p.evaluate(() => window.rumb.map.getLayoutProperty("lyr-fire_stations_2020-point", "visibility"))) === "none",
+    "hidden layer still drawn",
+  );
+  // The tracts keep their statistics with other layers on the map.
+  await p.click('[data-layer="tracts"]');
+  expect((await p.inputValue("#measure")) === "poverty_pct", "tract measure restored");
+  await p.click("#analyze");
+  await waitText("#inspect-panel", "0.2768", p);
+  await p.click('[data-view="compare"]');
+  await waitText("#cmp-count", "870 of 878 areas ranked", p);
+  await p.click('[data-view="map"]');
+  // A project keeps the stack and carries the library layers' files.
+  const saved = await download("#save-project", p);
+  const q = await openPage();
+  const fetched = [];
+  q.on("request", (r) => fetched.push(r.url()));
+  await restore(q, saved, "stack.rumb");
+  const back = await q.evaluate(() => window.rumb.state.stack.map((e) => e.id + (e.visible ? "" : ":hidden")).join());
+  expect(back === "chr_counties_2025,tracts,fire_stations_2020:hidden", "restored stack " + back);
+  await q.click('[data-layer="chr_counties_2025"]');
+  await waitText("#legend", "Uninsured", q);
+  expect(!fetched.some((u) => /chr_counties_2025\.geojson|fire_stations_2020\.geojson/.test(u)), "layer files fetched again");
+  await shot("layers", q);
+  await p.context().close();
+  await q.context().close();
+});
+
+await check("symbology", async () => {
+  const p = await openPage();
+  const add = async (id, name) => {
+    await p.keyboard.press("n");
+    await p.click(`[data-library="${id}"]`);
+    await waitText("#toast", "Added " + name, p);
+  };
+  await add("law_enforcement_2017", "Law enforcement sites");
+  // Color by category: the catalog's type field comes first.
+  await p.selectOption("#measure", "category:type");
+  await waitText("#legend", "Police station", p);
+  // Shape, size and labels rebuild the layer as symbols.
+  await p.click("#look summary");
+  await p.selectOption("#look-shape", "triangle");
+  await p.locator("#look-size").fill("9");
+  await p.locator("#look-size").dispatchEvent("change");
+  await p.selectOption("#look-label", "name");
+  const built = await p.evaluate(() => {
+    const m = window.rumb.map;
+    return [
+      m.getLayer("lyr-law_enforcement_2017-shape")?.type,
+      m.getLayoutProperty("lyr-law_enforcement_2017-shape", "icon-image"),
+      m.getLayoutProperty("lyr-law_enforcement_2017-shape", "icon-size"),
+      !!m.getLayer("lyr-law_enforcement_2017-label"),
+    ].join();
+  });
+  expect(built === "symbol,rumb-shape-triangle,1.125,true", "shape and labels " + built);
+  // Fire stations go on top; then the tracts take the focus back.
+  await add("fire_stations_2020", "Fire stations");
+  await p.click('[data-layer="tracts"]');
+  await waitText("#legend .legend-others", "Fire stations", p);
+  await waitText("#legend .legend-others", "Law enforcement sites", p);
+  // A click on a fire station (not the focus) opens its popup; it can take the focus.
+  const station = await p.evaluate(() => {
+    const f = window.rumb.app.layerById("fire_stations_2020").collection.features[0];
+    window.rumb.map.jumpTo({ center: f.geometry.coordinates, zoom: 13 });
+    return f.properties.name;
+  });
+  await p.waitForTimeout(600);
+  const box = await p.locator("#map").boundingBox();
+  await p.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await waitText(".map-popup", station, p);
+  await p.click(".map-popup button");
+  await p.waitForFunction(() => window.rumb.state.active === "fire_stations_2020" && window.rumb.state.selected === "1");
+  await waitText("#inspect-panel", station, p);
+  // The PNG lists the other shown layers.
+  const png = await download("#export-map", p);
+  expect(png.length > 10000, "map image");
+  await shot("symbology", p);
+  await p.context().close();
+});
+
+await check("classes", async () => {
+  const p = await openPage();
+  const bar = () => p.$$eval("#legend .legend-bar i", (els) => els.map((e) => getComputedStyle(e).backgroundColor));
+  await p.selectOption("#classification", "jenks");
+  await p.selectOption("#class-count", "9");
+  await p.waitForFunction(() => document.querySelectorAll("#legend .legend-bar i").length === 9);
+  // Standard deviations on a diverging palette: the middle class is the neutral color.
+  await p.selectOption("#class-count", "5");
+  await p.selectOption("#classification", "sd");
+  await p.click('[data-palette="RdBu"]');
+  await p.waitForFunction(() => document.querySelectorAll("#legend .legend-bar i").length === 5);
+  expect((await bar())[2] === "rgb(247, 247, 247)", "diverging middle " + (await bar())[2]);
+  // Manual breaks start from the map's breaks and accept typed ones.
+  await p.selectOption("#classification", "manual");
+  expect((await p.inputValue("#manual-breaks")).split(",").length === 4, "manual breaks seeded");
+  await p.fill("#manual-breaks", "10, 20, 40");
+  await p.locator("#manual-breaks").dispatchEvent("change");
+  await waitText("#legend .breaks", "20–<40", p);
+  await waitText("#legend .breaks", "≥ 40", p);
+  expect((await p.evaluate(() => window.rumb.state.breaks.join())) === "10,20,40", "breaks kept");
+  await p.context().close();
+});
+
+await check("measure", async () => {
+  const p = await openPage();
+  await p.evaluate(() => window.rumb.map.jumpTo({ center: [-90.15, 32.3], zoom: 9 }));
+  await p.keyboard.press("m");
+  await p.locator("#tool-card:not([hidden])").waitFor();
+  const box = await p.locator("#map").boundingBox();
+  for (const pt of [[-90.3, 32.2], [-90.0, 32.2], [-90.0, 32.4]]) {
+    const xy = await p.evaluate((q) => window.rumb.map.project(q), pt);
+    await p.mouse.click(box.x + xy.x, box.y + xy.y);
+  }
+  await p.keyboard.press("Enter");
+  await waitText("#tool-card", "Measure again", p);
+  // The readout matches the same measurement made outside the browser.
+  const points = await p.evaluate(() => window.rumb.app.tools.sketch.points);
+  expect(points.length === 3, "three points");
+  const region = JSON.parse(await dataFile("catalog.json")).region;
+  const m = measurePath(points, transverseMercator(region.projection.tmerc));
+  expect((await p.textContent("#measure-distance")) === formatMiles(m.miles), "distance");
+  expect((await p.textContent("#measure-area")) === formatMiles(m.squareMiles, "sq mi"), "area");
+  expect(m.miles > 25 && m.miles < 35, "about 31 miles: " + m.miles);
+  // Clicks while measuring do not select features.
+  expect((await p.evaluate(() => window.rumb.state.selected)) == null, "measuring selected a feature");
+  await p.context().close();
+});
+
+await check("locate", async () => {
+  const ctx = await browser.newContext({
+    viewport: { width: 1280, height: 850 },
+    geolocation: { latitude: 32.3, longitude: -90.18, accuracy: 30 },
+    permissions: ["geolocation"],
+  });
+  const p = await ctx.newPage();
+  p.setDefaultTimeout(35000);
+  p.on("pageerror", (e) => errors.push(e.message));
+  await p.goto(base);
+  await ready(p);
+  await p.keyboard.press("g");
+  await waitText("#toast", "You are at", p);
+  const me = await p.evaluate(() => window.rumb.app.tools.located);
+  expect(Math.abs(me.lonlat[0] + 90.18) < 1e-6 && Math.abs(me.lonlat[1] - 32.3) < 1e-6, "position");
+  await p.waitForFunction(() => window.rumb.map.querySourceFeatures("locate").length >= 2);
+  // Your position is never part of the saved state.
+  expect(!JSON.stringify(await p.evaluate(() => window.rumb.state)).includes("-90.18"), "position in state");
+  await ctx.close();
+});
+
+await check("goto", async () => {
+  const p = await openPage();
+  await p.keyboard.press("Control+k");
+  await p.keyboard.type("32.3, -90.18");
+  await p.locator("#palette-list li", { hasText: "90.18000" }).first().click();
+  await waitText("#toast", "Showing", p);
+  await p.waitForFunction(() => {
+    const c = window.rumb.map.getCenter();
+    return Math.abs(c.lng + 90.18) < 0.01 && Math.abs(c.lat - 32.3) < 0.01;
+  });
+  await p.context().close();
+});
+
+await check("filters", async () => {
+  const ref = JSON.parse(await readFile("tests/filter-reference.json", "utf8"));
+  const p = await openPage();
+  const add = async (id, name) => {
+    await p.keyboard.press("n");
+    await p.click(`[data-library="${id}"]`);
+    await waitText("#toast", "Added " + name, p);
+  };
+  await add("fire_stations_2020", "Fire stations");
+  const count = (id) => p.textContent(`[data-count="${id}"] dd`);
+  // C arms a click for the center; the panel then counts what is kept.
+  await p.keyboard.press("c");
+  await waitText("#tool-card", "Radius filter", p);
+  const box = await p.locator("#map").boundingBox();
+  const xy = await p.evaluate(() => window.rumb.map.project([-90.18, 32.3]));
+  await p.mouse.click(box.x + xy.x, box.y + xy.y);
+  await p.waitForFunction(() => window.rumb.state.filter?.kind === "radius");
+  await p.waitForFunction(() => window.rumb.map.querySourceFeatures("filter").length > 0);
+  // Exactly at Jackson, the counts match GEOS.
+  await p.evaluate((c) => window.rumb.app.filter.set({ kind: "radius", center: c, miles: 25 }), ref.center);
+  expect((await count("fire_stations_2020")) === ref.stations25.length + " of 1,043", "25 mi: " + (await count("fire_stations_2020")));
+  await p.locator("#filter-miles").fill("50");
+  await p.locator("#filter-miles").dispatchEvent("input");
+  await waitText('[data-count="fire_stations_2020"]', ref.stations50.length + " of", p);
+  await p.check("#filter-hide");
+  await p.waitForFunction(
+    (n) => new Set(window.rumb.map.querySourceFeatures("lyr-fire_stations_2020").map((f) => f.properties.__rumb_id)).size <= n,
+    ref.stations50.length,
+  );
+  await p.uncheck("#filter-hide");
+  // B buffers the selection: stations within 5 miles of Hinds County.
+  await add("chr_counties_2025", "County Health Rankings");
+  await p.evaluate(() => window.rumb.app.selectFeature("28049"));
+  await p.keyboard.press("b");
+  await p.waitForFunction(() => window.rumb.state.filter?.kind === "buffer");
+  await waitText('[data-count="fire_stations_2020"]', ref.stationsNearHinds.length + " of", p);
+  await p.waitForFunction(() => window.rumb.map.querySourceFeatures("filter").length > 0);
+  // D draws an area by clicking its corners; the drawn area matches GEOS too.
+  await p.keyboard.press("d");
+  for (const pt of ref.ring.slice(0, 3)) {
+    const q = await p.evaluate((c) => window.rumb.map.project(c), pt);
+    await p.mouse.click(box.x + q.x, box.y + q.y);
+  }
+  await p.keyboard.press("Enter");
+  await p.waitForFunction(() => window.rumb.state.filter?.kind === "polygon");
+  await p.evaluate((ring) => window.rumb.app.filter.set({ kind: "polygon", ring }), ref.ring);
+  await waitText('[data-count="fire_stations_2020"]', ref.stationsInArea.length + " of", p);
+  await waitText('[data-count="chr_counties_2025"]', ref.countiesInArea.length + " of", p);
+  await p.waitForFunction(() => window.rumb.map.querySourceFeatures("filter").some((f) => f.geometry.type === "Polygon"));
+  await p.waitForTimeout(700);
+  await shot("filters", p);
+  await p.keyboard.press("x");
+  await p.waitForFunction(() => window.rumb.state.filter === null);
+  expect(!(await p.locator("[data-count]").count()), "counts after clearing");
+  await p.context().close();
+});
+
+await check("pooled", async () => {
+  const ref = JSON.parse(await readFile("tests/counts-reference.json", "utf8"));
+  const p = await openPage();
+  const add = async (id, name) => {
+    await p.keyboard.press("n");
+    await p.click(`[data-library="${id}"]`);
+    await waitText("#toast", "Added " + name, p);
+  };
+  await add("chr_counties_2025", "County Health Rankings");
+  // One county pooled with its neighbors, then a second county added with Shift.
+  await p.evaluate((id) => window.rumb.app.selectFeature(id), ref.selected);
+  await waitText("#inspect-panel", "Pooled with neighbors", p);
+  const pct = (v) => (Math.round(v * 10) / 10).toFixed(1).replace(/\.0$/, "") + "%";
+  const cells = () => p.$$eval('[data-pool="v085_rawvalue"] td', (tds) => tds.map((td) => td.textContent));
+  await p.waitForFunction(() => document.querySelectorAll('[data-pool="v085_rawvalue"] td').length === 3);
+  const want = ["selected", "neighbors", "total"].map((k) => pct(ref.pooled.v085_rawvalue[k].value));
+  expect((await cells()).join() === want.join(), "pooled uninsured " + (await cells()) + " vs " + want);
+  await p.evaluate(() => window.rumb.app.togglePick("28121"));
+  await waitText("#inspect-panel", "2 areas selected", p);
+  await p.waitForFunction(
+    () => new Set(window.rumb.map.querySourceFeatures("selection").filter((f) => f.properties.role === "selected").map((f) => f.properties.id)).size === 2,
+  );
+  // Q counts the fire stations in each county, as GEOS does.
+  await add("fire_stations_2020", "Fire stations");
+  await p.click('[data-layer="chr_counties_2025"]');
+  await p.keyboard.press("q");
+  await waitText("#legend", "Fire stations (count)", p);
+  const counted = await p.evaluate(() =>
+    Object.fromEntries(window.rumb.app.layer().collection.features.map((f) => [f.id, f.properties.count_fire_stations_2020])),
+  );
+  expect(JSON.stringify(counted) === JSON.stringify(ref.counties), "county counts");
+  expect(await p.evaluate(() => window.rumb.app.fieldList(window.rumb.app.layer()).includes("rate_fire_stations_2020")), "rate per 10,000");
+  // A filter's features can become the selection.
+  await p.evaluate(() => window.rumb.app.filter.set({ kind: "radius", center: [-90.18, 32.3], miles: 25 }));
+  await p.click("#filter-select");
+  await waitText("#inspect-panel", "areas selected", p);
+  await p.keyboard.press("q");
+  await p.waitForFunction(() => !window.rumb.app.layer().countFields);
+  await p.context().close();
+});
+
+await check("share", async () => {
+  const p = await openPage();
+  await p.keyboard.press("n");
+  await p.click('[data-library="fire_stations_2020"]');
+  await waitText("#toast", "Added Fire stations", p);
+  await p.click("#look summary");
+  await p.selectOption("#look-shape", "diamond");
+  await p.click('[data-layer="tracts"]');
+  await p.click('[data-palette="Viridis"]');
+  await p.selectOption("#classification", "jenks");
+  await p.evaluate(() => window.rumb.app.filter.set({ kind: "radius", center: [-90.18, 32.3], miles: 25 }));
+  await p.evaluate((id) => window.rumb.app.selectFeature(id), ids[0]);
+  await p.evaluate(() => window.rumb.map.jumpTo({ center: [-89.5, 32.1], zoom: 8.25 }));
+  await p.keyboard.press("u");
+  await p.locator("#share-link").waitFor();
+  const url = await p.inputValue("#share-link");
+  expect(/#state=1\.[A-Za-z0-9_-]+$/.test(url) && url.length < 1200, "link " + url.length);
+  // Another browser opens it; the state never leaves the address bar.
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 850 } });
+  const q = await ctx.newPage();
+  q.setDefaultTimeout(35000);
+  q.on("pageerror", (e) => errors.push(e.message));
+  const sent = [];
+  q.on("request", (r) => sent.push(r.url()));
+  await q.goto(url.replace(/^https?:\/\/[^/]+/, origin));
+  await ready(q);
+  await waitText("#toast", "Opened a shared map", q);
+  const got = await q.evaluate(() => {
+    const s = window.rumb.state;
+    const c = window.rumb.map.getCenter();
+    return {
+      stack: s.stack.map((e) => e.id + (e.style?.shape ? ":" + e.style.shape : "")).join(),
+      active: s.active,
+      palette: s.palette,
+      classification: s.classification,
+      filter: s.filter?.kind + " " + s.filter?.miles,
+      selected: s.selected,
+      camera: [c.lng.toFixed(2), c.lat.toFixed(2), window.rumb.map.getZoom().toFixed(2)].join(),
+      hash: location.hash,
+    };
+  });
+  const want = {
+    stack: "tracts,fire_stations_2020:diamond",
+    active: "tracts",
+    palette: "Viridis",
+    classification: "jenks",
+    filter: "radius 25",
+    selected: ids[0],
+    camera: "-89.50,32.10,8.25",
+    hash: "",
+  };
+  expect(JSON.stringify(got) === JSON.stringify(want), "opened " + JSON.stringify(got));
+  await waitText('[data-count="fire_stations_2020"]', "88 of", q);
+  expect(!sent.some((u) => /state=/.test(u)), "the shared state reached a server");
+  await ctx.close();
+  await p.context().close();
+});
+
+await check("exports", async () => {
+  const ref = JSON.parse(await readFile("tests/filter-reference.json", "utf8"));
+  const p = await openPage();
+  await p.keyboard.press("n");
+  await p.click('[data-library="fire_stations_2020"]');
+  await waitText("#toast", "Added Fire stations", p);
+  await p.evaluate((c) => window.rumb.app.filter.set({ kind: "radius", center: c, miles: 25 }), ref.center);
+  // CSV of what the filter keeps, with distances and the drawn color.
+  await p.keyboard.press("w");
+  expect((await p.inputValue("#export-scope")) === "filtered", "filtered by default");
+  const csv = csvRows(await download("#export-go", p));
+  expect(csv.length === ref.stations25.length, "CSV rows " + csv.length);
+  expect(JSON.stringify(csv.map((r) => r.id).sort()) === JSON.stringify(ref.stations25), "CSV ids");
+  expect(csv.every((r) => Number(r.distance_mi) <= 25 && /^#[0-9a-f]{6}$/i.test(r.style_color) && r.lon && r.lat), "CSV columns");
+  // GeoJSON of all of them.
+  await p.keyboard.press("w");
+  await p.selectOption("#export-scope", "all");
+  await p.selectOption("#export-format", "geojson");
+  const geo = JSON.parse((await download("#export-go", p)).toString("utf8"));
+  expect(geo.features.length === 1043 && geo.features[0].geometry.type === "Point", "GeoJSON");
+  // GeoParquet, written by DuckDB, reads back in with its geometry.
+  await p.keyboard.press("w");
+  await p.selectOption("#export-format", "parquet");
+  const parquet = await download("#export-go", p);
+  expect(parquet.subarray(0, 4).toString() === "PAR1", "a Parquet file");
+  await p.setInputFiles("#file-picker", { name: "kept.parquet", mimeType: "application/octet-stream", buffer: parquet });
+  await waitText("#work-content", "Table preview", p);
+  await waitText("#work-content", ref.stations25.length + " rows", p);
+  await p.context().close();
+});
+
+await check("report", async () => {
+  const p = await openPage();
+  await p.evaluate(() => window.rumb.app.filter.set({ kind: "radius", center: [-90.18, 32.3], miles: 10 }));
+  await p.evaluate(() => (window.print = () => (window.__printed = true)));
+  await p.keyboard.press("p");
+  await p.locator("#report-print").waitFor();
+  await p.fill("#report-notes", "Checked on site.");
+  await p.click("#report-print");
+  await p.waitForFunction(() => window.__printed === true);
+  const sections = await p.$$eval("#print-root [data-section]", (els) => els.map((e) => e.dataset.section));
+  expect(sections.join() === "map,legend,summary,features,counts,sources,notes", "sections " + sections);
+  // The report is hidden on screen; it shows only when printing.
+  expect((await p.textContent("#print-root")).includes("Kept by the filter"), "filtered features in the report");
+  expect((await p.$eval("#print-root .print-map", (img) => img.src.length)) > 10000, "map image");
+  // Printing shows only the report.
+  await p.emulateMedia({ media: "print" });
+  const shown = await p.evaluate(() => [getComputedStyle(document.querySelector("#print-root")).display, getComputedStyle(document.querySelector("#map-view")).display]);
+  expect(shown.join() === "block,none", "print layout " + shown);
+  if (which === "chromium") {
+    const pdf = await p.pdf({ format: "Letter" });
+    expect(pdf.length > 20000 && pdf.subarray(0, 4).toString() === "%PDF", "PDF");
+  }
   await p.context().close();
 });
 
@@ -501,6 +933,12 @@ await check("themes", async () => {
         getComputedStyle(document.documentElement).getPropertyValue("--map-water").trim(),
     );
     expect(repainted, `${theme}: map backdrop did not follow the theme`);
+    const roads = await p.evaluate(
+      () =>
+        window.rumb.map.getPaintProperty("roads-primary", "line-color") ===
+        getComputedStyle(document.documentElement).getPropertyValue("--map-road").trim(),
+    );
+    expect(roads, `${theme}: roads did not follow the theme`);
     expect(
       (await p.evaluate(() => document.documentElement.dataset.theme)) === theme,
       `${theme} not applied`,
@@ -591,7 +1029,7 @@ await check("offline", async () => {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 850 }, serviceWorkers: "allow" });
   const p = await ctx.newPage();
   p.setDefaultTimeout(60000);
-  p.on("pageerror", (e) => errors.push(e.message));
+  p.on("pageerror", (e) => errors.push(e.message + " @ " + (e.stack || "").split("\n").slice(1, 3).join(" ").trim()));
   await p.goto(base);
   await ready(p);
   const controlled = await p
@@ -617,6 +1055,17 @@ await check("offline", async () => {
   await p.keyboard.press("1");
   await p.click("#analyze");
   await waitText("#inspect-panel", "0.2768", p);
+  // The library, its layers, the roads, filters and the report work offline too.
+  await p.keyboard.press("n");
+  await p.click('[data-library="fire_stations_2020"]');
+  await waitText("#toast", "Added Fire stations", p);
+  await p.waitForFunction(() => window.rumb.map.querySourceFeatures("roads").length > 0);
+  await p.evaluate(() => window.rumb.app.filter.set({ kind: "radius", center: [-90.18, 32.3], miles: 25 }));
+  await waitText('[data-count="fire_stations_2020"]', "88 of", p);
+  await p.evaluate(() => (window.print = () => (window.__printed = true)));
+  await p.keyboard.press("p");
+  await p.click("#report-print");
+  await p.waitForFunction(() => window.__printed === true);
   await ctx.setOffline(false);
   await ctx.close();
 });

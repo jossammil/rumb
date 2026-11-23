@@ -28,7 +28,7 @@ const chip = (color) => h("i", { class: "chip", style: { background: color } });
  * missing: count | null }. kind "categories": { title, items }.
  * `action` adds a button under the legend: { label, run }.
  */
-export function renderLegend(el, { kind, title, items, extents, unit = "", missing, action }) {
+export function renderLegend(el, { kind, title, items, extents, unit = "", missing, missingNote, action }) {
   const shown = items.filter((x) => !x.missing);
   const parts = [h("div", { class: "legend-title", text: title })];
   if (kind === "categories") {
@@ -58,7 +58,14 @@ export function renderLegend(el, { kind, title, items, extents, unit = "", missi
       );
     const na = items.find((x) => x.missing);
     if (missing != null && na)
-      parts.push(h("div", { class: "legend-note" }, chip(na.color), number(missing) + " unavailable"));
+      parts.push(
+        h(
+          "div",
+          { class: "legend-note" },
+          chip(na.color),
+          number(missing) + " unavailable" + (missingNote ? " (" + missingNote + ")" : ""),
+        ),
+      );
     if (shown.length > 1)
       parts.push(
         h(
@@ -72,4 +79,36 @@ export function renderLegend(el, { kind, title, items, extents, unit = "", missi
   if (action)
     parts.push(h("button", { class: "plain-btn", text: action.label, onclick: action.run }));
   el.replaceChildren(...parts);
+}
+
+/** A small symbol for a layer kind: a dot, a bar or a square in the given colors. */
+export function kindSymbol(kind, colors) {
+  return h(
+    "span",
+    { class: "legend-symbol " + kind },
+    colors.slice(0, 5).map((c) => h("i", { style: { background: c } })),
+  );
+}
+
+/**
+ * Adds the other shown layers under a legend, one compact row each:
+ * [{ name, kind, colors, note }], top of the stack first.
+ */
+export function renderOthers(el, sections) {
+  if (!sections.length) return;
+  el.append(
+    h(
+      "div",
+      { class: "legend-others" },
+      sections.map((x) =>
+        h(
+          "div",
+          { class: "legend-other" },
+          kindSymbol(x.kind, x.colors),
+          h("span", { text: x.name }),
+          x.note && h("small", { text: x.note }),
+        ),
+      ),
+    ),
+  );
 }

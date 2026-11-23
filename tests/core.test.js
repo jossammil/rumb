@@ -1,13 +1,22 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { createStore } from "../src/core/store.js";
 import { defaults, normalizeState, LAYER_VIEW_KEYS } from "../src/core/state.js";
 import { featureId, groups, numericFields } from "../src/core/features.js";
 import { classify, classOf, ramp, palettes } from "../src/map/classify.js";
 import { csvCell, csvText } from "../src/data/csv.js";
 import { ident, sqlString } from "../src/data/sql.js";
-import { fieldLabel, starterSQL, validateCatalog, referenceLayer } from "../src/catalog/catalog.js";
+import {
+  fieldLabel,
+  fieldInfo,
+  starterSQL,
+  validateCatalog,
+  validateLibrary,
+  referenceLayer,
+  layerMeta,
+} from "../src/catalog/catalog.js";
 import { findFeatures } from "../src/panels/find.js";
 
 const read = (p) => JSON.parse(readFileSync(new URL(p, import.meta.url)));
@@ -113,4 +122,208 @@ test("finding features by name, group or ID", () => {
   assert.ok(findFeatures(features, "adams county", ref).length > 1);
   assert.equal(findFeatures(features, "zzz", ref).length, 0);
   assert.equal(findFeatures(features, "", ref).length, 12);
+});
+
+test("the layer library matches the files it describes", () => {
+  const library = read("../public/data/ms/" + catalog.library);
+  validateLibrary(library, catalog);
+  const size = (p) => statSync(new URL("../public/data/ms/" + p, import.meta.url)).size;
+  // The catalog is read before the first map; the library only when needed.
+  assert.ok(size("catalog.json") <= 40 * 1024, "catalog.json stays small");
+  assert.ok(size(catalog.library) <= 100 * 1024, "library.json stays small");
+  assert.equal(catalog.layers.length, 1, "add-on layers live in the library, not the catalog");
+  const [west, south, east, north] = catalog.region.bounds.flat();
+  const types = { point: ["Point"], polygon: ["Polygon", "MultiPolygon"], line: ["LineString", "MultiLineString"] };
+  for (const layer of library.layers) {
+    assert.ok(library.groups.includes(layer.group), layer.id);
+    assert.ok(layer.file.startsWith("layers/"), layer.id);
+    const text = readFileSync(new URL("../public/data/ms/" + layer.file, import.meta.url));
+    const sha = (buf) => createHash("sha256").update(buf).digest("hex");
+    const file = layer.file.slice("layers/".length);
+    assert.equal(sha(text), layer.source.output[file], layer.id + " output checksum");
+    const geo = JSON.parse(text);
+    assert.equal(geo.features.length, layer.count, layer.id);
+    const ids = new Set(geo.features.map((f) => String(f.id)));
+    assert.equal(ids.size, layer.count, layer.id + " ids are unique");
+    assert.ok(geo.features.every((f) => types[layer.geometry].includes(f.geometry?.type)), layer.id);
+    const keys = new Set(geo.features.flatMap((f) => Object.keys(f.properties)));
+    for (const field of Object.keys(layer.fields)) assert.ok(keys.has(field), layer.id + "." + field);
+    for (const field of layer.measures)
+      assert.ok(geo.features.some((f) => Number.isFinite(f.properties[field])), layer.id + "." + field);
+    for (const info of Object.values(layer.fields))
+      for (const key of ["numerator", "denominator", "flag"])
+        if (info.pool?.[key]) assert.ok(keys.has(info.pool[key]), layer.id + " pool " + info.pool[key]);
+    const [x0, y0, x1, y1] = layer.bbox;
+    assert.ok(x0 >= west - 0.5 && y0 >= south - 0.5 && x1 <= east + 0.5 && y1 <= north + 0.5, layer.id + " bbox");
+    if (layer.geometry === "polygon") {
+      assert.ok(layer.neighbors, layer.id + " neighbors");
+      const graph = read("../public/data/ms/" + layer.neighbors);
+      for (const rule of ["queen", "rook"])
+        assert.deepEqual(new Set(Object.keys(graph[rule])), ids, layer.id + " " + rule);
+    }
+    assert.equal(layerMeta(catalog, library, layer.id), layer);
+  }
+  assert.equal(layerMeta(catalog, library, "tracts"), referenceLayer(catalog));
+  const chr = layerMeta(catalog, library, "chr_counties_2025");
+  assert.equal(chr.count, 82);
+  assert.equal(fieldInfo(catalog, "v085_rawvalue", chr).unit, "%");
+  assert.equal(fieldLabel(catalog, "v085_rawvalue", chr), "Uninsured");
+  assert.equal(fieldInfo(catalog, "poverty_pct").label, "Population below poverty");
+  assert.throws(() => validateLibrary({ layers: [{ id: "tracts", name: "x", geometry: "point", file: "f" }] }, catalog));
+  assert.throws(() => validateLibrary({ layers: [{ id: "a", name: "A", geometry: "blob", file: "f" }] }));
+});
+
+test("the layer stack keeps order, visibility and its focus layer", async () => {
+  const { withLayer, withoutLayer, moveLayer, setVisible, normalizeStack, drawnIds, stackEntry } = await import(
+    "../src/core/stack.js"
+  );
+  let stack = [stackEntry("tracts")];
+  stack = withLayer(withLayer(stack, "fire"), "chr");
+  assert.deepEqual(drawnIds(stack), ["tracts", "fire", "chr"]);
+  assert.equal(withLayer(stack, "fire"), stack);
+  stack = moveLayer(stack, "chr", -1);
+  assert.deepEqual(drawnIds(stack), ["tracts", "chr", "fire"]);
+  assert.equal(moveLayer(stack, "tracts", -1), stack);
+  stack = setVisible(stack, "chr", false);
+  assert.deepEqual(drawnIds(stack), ["tracts", "fire"]);
+  assert.deepEqual(drawnIds(withoutLayer(stack, "fire")), ["tracts"]);
+  // Saved stacks: duplicates and unknown layers go; the focus is always shown.
+  const saved = [{ id: "a", visible: false }, "b", { id: "a" }, { id: "gone" }, { nope: 1 }];
+  const fixed = normalizeStack(saved, "a", (id) => id !== "gone");
+  assert.deepEqual(fixed, [{ id: "a", visible: true }, { id: "b", visible: true }]);
+  assert.deepEqual(normalizeStack(undefined, "tracts"), [{ id: "tracts", visible: true }]);
+  // Projects saved before stacking draw just their active layer.
+  const old = normalizeState({ active: "q", layers: [{ id: "q", name: "Q", collection: { features: [] } }] }, catalog);
+  assert.deepEqual(old.stack, [{ id: "q", visible: true }]);
+  assert.deepEqual(normalizeState({}, catalog).stack, [{ id: "tracts", visible: true }]);
+});
+
+test("map layers for a stacked layer, by kind and band", async () => {
+  const { layerSpecs, kindOf, orderMapLayers, sourceId } = await import("../src/map/layer-specs.js");
+  const colors = { outline: "#000", pointStroke: "#fff" };
+  const ids = (kind) => layerSpecs("x", kind, colors).map((s) => [s.id, s.band, s.interactive]);
+  assert.deepEqual(ids("polygon"), [["lyr-x-fill", "area", true], ["lyr-x-outline", "area", false]]);
+  assert.deepEqual(ids("point"), [["lyr-x-point", "point", true]]);
+  assert.deepEqual(ids("line"), [["lyr-x-line", "area", true]]);
+  assert.equal(ids("mixed").length, 4);
+  assert.ok(layerSpecs("x", "mixed", colors).every((s) => s.spec.filter && s.spec.source === sourceId("x")));
+  assert.ok(layerSpecs("x", "polygon", colors).every((s) => !s.spec.filter));
+  const fill = layerSpecs("x", "polygon", colors, { fillOpacity: 0.5 })[0].spec.paint;
+  assert.equal(fill["fill-opacity"], 0.5);
+  // While a filter dims what it leaves out, opacity reads each feature.
+  const faded = layerSpecs("x", "polygon", colors, { fillOpacity: 0.5, faded: true })[0].spec.paint;
+  assert.deepEqual(faded["fill-opacity"], ["case", ["==", ["get", "__rumb_out"], true], 0.08, 0.5]);
+  assert.equal(layerSpecs("x", "point", colors)[0].spec.paint["circle-stroke-color"], "#fff");
+  const g = (type) => ({ geometry: { type } });
+  assert.equal(kindOf([g("Polygon"), g("MultiPolygon")]), "polygon");
+  assert.equal(kindOf([g("Point")]), "point");
+  assert.equal(kindOf([g("Point"), g("Polygon")]), "mixed");
+  assert.equal(kindOf([]), "mixed");
+  const specs = { a: layerSpecs("a", "polygon", colors), b: layerSpecs("b", "point", colors), c: layerSpecs("c", "polygon", colors) };
+  // Points draw above every polygon; polygons follow the stack.
+  assert.deepEqual(orderMapLayers(["a", "b", "c"], (id) => specs[id]), [
+    "lyr-a-fill", "lyr-a-outline", "lyr-c-fill", "lyr-c-outline", "lyr-b-point",
+  ]);
+});
+
+test("popups list a layer's catalog fields, formatted", async () => {
+  const { popupRows, formatValue, featureTitle } = await import("../src/catalog/popup.js");
+  const meta = {
+    labelField: "name",
+    popupFields: ["name", "rate", "income", "beds", "site", "phone", "empty"],
+    fields: {
+      name: { label: "Name" },
+      rate: { label: "Uninsured", format: "percent", unit: "%" },
+      income: { label: "Income", format: "currency" },
+      beds: { label: "Beds", format: "integer" },
+      site: { label: "Website", format: "url" },
+      phone: { label: "Phone", format: "phone" },
+      empty: { label: "Empty" },
+    },
+  };
+  const props = { name: "A", rate: 15.4056, income: 44385, beds: 120, site: "http://x.org", phone: "(601) 555-1234", empty: null };
+  const rows = popupRows(meta, props, { skip: ["name"] });
+  assert.deepEqual(
+    rows.map((r) => [r.label, r.text, r.href]),
+    [
+      ["Uninsured", "15.4%", null],
+      ["Income", "$44,385", null],
+      ["Beds", "120", null],
+      ["Website", "http://x.org", "http://x.org"],
+      ["Phone", "(601) 555-1234", "tel:6015551234"],
+    ],
+  );
+  // Layers without popup fields list their first fields, skipping bookkeeping.
+  assert.deepEqual(
+    popupRows(null, { __rumb_id: "1", a_b: 2, c: "x" }).map((r) => r.label),
+    ["a b", "c"],
+  );
+  assert.equal(formatValue(NaN), null);
+  assert.equal(featureTitle({ NAME: "B" }, "7", "name"), "B");
+  assert.equal(featureTitle({}, "7", "name"), "Feature 7");
+});
+
+test("category colors and the fields that can carry them", async () => {
+  const { categories, categoryFields, OTHER_COLOR, QUALITATIVE } = await import("../src/map/classify.js");
+  const c = categories(["b", "a", "b", "c", null, "b", "a"]);
+  assert.deepEqual(c.items.map((x) => [x.value, x.count]), [["b", 3], ["a", 2], ["c", 1]]);
+  assert.equal(c.colorOf("b"), QUALITATIVE[0]);
+  assert.equal(c.colorOf(null), null);
+  const many = categories("abcdefghij".split(""));
+  assert.equal(many.items.length, 8);
+  assert.deepEqual(many.items.at(-1), { value: "Other", color: OTHER_COLOR, count: 3, other: true });
+  assert.equal(many.colorOf("j"), OTHER_COLOR);
+  const features = [
+    { properties: { type: "x", name: "1", n: 1 } },
+    { properties: { type: "y", name: "2", n: 2 } },
+    { properties: { type: "x", name: "3", n: 3 } },
+  ];
+  assert.deepEqual(categoryFields(features, 2), ["type"]);
+});
+
+test("point shapes are distance fields centred in their image", async () => {
+  const { shapeDistance, shapeImage, SHAPES, SIZE } = await import("../src/map/shapes.js");
+  for (const shape of SHAPES) {
+    assert.ok(shapeDistance(shape, 0, 0) < 0, shape + " centre is inside");
+    for (const [x, y] of [[11, 0], [-11, 0], [0, 11], [0, -11]])
+      assert.ok(shapeDistance(shape, x, y) > 0, `${shape} (${x}, ${y}) is outside`);
+    const img = shapeImage(shape);
+    assert.equal(img.data.length, (SIZE * 2) ** 2 * 4);
+    const alpha = (col, row) => img.data[(row * SIZE * 2 + col) * 4 + 3];
+    assert.ok(alpha(SIZE, SIZE) > 191 && alpha(0, 0) < 191, shape);
+  }
+});
+
+test("a layer's look becomes MapLibre paint, shapes and labels", async () => {
+  const { entryStyle, layerSpecs, specShape } = await import("../src/map/layer-specs.js");
+  const colors = { outline: "#000", pointStroke: "#fff", label: "#ccc", halo: "#111" };
+  const entry = { id: "x", style: { opacity: 0.5, size: 9, shape: "triangle", outline: 2 }, label: "name" };
+  const points = layerSpecs("x", "point", colors, entryStyle(entry, "point"));
+  assert.deepEqual(points.map((s) => s.id + ":" + s.spec.type), ["lyr-x-shape:symbol", "lyr-x-label:symbol"]);
+  assert.equal(points[0].spec.layout["icon-size"], 9 / 8);
+  assert.equal(points[0].spec.paint["icon-opacity"], 0.5);
+  assert.equal(points[1].band, "label");
+  const areas = layerSpecs("x", "polygon", colors, entryStyle(entry, "polygon"));
+  assert.equal(areas[0].spec.paint["fill-opacity"], 0.5);
+  assert.equal(areas[1].spec.paint["line-width"], 2);
+  // Changing only a number keeps the layers; a shape or label rebuilds them.
+  const plain = layerSpecs("x", "point", colors, entryStyle({ style: { size: 4 } }, "point"));
+  assert.equal(specShape(plain), specShape(layerSpecs("x", "point", colors)));
+  assert.notEqual(specShape(plain), specShape(points));
+});
+
+test("exported features carry their fields, look and distance", async () => {
+  const { exportFeatures, featuresCSV, featuresGeoJSON, exportName } = await import("../src/data/export.js");
+  const features = [
+    { type: "Feature", id: "1", properties: { name: "A, Inc", n: 2, __rumb_color: "#000" }, geometry: { type: "Point", coordinates: [-90.1, 32.2] } },
+    { type: "Feature", id: "2", properties: { name: "B", n: 5 }, geometry: { type: "Point", coordinates: [-90.3, 32.4] } },
+  ];
+  const drawn = [{ properties: { __rumb_id: "1", __rumb_color: "#ff0000", __rumb_class: 2 } }];
+  const out = exportFeatures(features, { ids: new Set(["1"]), drawn, distances: new Map([["1", 3.14159]]), idOf: (f) => String(f.id) });
+  assert.equal(out.length, 1);
+  assert.deepEqual(out[0].properties, { name: "A, Inc", n: 2, style_color: "#ff0000", style_class: 2, distance_mi: 3.142 });
+  assert.equal(featuresCSV(out), 'id,name,n,style_color,style_class,distance_mi,lon,lat\r\n1,"A, Inc",2,#ff0000,2,3.142,-90.1,32.2');
+  assert.equal(JSON.parse(featuresGeoJSON(out)).features[0].id, "1");
+  assert.equal(exportFeatures(features, { idOf: (f) => String(f.id) }).length, 2);
+  assert.equal(exportName("fire stations/2020", "filtered"), "fire_stations_2020-filtered");
 });

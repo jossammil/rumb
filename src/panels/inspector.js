@@ -1,8 +1,10 @@
 // The inspector card on the map: the selected feature's value and its margin
 // of error, the plain-language reading of its cluster, and the analysis
 // summary with the Moran scatterplot.
-import { fieldInfo } from "../catalog/catalog.js";
 import { number } from "../catalog/format.js";
+import { formatValue, popupRows } from "../catalog/popup.js";
+import { featureId } from "../core/features.js";
+import { aggregate, coverageLabel, neighborsOf, poolOf } from "../stats/pool.js";
 import { clusters } from "../map/classify.js";
 import { $, fill, h, icon, s } from "../ui/dom.js";
 
@@ -76,30 +78,90 @@ const MEANING = {
 export function createInspector(app) {
   const pane = $("inspect-panel");
 
-  /** Outlines the selection and its neighbors; returns the neighbor IDs. */
+  /** The selected ids: the inspected feature and any others picked with Shift. */
+  const selection = () => [...new Set([...(app.state.picks || []), app.state.selected].filter(Boolean).map(String))];
+  /** The focus layer's neighbor graph for the current rule, once loaded. */
+  function graphOf(l) {
+    const { state } = app;
+    return l.reference
+      ? app.ws.neighborData?.[state.rule]
+      : l.library
+        ? app.ws.layerNeighbors(l.id)?.[state.rule]
+        : app.ws.graphs.get(l.id + "-" + state.rule);
+  }
+
+  /** Outlines the selection and dashes its neighbors; returns the inspected feature's neighbors. */
   function applyNeighbors() {
     const { state } = app;
-    const id = state.selected;
-    if (!id) {
-      app.atlas.select(null, []);
+    const id = state.selected,
+      ids = selection();
+    if (!ids.length) {
+      app.atlas.select({ layer: state.active });
       return null;
     }
-    const l = app.layer(),
-      graph = l.reference
-        ? app.ws.neighborData?.[state.rule]
-        : app.ws.graphs.get(l.id + "-" + state.rule);
+    const graph = graphOf(app.layer());
     const adjacent = state.result?.byId?.[id]?.neighbors ?? graph?.[id];
-    app.atlas.select(id, adjacent || []);
+    const dashed = ids.length > 1 ? neighborsOf(ids, graph) : adjacent || [];
+    app.atlas.select({ layer: state.active, ids, neighbors: dashed });
     return adjacent;
+  }
+
+  /**
+   * Pooled measures over the selected areas, their neighbors and both
+   * (map_pdo's Selected / Neighbors / Total), for fields that pool.
+   */
+  function selectionBlock(l) {
+    const { state } = app,
+      ids = selection();
+    if (!ids.length || app.kindOf(l) === "point") return null;
+    const fields = app.fieldList(l).filter((f) => poolOf(app.fieldMeta(l, f)));
+    if (!fields.length) return null;
+    const ordered = [state.measure, ...fields].filter((f, i, all) => fields.includes(f) && all.indexOf(f) === i);
+    const props = new Map(l.collection.features.map((f) => [featureId(f), f.properties]));
+    const graph = graphOf(l);
+    const neighbors = graph ? neighborsOf(ids, graph) : [];
+    const sets = [
+      ["Selected", ids],
+      ["Neighbors", neighbors],
+      ["Total", [...ids, ...neighbors]],
+    ].filter(([, list], i) => i === 0 || graph);
+    const rowOf = (field) => {
+      const info = app.fieldMeta(l, field),
+        pool = poolOf(info);
+      const cells = sets.map(([, list]) => {
+        const agg = aggregate(list.map((id) => props.get(id)).filter(Boolean), pool);
+        return h("td", { title: "Coverage " + coverageLabel(agg), text: agg.value == null ? "—" : formatValue(agg.value, { format: info.format || "number", unit: info.unit }) });
+      });
+      return h("tr", { "data-pool": field }, h("th", { scope: "row", text: app.label(field, l) }), cells);
+    };
+    const head = h("tr", null, h("th"), sets.map(([name, list]) => h("th", { scope: "col", text: name + " (" + list.length + ")" })));
+    const first = ordered.slice(0, 4),
+      rest = ordered.slice(4);
+    return h(
+      "section",
+      { class: "inspect-block selection-block" },
+      h("div", { class: "inspection-head" }, h("h3", { text: ids.length === 1 ? "Pooled with neighbors" : ids.length + " areas selected" })),
+      h("p", { class: "subtle", text: "Sums of counts, then the rate. Shift-click areas to add or remove them." }),
+      h("table", { class: "pool-table" }, h("thead", null, head), h("tbody", null, first.map(rowOf))),
+      rest.length &&
+        h(
+          "details",
+          { class: "pool-more" },
+          h("summary", { text: rest.length + " more measures" }),
+          h("table", { class: "pool-table" }, h("tbody", null, rest.map(rowOf))),
+        ),
+    );
   }
 
   function featureBlock({ feature, id, adjacent }) {
     const { state, ref } = app;
+    const l = app.layer(),
+      fields = app.searchFields(l);
     const props = feature.properties || {},
       measure = state.measure,
       record = state.result?.byId?.[id],
       // Margins of error and denominators apply to the reference layer's own fields.
-      info = app.layer().referenceFields ? fieldInfo(app.catalog, measure) : null,
+      info = app.fieldMeta(l, measure),
       unit = info?.unit || "";
     const value =
       measure && props[measure] != null
@@ -121,6 +183,10 @@ export function createInspector(app) {
       metrics.push(
         row(info.universeLabel || app.label(info.universe), number(props[info.universe], 0)),
       );
+    // Library layers list their catalog fields too.
+    if (l.meta)
+      for (const r of popupRows(l.meta, props, { skip: [fields.labelField, measure] }))
+        metrics.push(row(r.label, r.text));
     if (adjacent)
       metrics.push(row(state.result ? "Eligible neighbors" : "Adjacent areas", adjacent.length));
     if (record) {
@@ -159,18 +225,24 @@ export function createInspector(app) {
           meaning,
       });
     }
-    const group = ref.groupField ? props[ref.groupField] : null;
+    const group = fields.groupField ? props[fields.groupField] : null;
     return h(
       "section",
       { class: "inspect-block" },
       h(
         "div",
         { class: "inspection-head" },
-        h("h3", { text: props[ref.labelField] ?? props.name ?? props.NAME ?? "Feature " + id }),
+        h("h3", { text: props[fields.labelField] ?? props.name ?? props.NAME ?? "Feature " + id }),
       ),
-      h("p", { class: "subtle", text: [group, props[ref.idField] ?? id].filter(Boolean).join(" · ") }),
-      h("div", { class: "score", text: value }),
-      h("div", { class: "subtle", text: app.label(measure) }),
+      // Library points are numbered by source row, which means nothing to a reader.
+      h("p", {
+        class: "subtle",
+        text: [group, (fields.idField && props[fields.idField]) ?? (l.library && /^\d+$/.test(id) ? null : id)]
+          .filter(Boolean)
+          .join(" · "),
+      }),
+      measure && h("div", { class: "score", text: value }),
+      measure && h("div", { class: "subtle", text: app.label(measure) }),
       h("dl", { class: "metrics" }, metrics),
       reading,
     );
@@ -245,10 +317,19 @@ export function createInspector(app) {
         icon("close", 14),
       ),
       feature && featureBlock({ feature, id: state.selected, adjacent }),
+      selectionBlock(app.layer()),
       state.result && analysisBlock(),
     );
-    // Reference-layer neighbors load on first selection.
-    if (state.selected && !app.ws.neighborData && app.layer().reference)
+    // Reference-layer and library neighbors load on first selection.
+    const l = app.layer();
+    if (state.selected && l.library && l.meta.neighbors && app.ws.layerNeighbors(l.id) === undefined)
+      app.ws
+        .loadLayerNeighbors(l.id)
+        .then(() => {
+          if (app.state.selected && app.state.inspector) render();
+        })
+        .catch(app.fail);
+    if (state.selected && !app.ws.neighborData && l.reference)
       app.ws
         .neighbors()
         .then(() => {

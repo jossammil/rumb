@@ -1,7 +1,9 @@
 // The Data and SQL views: the table library, table previews, the join
 // checker, the SQL editor, and adding a query result to the map.
 import { number } from "../catalog/format.js";
+import { featureId } from "../core/features.js";
 import { ident } from "../data/sql.js";
+import { filterSQL } from "../geo/filter-sql.js";
 import { $, fill, h, icon, options, saveBlob } from "../ui/dom.js";
 
 function grid(result) {
@@ -280,6 +282,21 @@ export function createWorkbench(app) {
               button("count-source", "secondary", null, "Count points by " + noun, () =>
                 openSQL(db.pointCountSQL(table)),
               ),
+            // The map's spatial filter as SQL, for tables too large to filter in the page.
+            custom &&
+              info.geometry &&
+              app.filter.current() &&
+              button("filter-source", "secondary", null, "Apply the map's filter", () => {
+                const filter = app.filter.current();
+                const layer = filter.kind === "buffer" ? app.layerById(filter.layer) : null;
+                const ids = new Set(filter.ids || []);
+                openSQL(
+                  filterSQL(table, info.geometry, filter, {
+                    epsg: app.catalog.region.projection?.epsg || 4326,
+                    base: layer ? layer.collection.features.filter((f) => ids.has(featureId(f))).map((f) => f.geometry) : [],
+                  }),
+                );
+              }),
           ),
           points &&
             h("p", {

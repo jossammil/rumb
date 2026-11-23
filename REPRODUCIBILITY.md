@@ -136,6 +136,61 @@ Rscript scripts/prepare-basemap.R
 
 `context.geojson` contains the regional backdrop clipped to 98°W–82°W and 26°N–39°N. `world-land.geojson` supplies a global outline when the map leaves that region. These are display assets. The tract neighbor graph comes from TIGER geography.
 
+The same script also builds `roads.geojson` from the 2024 TIGER/Line primary and secondary roads for Mississippi (`tl_2024_28_prisecroads.zip`, SHA-256 `421905d94b9429037db33c027fd9637a35d631aa2dd90a00ec4a665054e5b702` on November 22, 2026). It keeps the numbered routes (Interstate, U.S. and state highways), dissolves each into one feature, simplifies it to about 40 m and labels it with a short reference such as `I-55` or `MS 25`. To rebuild only the roads, keeping the download in `RUMB_ROADS_CACHE`:
+
+```sh
+RUMB_ROADS_CACHE="$input_dir" Rscript scripts/prepare-basemap.R roads
+```
+
+### Add-on layers (facilities, districts, County Health Rankings)
+
+The add-on layers a reader can stack over the tracts come from 32 MARIS downloads and the County Health Rankings 2025 analytic file. [`scripts/layers.json`](scripts/layers.json) lists each source URL, the fields kept, their labels and code meanings. [`scripts/prepare-layers.R`](scripts/prepare-layers.R) downloads each source, projects it to longitude and latitude, simplifies polygon display geometry with shared arcs, and writes the files under `public/data/ms/layers/`. Set the first argument or `RUMB_LAYER_CACHE` to a folder to keep the downloads.
+
+```sh
+Rscript scripts/prepare-layers.R "$input_dir/layers"
+```
+
+| Output under `public/data/ms/layers/` | Use |
+| --- | --- |
+| `<layer>.geojson` | Display geometry and the kept fields, one file per layer, keyed by a top-level `id` |
+| `<layer>.neighbors.json` | Queen and rook neighbors for polygon layers |
+| `library.json` | What the app shows about every layer: fields, formats, pooling rules, styles, credit, source URL, source SHA-256 and output SHA-256 |
+
+**Where each layer comes from.** The map_project workbench these layers were first gathered for kept 12 of them without a recorded source. On November 22, 2026 each of those 12 was found at `https://maris.mississippi.edu/MARISdata/<Category>/<Name>.zip`. All 32 MARIS downloads were byte-identical (`.shp` and `.dbf`) to the copies map_project had used. Their metadata states public use with no access constraints. MARIS asks to be credited as a source provider, and the Census Bureau's TIGER-derived layers ask for acknowledgement. No layer restricts reuse. The third-party ArcGIS copies map_project also used (HIFLD and RxOpen services with unstated terms) are not included.
+
+| Layers traced on November 22, 2026 | MARIS folder |
+| --- | --- |
+| Casinos 2020, law enforcement sites 2017, places of worship 2020 | `Cultural` |
+| Community college districts 1995, public school districts 2015–16, public schools 2024 | `Education` |
+| Mental health regions 1998, MSDH rural health facilities 2007, nursing homes 2024, pharmacies 2010, public health departments 2010 | `Health` |
+| Highway Patrol districts 2023 | `Boundaries` |
+
+**Cleaning rules.**
+- Placeholder text (`NOT AVAILABLE`, `N/A`) and `-999` become missing.
+- Coded fields get their published meanings: law enforcement site types from the MARIS metadata, and NCES school types and statuses.
+- All-capital names are shown in title case.
+- One courthouse record whose location is a placeholder at the largest representable coordinate is dropped. `library.json` records the count.
+- Four post-office multipoints keep their first point.
+- Point IDs are source row numbers; census polygons use their GEOIDs.
+
+**Neighbors.** Neighbors for these older layers use tolerances instead of exact shared vertices. Queen neighbors are polygons within 0.5 m of each other; rook neighbors share at least 1 m of boundary. 911 PSAP service areas overlap one another, so their queen graph is dense.
+
+**County Health Rankings.** The rows come from the analytic CSV filtered to the 82 Mississippi counties, placed on the 2020 Census county geometry from the MARIS county layer, and joined on the five-digit FIPS code. Fractions become percentages, and provider ratios become rates per 100,000. Each pooled measure keeps its numerator, denominator and flag. The official file downloaded on November 22, 2026 has SHA-256 `5a129b856489fe6646013d7fcf85397dd576f6d67a65f5db72738a1df29643de` and matched map_project's copy. Cite it as: University of Wisconsin Population Health Institute, *County Health Rankings & Roadmaps 2025*.
+
+### Independent fixtures for the map tools
+
+Four R scripts write the fixtures the unit tests compare against. Each uses
+the committed data files, so rerun them only when those files change.
+
+| Script | Writes | What it computes |
+| --- | --- | --- |
+| `scripts/reference-classify.R` | `tests/classify-reference.json` | classInt Fisher natural breaks (no sampling) and standard-deviation breaks for six fields at 3 to 9 classes |
+| `scripts/reference-geo.R` | `tests/geo-reference.json` | 259 NAD83 positions projected to EPSG:3814 by PROJ |
+| `scripts/reference-filters.R` | `tests/filter-reference.json` | GEOS radius, buffer and polygon filters on the display files, in EPSG:3814 |
+| `scripts/reference-counts.R` | `tests/counts-reference.json` | GEOS point-in-polygon counts per tract and county; pooled County Health Rankings measures by map_project's rules |
+
+The scripts need the R package `classInt` besides those above.
+
 ## 4. Verify the rebuild
 
 Run the baseline checks after regenerating the inputs. The first command lists changed products. With the original inputs and the reference environment, the list was empty. With the fresh CDC export described above, expect only `public/data/ms/places-2025.json` and run its record comparison above.
@@ -155,7 +210,25 @@ npm run e2e
 BROWSER=webkit npm run e2e
 ```
 
-The checks cover the map, both neighbor rules (global I 0.2768 and 0.2846), imports, table joins, exports, project restore (including a version 1 Field Atlas archive), SQL and mobile layout; Compare's linked selections, weights, exclusions, imported polygons, narrow-screen resizing and restore with the PLACES request blocked; themes, the command palette, keyboard shortcuts and the status bar; and an offline reload. All of them check that runtime requests stay on the site's own origin. Playwright WebKit supplies engine coverage. Native Safari requires a separate device or browser check.
+The checks cover:
+
+- **the map:** both neighbor rules (global I 0.2768 and 0.2846);
+- **data:** imports, table joins, exports, SQL and mobile layout;
+- **projects:** project restore, including a version 1 Field Atlas archive;
+- **Compare:** linked selections, weights, exclusions, imported polygons,
+  narrow-screen resizing, and restore with the PLACES request blocked;
+- **the shell:** themes, the command palette, keyboard shortcuts and the
+  status bar;
+- **library layers:** stacking them, with the tract statistics and Compare
+  unchanged, and restoring them from a project without refetching;
+- **map tools:** looks, labels and popups; the new class methods; measuring,
+  location and go-to; the radius, buffer and area filters against the GEOS
+  fixture; pooled selections and point counts;
+- **sharing and output:** share links opened in a second browser; exports
+  read back in; the printed report;
+- **offline:** an offline reload.
+
+All of them check that runtime requests stay on the site's own origin. Playwright WebKit supplies engine coverage. Native Safari requires a separate device or browser check.
 
 **Verification on November 21, 2026 (baseline `4cbfc4a`).** A separate checkout reproduced all eight tracked files under `public/data/` and the R comparison fixture byte for byte using the archived inputs. The automated Census download reproduced the same source manifest and product hashes. All eight unit tests at that commit, the production build and both browser suites passed in Chrome and Playwright WebKit. The public CDC export comparison above records the one input-hash difference observed when fetching data again.
 

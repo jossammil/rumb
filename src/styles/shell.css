@@ -586,3 +586,32 @@ dialog::backdrop {
 .mobile-only {
   display: none;
 }
+
+/* The share dialog. */
+.share #share-link {
+  width: 100%;
+  margin: 6px 0;
+  font-family: var(--mono-font);
+  font-size: 0.75rem;
+}
+.share .warn {
+  color: var(--sem-warn);
+}
+
+/* Export and report dialogs. */
+.export select,
+.report input[type="text"],
+.report textarea {
+  width: 100%;
+  margin-bottom: 8px;
+}
+.export .primary,
+.report .primary {
+  margin-top: 8px;
+}
+.report-sections {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 12px;
+  margin: 6px 0 8px;
+}

@@ -54,6 +54,29 @@ published.
 
 - `stage-foundation`: the first pass after the rename. The cluster map is shown
   in each theme, then Compare, SQL, the palette and a phone.
+- `stage-parity`: map parity with map_pdo and map_project. The same screens,
+  then:
+  - County Health Rankings with fire stations stacked as triangles;
+  - a 25-mile radius filter;
+  - a pooled two-county selection;
+  - natural breaks on a diverging palette;
+  - the measure tool;
+  - a 320px phone.
+
+## Map conventions from the parity pass
+
+- **Stacking.** Points always draw over areas, and roads sit between them.
+  Within each band the stack order decides.
+- **Filters.** A filter dims what it leaves out to about a sixth of its
+  opacity, so the context stays readable; "hide" removes it.
+- **Overlays.** Tool and filter outlines use the accent color, dashed.
+  Selections use the theme's selection color, and their neighbors are dashed.
+- **Category colors.** Okabe and Ito's eight, safe for common color-vision
+  deficiencies; grey means "Other".
+- **Diverging palettes.** Keep their neutral middle in the middle at every
+  class count.
+- **Printing.** The printed report uses plain ink on white whatever the
+  theme, so it photocopies.
 
 ## Still to come
 

@@ -1,7 +1,7 @@
 // The open workspace's data: the region catalog, its reference files (fetched
 // once and kept as Blobs so a project can bundle them), imported files, the
 // DuckDB connection and neighbor graphs. No DOM here beyond fetch, File and Blob.
-import { referenceLayer } from "../catalog/catalog.js";
+import { loadLibrary, referenceLayer } from "../catalog/catalog.js";
 import { numericFields } from "./features.js";
 
 export function createWorkspace(catalog, { status = () => {}, onDatabase = () => {} } = {}) {
@@ -13,6 +13,10 @@ export function createWorkspace(catalog, { status = () => {}, onDatabase = () =>
     databasePromise = null;
   // Contiguity computed for imported polygon layers, by `${layerId}-${rule}`.
   const graphs = new Map();
+  // The layer library and the library layers read so far (parsed GeoJSON and neighbors).
+  let libraryPromise = null;
+  const layerData = new Map(),
+    layerGraphs = new Map();
 
   async function asset(name) {
     if (blobs[name]) return blobs[name];
@@ -73,11 +77,52 @@ export function createWorkspace(catalog, { status = () => {}, onDatabase = () =>
     return databasePromise;
   }
 
-  /** The base/ files a project carries: always required, plus Compare's reference if used. */
+  /** The library of add-on layers, read once on first use. */
+  function library() {
+    libraryPromise ??= loadLibrary(async () => json(catalog.library), catalog).catch((error) => {
+      libraryPromise = null;
+      throw error;
+    });
+    return libraryPromise;
+  }
+  /** A library layer's metadata (after library() has resolved), or undefined. */
+  const libraryMeta = (id, lib) => lib?.layers.find((l) => l.id === id);
+  /** Reads a library layer's features; returns { meta, collection }. */
+  async function loadLayer(id) {
+    const meta = libraryMeta(id, await library());
+    if (!meta) throw new Error("This region has no layer called " + id + ".");
+    if (!layerData.has(id)) {
+      const collection = await json(meta.file);
+      if (!Array.isArray(collection.features)) throw new Error(meta.name + " has no features.");
+      layerData.set(id, collection);
+    }
+    return { meta, collection: layerData.get(id) };
+  }
+  /** Queen and rook neighbors of a library polygon layer, keyed by feature id. */
+  async function loadLayerNeighbors(id) {
+    if (!layerGraphs.has(id)) {
+      const meta = libraryMeta(id, await library());
+      layerGraphs.set(id, meta?.neighbors ? await json(meta.neighbors) : null);
+    }
+    return layerGraphs.get(id);
+  }
+
+  /**
+   * The base/ files a project carries: the reference files always; Compare's
+   * reference when used; and the files of library layers in the saved stack.
+   * `optional` takes the saved state so a restore can find them.
+   */
   const projectFiles = () => ({
     required: [ref.files.display, ref.files.parquet, ref.files.neighbors, ref.files.sources].filter(Boolean),
-    optional: [ref.compare?.reference].filter(Boolean),
+    optional: (state) => [
+      ref.compare?.reference,
+      ...(state?.stack || []).flatMap((e) => {
+        const meta = libraryMeta(e.id, libraryNow);
+        return meta ? [meta.file, meta.neighbors] : [];
+      }),
+    ].filter(Boolean),
   });
+  let libraryNow = null;
 
   return {
     catalog,
@@ -87,6 +132,16 @@ export function createWorkspace(catalog, { status = () => {}, onDatabase = () =>
     neighbors,
     graphs,
     projectFiles,
+    /** The library: a promise of { groups, layers }. */
+    library: () => library().then((lib) => (libraryNow = lib)),
+    loadLayer,
+    loadLayerNeighbors,
+    /** A library layer's neighbor graph ({ queen, rook }) once loaded, or undefined. */
+    layerNeighbors: (id) => layerGraphs.get(id) ?? undefined,
+    /** A loaded library layer's features, or undefined. */
+    layerCollection: (id) => layerData.get(id),
+    /** A library layer's metadata once the library is loaded, or undefined. */
+    meta: (id) => libraryMeta(id, libraryNow),
     db,
     reference,
     get display() {
@@ -114,7 +169,9 @@ export function createWorkspace(catalog, { status = () => {}, onDatabase = () =>
     },
     /** Fields that can color a layer. */
     fieldList(layer) {
-      return layer.builtIn ? ref.measures : numericFields(layer.collection.features);
+      if (layer.id === ref.id) return ref.measures;
+      if (layer.library) return layer.meta.measures;
+      return numericFields(layer.collection.features);
     },
     /**
      * Opens a project's files in a fresh database before anything is replaced,
@@ -131,6 +188,8 @@ export function createWorkspace(catalog, { status = () => {}, onDatabase = () =>
         commit() {
           const previous = databasePromise;
           graphs.clear();
+          layerData.clear();
+          layerGraphs.clear();
           blobs = { ...base };
           display = geo;
           neighborData = graph;

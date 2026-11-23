@@ -17,7 +17,7 @@ export function findFeatures(features, term, { labelField, groupField }, limit =
 
 export function openFind(app) {
   const dialog = $("dialog"),
-    ref = app.ref;
+    ref = app.searchFields(app.layer());
   const input = h("input", { id: "find-term", type: "search", autocomplete: "off" });
   const results = h("div", { id: "find-results" });
   function search() {

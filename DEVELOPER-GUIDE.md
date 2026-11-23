@@ -66,9 +66,18 @@ browser:
      GitHub Pages: index.html, app.js, chunks/, vendor/, data/<region>/ …
 ```
 
-The page reads the **catalog** for its region (`data/ms/catalog.json`), shows
-the reference layer (Mississippi tracts) from a GeoJSON file, and only loads
-DuckDB (about 59 MB) or the statistics code when the reader first needs them.
+The page reads the **catalog** for its region (`data/ms/catalog.json`) and
+shows the reference layer (Mississippi tracts) from a GeoJSON file. These load
+only when the reader first needs them:
+
+- the **layer library** (`data/ms/layers/library.json`, 33 add-on layers) and
+  each library layer's file;
+- the roads, which wait for the first map;
+- DuckDB (about 59 MB) and the statistics code.
+
+The map draws a **stack** of layers, one GeoJSON source each. The **focus
+layer** (`state.active`) is the one the style panel, inspector and analysis
+act on.
 
 ## 2. Which program runs what
 
@@ -83,7 +92,14 @@ DuckDB (about 59 MB) or the statistics code when the reader first needs them.
 | Project files | Main thread | `src/data/project.js` (zip.js) |
 | Offline caching | Service worker | `public/sw.js`, `src/data/offline.js` |
 | Building | Node.js | `scripts/build.mjs` (esbuild) |
-| Reference data | R and Python, by hand | `scripts/prepare-*.R`, `scripts/prepare-places.py` |
+| Layer stack, looks, labels, popups | Main thread, WebGL | `src/map/layer-specs.js`, `src/map/map.js`, `src/panels/layers.js`, `src/catalog/popup.js` |
+| Projection, distances, filters, point counts | Main thread | `src/geo/*.js`, `src/panels/filter.js` |
+| Buffer outlines | Statistics worker | `src/stats/buffer.js` (jsts) |
+| Pooled measures over a selection | Main thread | `src/stats/pool.js`, `src/panels/inspector.js` |
+| Measuring, my location, go to | Main thread | `src/panels/tools.js`, `src/map/sketch.js` |
+| Share links | Main thread | `src/core/share.js`, `src/panels/share.js` (loaded when used) |
+| Layer exports, printable report | Main thread; GeoParquet in the DuckDB worker | `src/data/export.js`, `src/panels/exports.js`, `src/report/report.js` (loaded when used) |
+| Reference data | R and Python, by hand | `scripts/prepare-*.R`, `scripts/prepare-places.py`, `scripts/layers.json` |
 
 ## 3. Repository map
 
@@ -96,15 +112,18 @@ rumb (this repository, jossammil/rumb; it was jossammil/bgis)
 │   ├── rumb.svg, icons/     logo and PNG app icons (scripts/make-icons.mjs)
 │   └── data/
 │       ├── index.json       which regions exist
-│       └── ms/              Mississippi: catalog.json and its files
+│       └── ms/              Mississippi: catalog.json, tracts, backdrop and roads
+│           └── layers/      the library: library.json and one GeoJSON per add-on layer
 ├── src/
 │   ├── main.js              wiring: creates everything, binds commands and events
 │   ├── core/                state, commands, keys, settings, the workspace (pure, mostly)
-│   ├── catalog/             reading the catalog; number formatting
-│   ├── map/                 MapLibre, the style, classes, legend, PNG export
+│   ├── catalog/             reading the catalog and library; formatting; popups
+│   ├── geo/                 projection, measuring, plane geometry, filters, counts (pure)
+│   ├── map/                 MapLibre, the style and layer specs, classes, legend, shapes, sketching, PNG export
 │   ├── data/                DuckDB, project files, CSV and SQL quoting, offline
 │   ├── stats/               statistics, contiguity, Compare scoring, the worker
-│   ├── panels/              one module per part of the screen
+│   ├── panels/              one module per part of the screen (layers, style, filter, tools, …)
+│   ├── report/              the printable report (loaded when used)
 │   ├── ui/                  h(), toasts, icons, palette, themes, help, status bar
 │   └── styles/              tokens, base, shell, map, panels, themes (CSS)
 ├── scripts/                 build, serve, vendor DuckDB, data preparation, benchmarks
@@ -166,6 +185,29 @@ see [REPRODUCIBILITY.md](REPRODUCIBILITY.md)).
    data and `store.replace(normalizeState(...))` the state. `normalizeState()`
    (`src/core/state.js`) upgrades Field Atlas states.
 
+### Add a library layer, filter it and share the map
+
+1. **N** (or **Add layer**) runs `openLibrary()` in `src/panels/layers.js`.
+   `ws.library()` reads `layers/library.json` once. Choosing a layer calls
+   `app.addLibraryLayer(id)`, which reads its GeoJSON through
+   `ws.loadLayer()` (cached as a Blob, so a project can carry it) and makes
+   it the focus with `focusLayer()`.
+2. `focusLayer()` stashes the outgoing layer's view settings in
+   `state.layerViews`, adds the layer to `state.stack` (`src/core/stack.js`)
+   and calls `renderAll()`.
+3. `app.syncMap()` makes the map match the stack. `atlas.addLayer()` builds
+   the layer's MapLibre layers from `layerSpecs()` (`src/map/layer-specs.js`)
+   and puts them in their band. Then `style.draw()` colors every shown layer
+   from its own view settings.
+4. **C** arms a click (`tools.pick()`). The radius filter goes to
+   `state.filter`.
+5. `filter.keptFor(layer)` (`src/panels/filter.js`) runs `applyFilter()` from
+   `src/geo/filter.js` on a projected index of each layer, cached per layer.
+   `style.draw()` then dims or hides what it leaves out.
+6. **U** loads `src/panels/share.js`. `shareState()` (`src/core/share.js`)
+   picks what may travel. `encodeShare()` deflates it into `#state=…`.
+   Opening that link runs `readShare()` and replaces the state.
+
 ### Change the theme
 
 **T**, the palette or the Appearance dialog call `update()` in
@@ -190,22 +232,36 @@ tokens, `src/map/basemap-style.js`) and redraws the data layer, because
 | `core/settings.js` | yes | Themes list, appearance settings, coordinate formats | `THEMES`, `normalizeSettings`, `formatPosition` |
 | `core/storage.js` | yes | `localStorage` under `rumb.` | `load`, `save` |
 | `core/about.js` | yes | The about text | `ABOUT` |
-| `catalog/catalog.js` | yes | Loads and checks the catalog; field labels; starter SQL | `loadCatalog`, `fieldInfo`, `fieldLabel` |
+| `catalog/catalog.js` | yes | Loads and checks the catalog and the layer library; field labels; starter SQL | `loadCatalog`, `loadLibrary`, `layerMeta`, `fieldInfo`, `fieldLabel` |
+| `catalog/popup.js` | yes | Popup rows from a layer's popup fields, formatted | `popupRows`, `formatValue` |
+| `core/stack.js` | yes | The layer stack: add, remove, move, show, normalize | `withLayer`, `moveLayer`, `normalizeStack` |
+| `core/share.js` | yes (CompressionStream) | What a share link carries; encode, decode, check | `shareState`, `encodeShare`, `readShare` |
+| `geo/project.js` | yes | Transverse Mercator (EPSG:3814) forward and inverse | `transverseMercator`, `regionProjection` |
+| `geo/measure.js`, `geo/coords.js` | yes | Lengths and areas in miles; reading typed coordinates | `measurePath`, `parseCoordinate` |
+| `geo/spatial.js` | yes | Plane geometry: boxes, point in polygon, distances | `pointDistance`, `geometryDistance` |
+| `geo/filter.js`, `geo/counts.js`, `geo/filter-sql.js` | yes | Radius, buffer and polygon filters; point counts; the filter as DuckDB SQL | `applyFilter`, `countPoints`, `filterSQL` |
 | `catalog/format.js` | yes | Number formatting | `number`, `plural` |
-| `map/map.js` | no | MapLibre map, selection, fit, retheme | `initMap` |
-| `map/basemap-style.js` | no | Style JSON from tokens; neutral data colors | `buildStyle`, `mapColors`, `neutralColors` |
-| `map/classify.js` | yes | Palettes, cluster and quadrant colors, breaks | `palettes`, `classify`, `classOf`, `ramp` |
+| `map/map.js` | no | MapLibre map: the stack, Compare, selection, popups, capture for tools, fit, retheme | `initMap` |
+| `map/layer-specs.js` | yes | MapLibre layers for one stacked layer, by kind and band | `layerSpecs`, `entryStyle`, `kindOf` |
+| `map/basemap-style.js` | no | Style JSON from tokens: backdrop, roads, anchors, overlays | `buildStyle`, `mapColors`, `neutralColors` |
+| `map/classify.js` | yes | Palettes (OKLab ramps), category colors, quantile, equal, Jenks, SD and manual breaks | `palettes`, `classify`, `jenks`, `categories`, `ramp` |
+| `map/shapes.js` | yes (+ map images) | Point shapes as signed distance fields | `shapeImage`, `addShapeImages` |
+| `map/sketch.js` | no | Click-to-draw for measuring and the polygon filter | `createSketch` |
 | `map/legend.js` | no | One legend renderer (map and Compare) | `renderLegend`, `classItems` |
 | `map/export-png.js` | no | PNG with title, legend and credits | `exportMapImage` |
 | `data/database.js` | no | DuckDB-Wasm: views, SELECT checks, map and CSV queries, joins | `openDatabase` |
 | `data/project.js` | no | `.rumb` ZIP reading and writing | `packProject`, `unpackProject` |
 | `data/csv.js`, `data/sql.js` | yes | CSV cells; SQL quoting | `csvText`, `ident`, `sqlString` |
+| `data/export.js` | yes | A layer's features for CSV and GeoJSON export | `exportFeatures`, `featuresCSV` |
 | `data/offline.js` | no | Registers the service worker; Download for offline | `createOffline` |
 | `stats/stats.js` | yes | Moran's I, LISA, permutations, FDR | `analyze`, `adjustFdr` |
 | `stats/weights.js` | yes | Queen/rook contiguity with jsts | `polygonNeighbors` |
 | `stats/compare-score.js` | yes | Compare percentiles, scores, ranks, CSV | `compareAreas`, `comparisonCSV` |
+| `stats/pool.js` | yes | Pooled measures (Σ numerator / Σ denominator) with coverage | `aggregate`, `poolOf`, `neighborsOf` |
+| `stats/buffer.js` | worker | Buffer outlines with jsts | `bufferOutline` |
 | `stats/worker.js`, `stats/client.js` | worker | The worker and its persistent client | `callStats` |
-| `panels/*.js` | no | Layers, style, analysis, inspector, find, Compare, workbench, files | `create…` |
+| `panels/*.js` | no | Layers, style, filter, tools, analysis, inspector, find, Compare, workbench, files, share, exports | `create…`, `open…` |
+| `report/report.js` | no | The printable report (loaded when used) | `openReport`, `buildReport` |
 | `ui/dom.js` | no | `$`, `h`, `s`, `fill`, `icon`, `toast`, `on` | — |
 | `ui/palette.js` | partly | Ranking (pure) and the palette dialog | `fuzzyScore`, `rankItems`, `createPalette` |
 | `ui/themes.js`, `ui/help.js`, `ui/statusbar.js`, `ui/drop.js`, `ui/splitter.js` | no | Appearance, help sheet, readouts, drag-and-drop, the Compare divider | — |
@@ -234,6 +290,54 @@ folder has a `catalog.json`:
   - `measures` (offered in the map style);
   - `fields`: label, unit, margin of error, count, universe, source, vintage;
   - `compare`: the reference file, lead fields, notes and links.
+
+**The layer library** (`layers/library.json`) is written by
+`scripts/prepare-layers.R` from the manifest `scripts/layers.json`. Each layer
+has:
+
+- `id`, `name`, `group`, `geometry` (point, line, polygon), `file` and, for
+  polygons, `neighbors`;
+- `count`, `bbox`;
+- `labelField`, `typeField`, `placeField`, `populationField`;
+- `popupFields`, `measures`;
+- `fields`, each with a label, a format (text, number, integer, percent,
+  rate, currency, phone, url), a unit and a `pool` rule;
+- `style.color`, `credit`, `vintage`, and `source` (URL, terms, input and
+  output SHA-256).
+
+Feature IDs are the top-level GeoJSON `id`. The catalog points at the library
+(`"library": "layers/library.json"`). `validateLibrary()` checks it, and a unit
+test checks it against every file.
+
+**The map's layers.** Each stacked layer gets a source `lyr-<id>` and the
+layers `-fill`, `-outline`, `-line`, `-point` or `-shape` and `-label`. They
+sit in three bands, each closed by a hidden anchor layer:
+
+| Band | Holds | Position |
+| --- | --- | --- |
+| `anchor-areas` | fills, outlines and lines | below the roads |
+| `anchor-points` | points | above the roads |
+| `anchor-labels` | labels | above selections |
+
+Within a band, the stack order decides. Compare draws from its own `cmp`
+source while the stack is hidden. The selection draws from `selection`, and
+the field tools from `sketch`, `filter` and `locate`. A MapLibre layer id
+never changes type: a point layer switches between `-point` (circles) and
+`-shape` (symbols).
+
+**State keys.**
+
+| Key | Holds |
+| --- | --- |
+| `stack` | `[{ id, visible, style, label, counts }]`, bottom to top |
+| `active` | the focus layer |
+| `filter`, `filterMode` | the spatial filter, and whether the rest is dimmed or hidden |
+| `picks` | more selected features |
+| `category`, `breaks` | a field to color by; manual class breaks |
+| `roads`, `graticule` | the backdrop options |
+
+`normalizeState()` brings older projects up to date. Their single active
+layer becomes the stack.
 
 Nothing about Mississippi is in `src/`. To **add a state**, make
 `public/data/<st>/` with the same files and a catalog, and add it to
@@ -313,8 +417,14 @@ does not need it.
     camera.
   - `imports/<n>`: the original imported files.
   - `base/`: the reference files, plus the Compare reference when used.
+  - `base/layers/`: the files of library layers in the stack, so a project
+    opens offline and with the same data.
 - Field Atlas projects (`format: "field-atlas"`, `.bgis`) open the same way;
   `normalizeState()` renames old layer flags.
+- **Share links** (`#state=…`) are the map's state, deflated and base64url
+  encoded, in the part of the address browsers never send. They carry only
+  catalog layers and settings, never imported files, SQL or results.
+  `readShare()` checks every value against a whitelist.
 
 ## 11. Libraries and packages
 
@@ -368,6 +478,14 @@ Build constants: `__RUMB_VERSION__`, `__RUMB_DEV__`, `__DUCKDB_FOLDER__`,
 - **A data file:** run its prepare script (REPRODUCIBILITY.md), keep
   `catalog.json` in step, run `npm test` (catalog against data, statistics
   against R).
+- **A library layer:**
+  1. Add or change its entry in `scripts/layers.json`: its URL, the fields
+     to keep with labels and formats, its popup fields and its color.
+  2. Run `Rscript scripts/prepare-layers.R <cache-folder>`.
+  3. Run `npm test`; the library test checks every file and field.
+- **The R fixtures** for class breaks, the projection, filters, and counts and
+  pooling: rerun `scripts/reference-classify.R`, `reference-geo.R`,
+  `reference-filters.R` and `reference-counts.R` only when their inputs change.
 - **The logo:** edit `public/rumb.svg`, then `node scripts/make-icons.mjs`.
 - **Review screenshots:** `npm run build`, then
   `node scripts/screens.mjs <stage>`.
@@ -378,17 +496,33 @@ Build constants: `__RUMB_VERSION__`, `__RUMB_DEV__`, `__DUCKDB_FOLDER__`,
   - **statistics:** 872 local Moran values against R/spdep under queen and
     rook; small cases against matrix algebra and exhaustive permutations;
   - **Compare:** all 870 scores, ranks and quadrants against R;
-  - **pure modules:** catalog against data, store, classes, CSV, keys,
-    settings, palette ranking.
+  - **pure modules:** catalog and library against data, store, stack, layer
+    specs, classes, CSV, keys, settings, palette ranking, popups, exports;
+  - **against R:**
+    - natural breaks and SD classes against classInt (42 cases);
+    - EPSG:3814 against PROJ (259 points, under 1 mm);
+    - filters and point counts against GEOS on the display files;
+    - pooled measures against map_project's rules;
+  - **share links:** what travels, round trips, checks and the size limit.
 - `npm run e2e` runs `tests/e2e/e2e.mjs` against `dist/`, served under `/rumb/`
   with no special headers. It prints PASS, FAIL or SKIP for each check.
   - Switches: `BROWSER=webkit`, `SHOTS=dir` (screenshots; always on failure),
     `ONLY=clusters,keys`, `HEADED=1`, `RUMB_BASE=/other/` (another subpath).
-  - What it checks: the map before any analytics load; queen and rook global
-    I; imports, joins and mapped queries; project save and restore (including
-    old Field Atlas projects); Compare; themes; the palette; keys; the status
-    bar; 320px layouts; offline reload; and that every request stays on the
-    site's own origin.
+  - What it checks:
+    - **startup:** the map before any analytics, roads or library layers load;
+    - **statistics:** queen and rook global I;
+    - **data:** imports, joins and mapped queries;
+    - **projects:** save and restore, including old Field Atlas projects;
+    - **map:** layer identity on click; stacking library layers and
+      restoring them from a project; looks, labels, categories and popups;
+      class methods;
+    - **tools:** measuring, my location and go-to; the radius, buffer and
+      area filters against GEOS; pooled selections and point counts;
+    - **sharing and output:** share links in a second browser; exports
+      (CSV, GeoJSON, GeoParquet read back); the printed report as PDF;
+    - **shell:** Compare; themes; the palette; keys; the status bar; 320px
+      layouts; offline reload;
+    - **privacy:** every request stays on the site's own origin.
 - CI (`.github/workflows/test.yml`) runs both on Chromium and WebKit (WebKit
   allowed to fail for now).
 
@@ -405,7 +539,8 @@ works under any subpath. The repository was renamed from `bgis` in November
 
 In the browser console, `window.rumb` has:
 
-- `state` (the store's state) and `app` (every panel and helper);
+- `state` (the store's state) and `app` (every panel and helper, including
+  `app.filter`, `app.tools`, `app.layerById(id)` and `app.ws.library()`);
 - `map` (the MapLibre map) and `runCommand("…")`;
 - `appearance({ theme: "hud" })`;
 - `timings` (`firstMap`, `lastQuery`, `lastAnalysis`, all in ms);
@@ -423,6 +558,12 @@ In the browser console, `window.rumb` has:
 
 - **Reference layer:** the region's built-in polygons (Mississippi tracts),
   with neighbors and field metadata from the catalog.
+- **Library layer:** an add-on layer from `layers/library.json`, loaded when
+  added to the map.
+- **Stack, focus layer:** the layers on the map, bottom to top; the focus is
+  the one the style panel, inspector and analysis act on.
+- **Pooled measure:** a rate over several areas computed from summed
+  numerators and denominators, not by averaging rates.
 - **Query layer:** a map layer made from SQL. It is "on the reference" when
   keyed by the reference ID, which gives it the reference geometry and
   weights.

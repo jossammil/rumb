@@ -1,19 +1,23 @@
 // The workspace state: what a saved project records, its defaults, and how a
 // state from an older project (Field Atlas, before the rename) is brought up to date.
 import { referenceLayer, starterSQL } from "../catalog/catalog.js";
+import { normalizeStack, stackEntry } from "./stack.js";
 
 /** Settings each map layer remembers when you switch away from it and back. */
 export const LAYER_VIEW_KEYS = [
   "measure",
+  "category",
   "palette",
   "classification",
   "count",
+  "breaks",
   "rule",
   "study",
   "permutations",
   "seed",
   "fdr",
   "selected",
+  "picks",
   "result",
   "mode",
   "inspector",
@@ -26,15 +30,21 @@ export function defaults(catalog) {
     region: catalog.region.id,
     active: ref.id,
     measure: ref.measures[0],
+    // A text field to color by instead of a measure (null: color by the measure).
+    category: null,
     palette: "Lagoon",
     classification: "quantile",
     count: 5,
+    // Manual class breaks, used when classification is "manual".
+    breaks: null,
     rule: "queen",
     study: "all",
     permutations: 999,
     seed: 12345,
     fdr: false,
     selected: null,
+    // More selected features (Shift-click), for pooled measures and buffers.
+    picks: [],
     result: null,
     mode: "value",
     inspector: false,
@@ -43,6 +53,14 @@ export function defaults(catalog) {
     layerViews: {},
     comparisons: {},
     compareLayer: null,
+    graticule: false,
+    // Layers drawn on the map, bottom to top (core/stack.js); `active` is the focus.
+    stack: [stackEntry(ref.id)],
+    // Census roads draw above area fills, or below them.
+    roads: "above",
+    // The spatial filter (geo/filter.js) and whether features outside it are dimmed or hidden.
+    filter: null,
+    filterMode: "dim",
   };
 }
 
@@ -59,7 +77,7 @@ export function layerViewDefaults(catalog, measure) {
  * rename used `tracts` and `baseMeasures` for what are now `reference` and
  * `referenceFields`; the map camera travels separately.
  */
-export function normalizeState(saved, catalog) {
+export function normalizeState(saved, catalog, isLibraryLayer = () => false) {
   const { camera, mapCamera, ...rest } = saved;
   const state = { ...defaults(catalog), ...rest };
   state.region = catalog.region.id;
@@ -70,5 +88,12 @@ export function normalizeState(saved, catalog) {
   }));
   state.layerViews ||= {};
   state.comparisons ||= {};
+  // Projects saved before layers could stack drew only the active layer.
+  const known = new Set([referenceLayer(catalog).id, ...state.layers.map((l) => l.id)]);
+  state.stack = normalizeStack(
+    saved.stack ?? [stackEntry(state.active)],
+    state.active,
+    (id) => known.has(id) || isLibraryLayer(id),
+  );
   return state;
 }

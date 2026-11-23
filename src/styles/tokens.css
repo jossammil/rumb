@@ -97,6 +97,8 @@
   --map-region-label: #5e5848;
   --map-halo: #050505;
   --map-town: #8f8774;
+  --map-road: #7a6e4e;
+  --map-road-minor: #4d4632;
   --map-neighbor: #ffb000;
   --map-selected: #33ff99;
   --map-point-stroke: #050505;
@@ -154,6 +156,8 @@
   --map-region-label: #5a1a14;
   --map-halo: #030000;
   --map-town: #8a2d24;
+  --map-road: #6a1d16;
+  --map-road-minor: #47120d;
   --map-neighbor: #c8342a;
   --map-selected: #d9503f;
   --map-point-stroke: #030000;
@@ -210,6 +214,8 @@
   --map-region-label: #6b6556;
   --map-halo: #f7f3e8;
   --map-town: #2b281f;
+  --map-road: #9c8656;
+  --map-road-minor: #c3b693;
   --map-neighbor: #a34f00;
   --map-selected: #000000;
   --map-point-stroke: #ffffff;
@@ -266,6 +272,8 @@
   --map-region-label: #33526b;
   --map-halo: #03060c;
   --map-town: #5f86a3;
+  --map-road: #2f6f99;
+  --map-road-minor: #1d4560;
   --map-neighbor: #22e5ff;
   --map-selected: #ff2bd6;
   --map-point-stroke: #03060c;
@@ -322,6 +330,8 @@
   --map-region-label: #656753;
   --map-halo: #10120e;
   --map-town: #9a9a80;
+  --map-road: #8c8a5a;
+  --map-road-minor: #565f33;
   --map-neighbor: #c8b560;
   --map-selected: #ff6a13;
   --map-point-stroke: #10120e;
@@ -383,6 +393,8 @@
   --map-region-label: #8a6a8a;
   --map-halo: #000000;
   --map-town: #c49ac4;
+  --map-road: #a07aa0;
+  --map-road-minor: #5d4360;
   --map-neighbor: #ff9900;
   --map-selected: #9999ff;
   --map-point-stroke: #000000;

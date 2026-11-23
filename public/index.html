@@ -70,17 +70,25 @@
             <h2><i data-icon="layers"></i>Layers<kbd>L</kbd></h2>
           </div>
           <div id="layer-list"></div>
-          <button class="small-btn full" id="add-data"><i data-icon="plus"></i>Add data</button>
+          <div class="layer-actions">
+            <button class="small-btn" id="add-layer"><i data-icon="layers"></i>Add layer</button>
+            <button class="small-btn" id="add-data"><i data-icon="plus"></i>Add data</button>
+          </div>
+          <label class="checkbox"><input type="checkbox" id="roads-above" checked />Roads above areas</label>
         </section>
         <section class="side-section" id="sec-style">
           <h2><i data-icon="sliders"></i>Map style<kbd>S</kbd></h2>
-          <label for="measure">Measure</label><select id="measure"></select>
-          <div class="two-fields">
+          <label for="measure">Color by</label><select id="measure"></select>
+          <button class="plain-btn" id="count-points" hidden>Count points in each area</button>
+          <div class="two-fields" id="classes-row">
             <div>
               <label for="classification">Classification</label
               ><select id="classification">
                 <option value="quantile">Quantile</option>
                 <option value="equal">Equal interval</option>
+                <option value="jenks">Natural breaks (Jenks)</option>
+                <option value="sd">Standard deviation</option>
+                <option value="manual">Manual breaks</option>
               </select>
             </div>
             <div>
@@ -91,11 +99,51 @@
                 <option selected>5</option>
                 <option>6</option>
                 <option>7</option>
+                <option>8</option>
+                <option>9</option>
               </select>
             </div>
           </div>
-          <label>Color palette</label>
-          <div id="palettes" role="group" aria-label="Color palette"></div>
+          <div id="manual-row" hidden>
+            <label for="manual-breaks">Breaks</label
+            ><input id="manual-breaks" type="text" inputmode="decimal" autocomplete="off" placeholder="10, 20, 30" />
+          </div>
+          <div id="palette-row">
+            <label>Color palette</label>
+            <div id="palettes" role="group" aria-label="Color palette"></div>
+          </div>
+          <details class="look" id="look">
+            <summary>Layer look</summary>
+            <div class="look-grid">
+              <label for="look-color" data-look="single">Color</label
+              ><input type="color" id="look-color" data-look="single" />
+              <label for="look-opacity">Opacity</label
+              ><input type="range" id="look-opacity" min="0.1" max="1" step="0.05" />
+              <label for="look-size" data-look="point line">Size</label
+              ><input type="range" id="look-size" min="1" max="15" step="1" data-look="point line" />
+              <label for="look-shape" data-look="point">Shape</label
+              ><select id="look-shape" data-look="point">
+                <option value="circle">Circle</option>
+                <option value="square">Square</option>
+                <option value="triangle">Triangle</option>
+                <option value="diamond">Diamond</option>
+              </select>
+              <label for="look-outline" data-look="polygon">Outline</label
+              ><input type="range" id="look-outline" min="0" max="5" step="0.25" data-look="polygon" />
+              <label for="look-outline-color" data-look="polygon">Outline color</label
+              ><input type="color" id="look-outline-color" data-look="polygon" />
+              <label for="look-label">Labels</label><select id="look-label"></select>
+            </div>
+            <button class="plain-btn" id="look-reset">Reset look</button>
+          </details>
+        </section>
+        <section class="side-section" id="sec-filter">
+          <h2><i data-icon="filter"></i>Filter<kbd>C</kbd></h2>
+          <div class="segmented" id="filter-kind" role="group" aria-label="Filter by"></div>
+          <div id="filter-body"></div>
+          <label class="checkbox"><input type="checkbox" id="filter-hide" />Hide what is outside (instead of dimming)</label>
+          <div id="filter-summary" aria-live="polite"></div>
+          <button class="plain-btn" id="filter-clear" disabled>Clear the filter</button>
         </section>
         <section class="side-section analysis-section" id="sec-analyze">
           <h2><i data-icon="cluster"></i>Spatial analysis<kbd>A</kbd></h2>
@@ -135,12 +183,14 @@
           <h2 id="map-title">Opening map…</h2>
           <p id="map-subtitle"></p>
         </div>
+        <div id="tool-card" class="floating" hidden aria-live="polite"></div>
         <div class="map-controls">
           <button id="zoom-in" aria-label="Zoom in" title="Zoom in (+)"><i data-icon="plus"></i></button
           ><button id="zoom-out" aria-label="Zoom out" title="Zoom out (−)"><i data-icon="minus"></i></button
           ><button id="fit" aria-label="Fit layer to map" title="Fit the layer (0)"><i data-icon="fit"></i></button
           ><button id="find-feature" aria-label="Find a feature" title="Find a feature (F)"><i data-icon="inspect"></i></button
-          ><button id="export-map" aria-label="Export map image" title="Export a PNG (E)"><i data-icon="photo"></i></button>
+          ><button id="export-map" aria-label="Export map image" title="Export a PNG (E)"><i data-icon="photo"></i></button
+          ><button id="share-map" aria-label="Copy a share link" title="Copy a share link (U)"><i data-icon="link"></i></button>
         </div>
         <div id="inspect-panel" hidden></div>
         <div id="legend" aria-live="polite"></div>

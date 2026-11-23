@@ -1,9 +1,11 @@
-// The MapLibre style: a Natural Earth backdrop for the region, then the data
-// layer drawn from one GeoJSON source whose features carry __rumb_id and
-// __rumb_color. Colors come from the theme (mapColors), so the backdrop can
-// change with it while data colors stay put.
+// The MapLibre style: a Natural Earth backdrop for the region, Census roads and
+// an optional 1° grid, with hidden anchor layers that mark where stacked data
+// layers go (map/layer-specs.js), plus sources for Compare and the selection.
+// Data features carry __rumb_id and __rumb_color. Colors come from the theme
+// (mapColors), so the backdrop can change with it while data colors stay put.
 
-export const DATA_LAYERS = ["areas", "lines", "points"];
+/** A hidden layer that marks where a band of stacked layers ends. */
+const anchor = (id) => ({ id, type: "background", layout: { visibility: "none" }, paint: {} });
 
 /** Map colors read from the theme's CSS tokens, with the original light look as fallback. */
 export function mapColors(root = document.documentElement) {
@@ -22,6 +24,10 @@ export function mapColors(root = document.documentElement) {
     neighbor: get("--map-neighbor", "#3d505c"),
     selected: get("--map-selected", "#1d2933"),
     pointStroke: get("--map-point-stroke", "#ffffff"),
+    accent: get("--accent", "#c47a10"),
+    info: get("--sem-info", "#3a7fb0"),
+    road: get("--map-road", "#b7a98a"),
+    roadMinor: get("--map-road-minor", "#cfc5ad"),
   };
 }
 
@@ -52,11 +58,25 @@ export function themedPaint(c) {
     lakes: { "fill-color": c.water },
     rivers: { "line-color": c.river },
     states: { "line-color": c.boundary },
-    outlines: { "line-color": c.outline },
-    points: { "circle-stroke-color": c.pointStroke },
-    neighbors: { "line-color": c.neighbor },
-    selected: { "line-color": c.selected },
-    "selected-point": { "circle-color": c.selected, "circle-stroke-color": c.pointStroke },
+    "cmp-outline": { "line-color": c.outline },
+    "sel-neighbor": { "line-color": c.neighbor },
+    "sel-line": { "line-color": c.selected },
+    "sel-point": { "circle-color": c.selected, "circle-stroke-color": c.pointStroke },
+    "roads-secondary": { "line-color": c.roadMinor },
+    "roads-primary": { "line-color": c.road },
+    "road-labels": { "text-color": c.label, "text-halo-color": c.halo },
+    graticule: { "line-color": c.boundary },
+    "filter-fill": { "fill-color": c.accent },
+    "filter-line": { "line-color": c.accent },
+    "filter-center": { "circle-color": c.accent, "circle-stroke-color": c.halo },
+    "sketch-fill": { "fill-color": c.accent },
+    "sketch-line": { "line-color": c.accent },
+    "sketch-points": { "circle-color": c.accent, "circle-stroke-color": c.halo },
+    "locate-accuracy": { "fill-color": c.info, "fill-outline-color": c.info },
+    "locate-dot": {
+      "circle-color": ["case", ["==", ["get", "kind"], "me"], c.info, c.accent],
+      "circle-stroke-color": c.halo,
+    },
     "state-names": { "text-color": c.region, "text-halo-color": c.halo },
     "town-dots": { "circle-color": c.town, "circle-stroke-color": c.halo },
     towns: { "text-color": c.label, "text-halo-color": c.halo },
@@ -78,7 +98,13 @@ export function buildStyle(region, regionPath, c = mapColors()) {
       world: src(empty),
       context: src(region.backdrop?.context ? regionPath + region.backdrop.context : empty),
       regionNames: src({ type: "FeatureCollection", features: labels }),
-      area: src(empty),
+      roads: src(empty),
+      graticule: src(empty),
+      cmp: src(empty),
+      selection: src(empty),
+      sketch: src(empty),
+      filter: src(empty),
+      locate: src(empty),
     },
     layers: [
       { id: "ocean", type: "background", paint: paint.ocean },
@@ -99,63 +125,149 @@ export function buildStyle(region, regionPath, c = mapColors()) {
         filter: kind("states"),
         paint: { ...paint.states, "line-width": 1.35, "line-dasharray": [5, 2] },
       },
+      // Compare draws its scored areas from its own source while the stack is hidden.
       {
-        id: "areas",
+        id: "cmp-fill",
         type: "fill",
-        source: "area",
-        filter: ["==", ["geometry-type"], "Polygon"],
+        source: "cmp",
         paint: { "fill-color": ["get", "__rumb_color"], "fill-opacity": 0.94 },
       },
       {
-        id: "outlines",
+        id: "cmp-outline",
         type: "line",
-        source: "area",
-        filter: ["==", ["geometry-type"], "Polygon"],
-        paint: {
-          ...paint.outlines,
-          "line-opacity": 0.68,
-          "line-width": width([4, 0.35, 7, 0.75, 11, 1.4]),
-        },
+        source: "cmp",
+        paint: { ...paint["cmp-outline"], "line-opacity": 0.68, "line-width": width([4, 0.35, 7, 0.75, 11, 1.4]) },
+      },
+      // Stacked layers' fills, outlines and lines go just before this anchor.
+      anchor("anchor-areas"),
+      // Roads (Census TIGER numbered routes) sit above area fills so they stay
+      // readable over a choropleth, and below points and selections.
+      {
+        id: "roads-secondary",
+        type: "line",
+        source: "roads",
+        minzoom: 7,
+        filter: ["==", ["get", "class"], "secondary"],
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { ...paint["roads-secondary"], "line-opacity": 0.8, "line-width": width([7, 0.5, 10, 1.1, 13, 2.4]) },
       },
       {
-        id: "lines",
+        id: "roads-primary",
         type: "line",
-        source: "area",
-        filter: ["==", ["geometry-type"], "LineString"],
-        paint: { "line-color": ["get", "__rumb_color"], "line-width": 3 },
+        source: "roads",
+        filter: ["==", ["get", "class"], "primary"],
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { ...paint["roads-primary"], "line-opacity": 0.9, "line-width": width([5, 0.7, 8, 1.5, 12, 3.4]) },
       },
       {
-        id: "points",
+        id: "graticule",
+        type: "line",
+        source: "graticule",
+        layout: { visibility: "none" },
+        paint: { ...paint.graticule, "line-width": 0.8, "line-opacity": 0.7, "line-dasharray": [1, 3] },
+      },
+      // Stacked layers' points go just before this anchor, above the roads.
+      anchor("anchor-points"),
+      // The selection and its neighbors, from whichever layer they belong to.
+      {
+        id: "sel-neighbor",
+        type: "line",
+        source: "selection",
+        filter: ["==", ["get", "role"], "neighbor"],
+        paint: { ...paint["sel-neighbor"], "line-width": 2, "line-dasharray": [2, 1] },
+      },
+      {
+        id: "sel-line",
+        type: "line",
+        source: "selection",
+        filter: ["all", ["==", ["get", "role"], "selected"], ["!=", ["geometry-type"], "Point"]],
+        paint: { ...paint["sel-line"], "line-width": 3.3 },
+      },
+      {
+        id: "sel-point",
         type: "circle",
-        source: "area",
+        source: "selection",
+        filter: ["all", ["==", ["get", "role"], "selected"], ["==", ["geometry-type"], "Point"]],
+        paint: { ...paint["sel-point"], "circle-radius": 6, "circle-stroke-width": 3 },
+      },
+      // The spatial filter's outline (a circle, a buffer or a drawn area).
+      {
+        id: "filter-fill",
+        type: "fill",
+        source: "filter",
+        filter: ["==", ["geometry-type"], "Polygon"],
+        paint: { ...paint["filter-fill"], "fill-opacity": 0.05 },
+      },
+      {
+        id: "filter-line",
+        type: "line",
+        source: "filter",
+        filter: ["==", ["geometry-type"], "Polygon"],
+        paint: { ...paint["filter-line"], "line-width": 1.6, "line-dasharray": [4, 2] },
+      },
+      {
+        id: "filter-center",
+        type: "circle",
+        source: "filter",
+        filter: ["==", ["geometry-type"], "Point"],
+        paint: { ...paint["filter-center"], "circle-radius": 4, "circle-stroke-width": 1.5 },
+      },
+      // Field tools: a measured or drawn shape, and a position (yours or one typed).
+      {
+        id: "sketch-fill",
+        type: "fill",
+        source: "sketch",
+        filter: ["==", ["geometry-type"], "Polygon"],
+        paint: { ...paint["sketch-fill"], "fill-opacity": 0.14 },
+      },
+      {
+        id: "sketch-line",
+        type: "line",
+        source: "sketch",
+        filter: ["==", ["geometry-type"], "LineString"],
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { ...paint["sketch-line"], "line-width": 2.2, "line-dasharray": [3, 1.5] },
+      },
+      {
+        id: "sketch-points",
+        type: "circle",
+        source: "sketch",
+        filter: ["==", ["geometry-type"], "Point"],
+        paint: { ...paint["sketch-points"], "circle-radius": 4, "circle-stroke-width": 1.5 },
+      },
+      {
+        id: "locate-accuracy",
+        type: "fill",
+        source: "locate",
+        filter: ["==", ["geometry-type"], "Polygon"],
+        paint: { ...paint["locate-accuracy"], "fill-opacity": 0.12 },
+      },
+      {
+        id: "locate-dot",
+        type: "circle",
+        source: "locate",
         filter: ["==", ["geometry-type"], "Point"],
         paint: {
-          "circle-radius": 5,
-          "circle-color": ["get", "__rumb_color"],
-          ...paint.points,
-          "circle-stroke-width": 1,
+          ...paint["locate-dot"],
+          "circle-radius": 6,
+          "circle-stroke-width": 2.5,
         },
       },
+      // Stacked layers' labels go just before this anchor.
+      anchor("anchor-labels"),
       {
-        id: "neighbors",
-        type: "line",
-        source: "area",
-        filter: ["==", ["get", "__rumb_id"], ""],
-        paint: { ...paint.neighbors, "line-width": 2, "line-dasharray": [2, 1] },
-      },
-      {
-        id: "selected",
-        type: "line",
-        source: "area",
-        filter: ["==", ["get", "__rumb_id"], ""],
-        paint: { ...paint.selected, "line-width": 3.3 },
-      },
-      {
-        id: "selected-point",
-        type: "circle",
-        source: "area",
-        filter: ["all", ["==", ["geometry-type"], "Point"], ["==", ["get", "__rumb_id"], ""]],
-        paint: { ...paint["selected-point"], "circle-radius": 6, "circle-stroke-width": 3 },
+        id: "road-labels",
+        type: "symbol",
+        source: "roads",
+        minzoom: 9,
+        layout: {
+          ...label,
+          "text-field": ["get", "ref"],
+          "text-size": 10,
+          "symbol-placement": "line",
+          "symbol-spacing": 320,
+        },
+        paint: { ...paint["road-labels"], "text-halo-width": 1.4 },
       },
       {
         id: "state-names",
@@ -181,4 +293,16 @@ export function buildStyle(region, regionPath, c = mapColors()) {
       },
     ],
   };
+}
+
+/** Meridians and parallels every `step` degrees across an extent [w, s, e, n]. */
+export function graticuleLines([west, south, east, north], step = 1) {
+  const features = [];
+  const line = (coordinates, value, axis) =>
+    features.push({ type: "Feature", properties: { value, axis }, geometry: { type: "LineString", coordinates } });
+  for (let x = Math.ceil(west / step) * step; x <= east; x += step)
+    line([[x, south], [x, north]], x, "lon");
+  for (let y = Math.ceil(south / step) * step; y <= north; y += step)
+    line([[west, y], [east, y]], y, "lat");
+  return { type: "FeatureCollection", features };
 }

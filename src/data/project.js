@@ -34,7 +34,8 @@ export async function packProject(state, inputs, baseFiles) {
 }
 /**
  * Reads a project. `reference` names the reference table (no import may use it)
- * and the base/ files it must contain (`required`) or may contain (`optional`).
+ * and the base/ files it must contain (`required`) or may contain (`optional`,
+ * a list or a function of the saved state).
  */
 export async function unpackProject(file, reference) {
   const zip = new ZipReader(new BlobReader(file), options);
@@ -74,7 +75,9 @@ export async function unpackProject(file, reference) {
     const base = {};
     for (const name of reference.required)
       base[name] = await read("base/" + name, new BlobWriter());
-    for (const name of reference.optional || [])
+    const optional =
+      typeof reference.optional === "function" ? reference.optional(m.state) : reference.optional || [];
+    for (const name of optional)
       if (entries.has("base/" + name))
         base[name] = await read("base/" + name, new BlobWriter());
     return { state: m.state, inputs, base };
