@@ -559,7 +559,7 @@ Build constants: `__RUMB_VERSION__`, `__RUMB_DEV__`, `__DUCKDB_FOLDER__`,
   `scripts/reference-models.R` writes the models, access and point-pattern
   fixtures into `tests/models-reference.json`.
 - **The tract tables:** edit `scripts/tables.json` (a variable code must keep
-  its label), run `Rscript scripts/prepare-tables.R <cache-folder>`, then
+  its label), run `Rscript scripts/prepare-tables.R` (add `--pin` if a download changed, and review `scripts/sources/`), then
   `npm test`.
 - **A new analysis method:**
   1. Write it as a pure module in `src/stats/` that takes the same inputs as

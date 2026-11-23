@@ -5,7 +5,7 @@
     "vintage": "2020–2024",
     "tables": ["DP02", "DP03", "DP04", "DP05"],
     "table": "ACSDP5Y2024.{table}",
-    "url": "https://data.census.gov/table/ACSDP5Y2024.{table}?g=040XX00US28$1400000",
+    "url": "https://data.census.gov/table/ACSDP5Y2024.{table}?g={geo}",
     "credit": "ACS 2020–2024 · U.S. Census Bureau",
     "group": "ACS 2020–2024 profile",
     "confidence": 90,
@@ -113,8 +113,8 @@
   "centers": {
     "title": "2020 Census centers of population",
     "credit": "2020 Census centers of population · U.S. Census Bureau",
-    "tracts": "https://www2.census.gov/geo/docs/reference/cenpop2020/tract/CenPop2020_Mean_TR28.txt",
-    "counties": "https://www2.census.gov/geo/docs/reference/cenpop2020/county/CenPop2020_Mean_CO28.txt",
+    "tracts": "https://www2.census.gov/geo/docs/reference/cenpop2020/tract/CenPop2020_Mean_TR{fips}.txt",
+    "counties": "https://www2.census.gov/geo/docs/reference/cenpop2020/county/CenPop2020_Mean_CO{fips}.txt",
     "countyLayer": "chr_counties_2025"
   }
 }

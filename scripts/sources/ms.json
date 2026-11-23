@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "region": "ms",
+  "acs_dp02": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP02?g=040XX00US28$1400000",
+    "sha256": "1ba4899b36145ffae184c955261fc8832d6c74d104bb9441a9b3f9b3205fa85c",
+    "rows": 878
+  },
+  "acs_dp03": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP03?g=040XX00US28$1400000",
+    "sha256": "f45c89cf58c71705b0899e58e67026336464915aa5ab7e20e95d4ae3c8c4d51c",
+    "rows": 878
+  },
+  "acs_dp04": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP04?g=040XX00US28$1400000",
+    "sha256": "7c7f85c845bb74213251ca3c1f3585b8ca233e0e87b005a9ce6dd2c79beba673",
+    "rows": 878
+  },
+  "acs_dp05": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP05?g=040XX00US28$1400000",
+    "sha256": "9c74fc4c4abb75d37949a93e2d268106bd971de504641482a730105435107f48",
+    "rows": 878
+  },
+  "acs_s1701": {
+    "url": "https://data.census.gov/table/ACSST5Y2024.S1701?g=040XX00US28$1400000",
+    "sha256": "81249cf8854929f9a99e8fec431497c12ba9cdd2bb891e71da5758a77a3261e9",
+    "rows": 878
+  },
+  "cb_states": {
+    "url": "https://www2.census.gov/geo/tiger/GENZ2024/shp/cb_2024_us_state_500k.zip",
+    "sha256": "3e81cbb6cf5f60d9b01ef3e730afa14d61ce5f784252a0b33a696135e71447bc"
+  },
+  "centers_counties": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/county/CenPop2020_Mean_CO28.txt",
+    "sha256": "a27a39077702ccfc0d5c8dc1e45533df8ee783831b27f509d3dfa938ac99f564",
+    "rows": 82
+  },
+  "centers_tracts": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/tract/CenPop2020_Mean_TR28.txt",
+    "sha256": "84deba8c73946dacdf5ca91d96c16ffe31198475a7892508723741b81e927349",
+    "rows": 878
+  },
+  "tiger_roads": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/PRISECROADS/tl_2024_28_prisecroads.zip",
+    "sha256": "421905d94b9429037db33c027fd9637a35d631aa2dd90a00ec4a665054e5b702"
+  },
+  "tiger_tracts": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/TRACT/tl_2024_28_tract.zip",
+    "sha256": "f0a48cb1d85b9f448bfddbeb8de0ef0105497e9d7f22464d10bcdb380c9df252",
+    "tracts": 878,
+    "counties": 82
+  }
+}

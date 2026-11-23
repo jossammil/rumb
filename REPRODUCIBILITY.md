@@ -66,17 +66,39 @@ A source installation of `sf` needs GDAL, GEOS and PROJ. The repository locks Ja
 | R data and geometry packages | sf 1.0-21, spdep 1.4-2, arrow 22.0.0.1, rmapshaper 0.6.1 |
 | Other R packages | jsonlite 2.0.0, digest 0.6.37, httr2 1.2.1 |
 
+### Options shared by the data scripts
+
+`prepare-data.R`, `prepare-tables.R`, `prepare-outline.R` and `prepare-basemap.R` build one state at a time and take the same options ([`scripts/lib/region.R`](scripts/lib/region.R)):
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--state MS` | `MS` | A state's abbreviation, FIPS code or data id, from [`scripts/regions.json`](scripts/regions.json) (the 50 states and DC) |
+| `--out DIR` | `public/data/<id>` | Where the region's files are written |
+| `--cache DIR` | `$RUMB_SOURCE_CACHE`, else `.cache/sources` | Downloads, national files under `us/` and the state's under its FIPS code; files already there are reused |
+| `--pin` | off | Record each download's SHA-256 and counts instead of checking them |
+
+Every download is pinned in `scripts/sources/<id>.json` ([Mississippi's](scripts/sources/ms.json)): its URL, SHA-256 and the counts read from it, such as the number of tracts and counties in the TIGER file. A data.census.gov export is pinned by the SHA-256 of its data CSV, because the ZIP around it changes between exports. Without `--pin`, a script stops when a download no longer matches its pin, so a changed source is reviewed (and re-pinned) before it reaches the app. `prepare-places.py` takes `--state` and `--out` too.
+
+[`scripts/compare-region.R`](scripts/compare-region.R) compares a fresh build with the committed folder by meaning: every JSON value, the GeoParquet columns and geometries, and `reference.json` to 1e-12. Package versions and output checksums are reported, not compared. On November 23, 2026, rebuilding Mississippi into a scratch folder reproduced every committed file byte for byte except `sources.json`, which records spdep 1.4-3 instead of 1.4-2.
+
+```sh
+out=$(mktemp -d)
+mkdir -p "$out/layers" && cp public/data/ms/layers/chr_counties_2025.geojson "$out/layers/"
+Rscript scripts/prepare-data.R --out "$out"
+Rscript scripts/prepare-tables.R --out "$out"
+Rscript scripts/prepare-outline.R --out "$out"
+Rscript scripts/prepare-basemap.R --out "$out"
+python3 scripts/prepare-places.py .cache/sources/us/PLACES_tract_GIS_2025.csv --out "$out"
+Rscript scripts/compare-region.R public/data/ms "$out"
+```
+
 ### Census geography, poverty and spatial weights
 
 ```sh
 Rscript scripts/prepare-data.R
 ```
 
-The script downloads the 2024 Mississippi TIGER/Line tract ZIP and the 2020–2024 ACS S1701 table for all Mississippi tracts. If using saved downloads, pass the two ZIPs in this order. The table ZIP must contain `ACSST5Y2024.S1701-Data.csv`.
-
-```sh
-Rscript scripts/prepare-data.R "$input_dir/tl_2024_28_tract.zip" "$input_dir/S1701.zip"
-```
+The script downloads the state's 2024 TIGER/Line tract ZIP and the 2020–2024 ACS S1701 table for all its tracts (a data.census.gov export, `ACSST5Y2024.S1701.zip` in the cache, which must contain `ACSST5Y2024.S1701-Data.csv`).
 
 The script joins one ACS record per TIGER GEOID, checks counts against denominators, and constructs queen and rook neighbors from unsimplified shared boundaries. Zero-denominator rates remain missing. It writes the following files. The [Census manifest](public/data/ms/sources.json) gives the download URLs, exact variable IDs, TIGER ZIP hash, extracted ACS CSV hash and product hashes.
 
@@ -136,10 +158,10 @@ Rscript scripts/prepare-basemap.R
 
 `context.geojson` contains the regional backdrop clipped to 98°W–82°W and 26°N–39°N. `world-land.geojson` supplies a global outline when the map leaves that region. These are display assets. The tract neighbor graph comes from TIGER geography.
 
-The same script also builds `roads.geojson` from the 2024 TIGER/Line primary and secondary roads for Mississippi (`tl_2024_28_prisecroads.zip`, SHA-256 `421905d94b9429037db33c027fd9637a35d631aa2dd90a00ec4a665054e5b702` on November 22, 2026). It keeps the numbered routes (Interstate, U.S. and state highways), dissolves each into one feature, simplifies it to about 40 m and labels it with a short reference such as `I-55` or `MS 25`. To rebuild only the roads, keeping the download in `RUMB_ROADS_CACHE`:
+The same script also builds `roads.geojson` from the 2024 TIGER/Line primary and secondary roads for Mississippi (`tl_2024_28_prisecroads.zip`, SHA-256 `421905d94b9429037db33c027fd9637a35d631aa2dd90a00ec4a665054e5b702` on November 22, 2026). It keeps the numbered routes (Interstate, U.S. and state highways), dissolves each class and route into one feature, simplifies it to about 40 m and labels it with a short reference such as `I-55` or `MS 25` (the state's abbreviation prefixes its routes). To rebuild only the roads:
 
 ```sh
-RUMB_ROADS_CACHE="$input_dir" Rscript scripts/prepare-basemap.R roads
+Rscript scripts/prepare-basemap.R roads
 ```
 
 ### Add-on layers (facilities, districts, County Health Rankings)
@@ -182,12 +204,12 @@ Rscript scripts/prepare-layers.R "$input_dir/layers"
 Statistics on tracts need more than poverty. [`scripts/tables.json`](scripts/tables.json) lists 15 ACS 2020–2024 covariates (each a published data-profile percentage with its margin of error, count and universe, or an estimate with its margin), all 40 CDC PLACES 2025 tract measures, and the 2020 Census centers of population for tracts and counties. [`scripts/prepare-tables.R`](scripts/prepare-tables.R) builds them into `public/data/ms/tables/`. The app reads `tables/index.json` after the first map, and a table's values only when one of its fields is mapped or a method needs it.
 
 ```sh
-Rscript scripts/prepare-tables.R "$input_dir/tables"
+Rscript scripts/prepare-tables.R
 ```
 
 - **ACS profiles.** The api.census.gov endpoint now requires a key, so the script requests the data.census.gov exports of `ACSDP5Y2024.DP02` to `DP05` for all Mississippi tracts, the same way `prepare-data.R` requests S1701. Each variable code is checked against the label it had on November 23, 2026. A changed label stops the build. "No high school diploma" is 100 minus the published "high school graduate or higher" percentage, with that percentage's margin of error; its count is the sum of the two published categories below a diploma. Every percentage is checked against count ÷ universe within 0.05 points.
-- **CDC PLACES.** The table uses the national 2025 GIS-friendly tract CSV, the same file (and SHA-256) as `places-2025.json` below. Values are model-based crude prevalence among adults with 95% intervals. 870 of the 878 tracts have estimates; the 8 without are listed in `index.json`. Measures for all adults pool over a selection as a mean weighted by adult population; the six measures for narrower groups (65 and over, women 50–74, ages 18–64, people screened or with high blood pressure) do not pool.
-- **Centers of population.** `CenPop2020_Mean_TR28.txt` and `CenPop2020_Mean_CO28.txt` give each tract's and county's population-weighted center and 2020 population. Distance-based statistics use them instead of shape centroids when they are loaded.
+- **CDC PLACES.** The table uses the national 2025 GIS-friendly tract CSV, the same file (and SHA-256) as `places-2025.json` below. Values are model-based crude prevalence among adults with 95% intervals. 870 of Mississippi's 878 tracts have estimates; the 8 without are listed in `index.json`. CDC publishes none for tracts with almost no adults, so the script stops if a tract with an ACS population of 50 or more has no PLACES row (Mississippi's 8 have at most 30 people). Measures for all adults pool over a selection as a mean weighted by adult population; the six measures for narrower groups (65 and over, women 50–74, ages 18–64, people screened or with high blood pressure) do not pool.
+- **Centers of population.** `CenPop2020_Mean_TR28.txt` and `CenPop2020_Mean_CO28.txt` (each state's files carry its FIPS code) give each tract's and county's population-weighted center and 2020 population. Distance-based statistics use them instead of shape centroids when they are loaded.
 - **County Health Rankings additions.** `scripts/layers.json` adds v127 (premature age-adjusted mortality) and v161 (suicides). Their published values are age-adjusted, but their numerators and denominators are crude counts and person-years, so pooled or smoothed values are crude rates and the app labels them so. Rebuilding the library on November 23, 2026 reproduced every other layer byte for byte.
 
 `tables/index.json` records each export's data-file SHA-256, the PLACES file hash, the center files' hashes, and each output's size and hash.
@@ -213,7 +235,7 @@ The scripts need the R packages `classInt`, `spdep`, `smerc`, `spatialreg`, `lmt
 Point patterns need the region's area and shape: the average nearest neighbor uses the area, Ripley's L envelopes place random points inside the outline, and density surfaces are clipped to it. [`scripts/prepare-outline.R`](scripts/prepare-outline.R) takes Mississippi from the Census Bureau's 2024 cartographic boundary file of states (`cb_2024_us_state_500k.zip`, SHA-256 `3e81cbb6cf5f60d9b01ef3e730afa14d61ce5f784252a0b33a696135e71447bc` on November 23, 2026). It simplifies the state with shared arcs and writes `public/data/ms/outline.geojson` (5,694 bytes; SHA-256 `12e94462d7443b83db3b164a211d7998ba4ed19f7f8a5f060c94505f014dc508`). In EPSG:3814 the outline covers 47,682 square miles.
 
 ```sh
-Rscript scripts/prepare-outline.R "$input_dir/outline"
+Rscript scripts/prepare-outline.R
 ```
 
 ## 4. Verify the rebuild
