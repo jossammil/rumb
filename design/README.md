@@ -95,3 +95,12 @@ published.
   - the "Smooth a rate" dialog and an empirical Bayes rate;
   - the spatial scan's most likely cluster of overdose deaths, on a desktop
     and a phone.
+- `stage-stats-b`: spatial statistics, part B. The part A screens, then:
+  - an OLS regression of PLACES diabetes on four ACS covariates, with its
+    residual map, coefficients and diagnostics;
+  - the spatial lag model with its impacts;
+  - a negative binomial model of overdose deaths by county;
+  - E2SFCA access to pharmacies by tract;
+  - a point pattern of nursing homes weighted by beds, with its centers
+    and ellipse;
+  - a kernel density surface of nursing-home beds.

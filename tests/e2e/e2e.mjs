@@ -1434,6 +1434,18 @@ await check("offline", async () => {
   await p.waitForFunction(() => window.rumb.map.querySourceFeatures("roads").length > 0);
   await p.evaluate(() => window.rumb.app.filter.set({ kind: "radius", center: [-90.18, 32.3], miles: 25 }));
   await waitText('[data-count="fire_stations_2020"]', "88 of", p);
+  // Point patterns (with the region's outline) and regressions run offline too.
+  await p.evaluate(() => window.rumb.app.filter.clear());
+  await p.selectOption("#method", "points");
+  await p.waitForSelector("#point-weight");
+  await p.click("#analyze");
+  await waitText("#inspect-panel", "Nearest neighbor ratio", p);
+  await p.click('[data-layer="tracts"]');
+  await p.selectOption("#method", "model");
+  await p.waitForSelector("#covariates");
+  await p.check('[data-covariate="acs_no_vehicle_pct"]');
+  await p.click("#analyze");
+  await waitText("#inspect-panel", "R² · adjusted", p);
   await p.evaluate(() => (window.print = () => (window.__printed = true)));
   await p.keyboard.press("p");
   await p.click("#report-print");

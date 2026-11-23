@@ -65,6 +65,15 @@ navigator's course of constant bearing. It was called Field Atlas (repository
     and Geary's C.
   - **Rate clusters**: Kulldorff's spatial scan (Poisson), with Monte Carlo
     p-values and secondary clusters, drawn as circles on the map.
+  - **Regression**: OLS with GeoDa's diagnostics (VIF, condition number,
+    Jarque–Bera, Breusch–Pagan, residual Moran's I, LM-lag and LM-error
+    with robust forms); spatial lag and spatial error models by maximum
+    likelihood, with impacts; Poisson and negative binomial models of counts
+    with a population offset and rate ratios. Residuals map, chart and
+    become fields.
+  - **Point patterns**: average nearest neighbor, Ripley's L with a random
+    envelope, and the mean and median centers, standard distance and
+    deviational ellipse.
   - **Neighbors**: queen or rook contiguity, k nearest, a distance band or
     inverse distance, measured between centers of population.
   - The whole state, one county or the current map extent as the study area;
@@ -74,6 +83,10 @@ navigator's course of constant bearing. It was called Field Atlas (repository
   spatial empirical Bayes and window rates, excess risk and exact Poisson
   limits as new fields. **Hatch unreliable estimates** stripes ACS estimates
   with a margin over 40% of the estimate and rates on fewer than 20 events.
+- **Access and density.** **Access to facilities…** adds the miles to the
+  nearest facility, the count within a distance, and an E2SFCA access ratio
+  per 10,000 people, from each area's center of population. **Density
+  surface…** turns a point layer into a kernel density layer.
 - **Compare areas.** Rank polygons on two or three weighted indicators, with
   a linked map, scatterplot and table, and each area's percentiles,
   contributions and uncertainty.
@@ -197,10 +210,13 @@ The spatial query returned one result per tract and counted 39,670 points inside
   `data/<region>/` layout are ready for more states; adding them is data work.
 - Map layers from SQL hold at most 10,000 features and 32 MiB of geometry; the
   SQL preview shows 100 rows. Filter or aggregate large inputs first.
-- Statistics cover clusters, hot spots, rate smoothing and the purely
-  spatial Poisson scan. Regression, access to facilities and point patterns
-  are next. Distances are straight lines in the state's projection, not
-  travel times.
+- The scan is purely spatial (no space-time), and there is no geographically
+  weighted regression or Bayesian disease mapping. Distances, access
+  included, are straight lines in the state's projection, not travel times.
+- Spatial lag and error models need symmetric weights (not plain k nearest)
+  and at most 2,500 areas, since they use the weights' eigenvalues. Ripley's
+  L has no edge correction; the random envelope, drawn inside the same
+  outline, carries the same bias.
 - CDC PLACES values are model-based; patterns in them partly reflect CDC's
   model, and results on them say so. County Health Rankings suppresses
   death counts under 10, so those counties drop out of smoothing and scans.

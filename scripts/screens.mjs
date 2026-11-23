@@ -2,9 +2,10 @@
 // map, then Compare, SQL, the palette and a phone; then stacked library
 // layers, a filter, a pooled selection, natural breaks, measuring and a
 // 320px phone; then the statistics (tract tables, hot spots, bivariate and
-// EB clusters, hatching, smoothing and the scan), as numbered JPEGs. Not a
-// test; run after `npm run build` when the look changes:
-//   node scripts/screens.mjs stats-a
+// EB clusters, hatching, smoothing and the scan; regressions, count models,
+// access, point patterns and density), as numbered JPEGs. Not a test; run
+// after `npm run build` when the look changes:
+//   node scripts/screens.mjs stats-b
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -172,6 +173,62 @@ await shot("scan-clusters");
 await page.setViewportSize({ width: 390, height: 844 });
 await page.waitForTimeout(600);
 await shot("scan-phone");
+
+// Statistics, part B: regressions, count models, access, point patterns and density.
+await page.setViewportSize({ width: 1440, height: 900 });
+const covariates = async (list) => {
+  await page.waitForSelector("#covariates");
+  for (const x of list) await page.check(`[data-covariate="${x}"]`);
+};
+await page.click('[data-layer="tracts"]');
+// Tract regressions show with the counties hidden; the county model shows them again.
+await page.evaluate(() => {
+  window.rumb.app.toggleLayer("chr_counties_2025");
+  window.rumb.app.setMeasure("places_diabetes");
+});
+await page.selectOption("#method", "model");
+await page.selectOption("#rule", "queen");
+await covariates(["acs_uninsured_pct", "acs_age65_pct", "acs_no_vehicle_pct", "acs_bachelors_pct"]);
+await page.evaluate(() => window.rumb.map.jumpTo({ center: [-89.7, 32.6], zoom: 6.4 }));
+await runAnalysis("R² · adjusted");
+await shot("regression-ols");
+await page.selectOption("#model-type", "lag");
+await runAnalysis("ρ (rho)");
+await page.locator('[data-table^="Impacts"]').scrollIntoViewIfNeeded();
+await shot("regression-lag-impacts");
+await page.evaluate(() => window.rumb.app.toggleLayer("chr_counties_2025"));
+await page.click('[data-layer="chr_counties_2025"]');
+await page.evaluate(() => window.rumb.app.setMeasure("v138_rawvalue"));
+await page.selectOption("#method", "model");
+await page.selectOption("#model-type", "nb");
+await covariates(["v085_rawvalue", "v023_rawvalue", "v058_rawvalue"]);
+await runAnalysis("θ (dispersion)");
+await shot("count-model-nb");
+await page.click('[data-layer="tracts"]');
+await page.evaluate(() => {
+  window.rumb.runCommand("clear-selection");
+  window.rumb.app.store.set({ mode: "value", inspector: false });
+  window.rumb.app.toggleLayer("chr_counties_2025");
+});
+await page.click("#access-tool");
+await page.selectOption("#access-layer", "pharmacies_2010");
+await page.click("#access-go");
+await page.locator("#legend", { hasText: "access (E2SFCA" }).waitFor();
+await page.waitForTimeout(800);
+await shot("access-pharmacies");
+await add("nursing_homes_2024");
+await page.selectOption("#method", "points");
+await page.selectOption("#point-weight", "beds");
+await runAnalysis("Nearest neighbor ratio");
+await shot("point-pattern");
+await page.click("#density-tool");
+await page.locator("#density-note", { hasText: "Auto bandwidth" }).waitFor();
+await page.selectOption("#density-weight", "beds");
+await page.locator("#density-note", { hasText: "Auto bandwidth" }).waitFor();
+await page.click("#density-go");
+await page.locator("#toast", { hasText: "Added Density" }).waitFor();
+await page.waitForTimeout(800);
+await shot("density-surface");
 await browser.close();
 server.kill();
 console.log(`Wrote ${n} screenshots to ${dir}/`);

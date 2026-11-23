@@ -194,7 +194,7 @@ Rscript scripts/prepare-tables.R "$input_dir/tables"
 
 ### Independent fixtures for the map tools
 
-Four R scripts write the fixtures the unit tests compare against. Each uses
+Six R scripts write the fixtures the unit tests compare against. Each uses
 the committed data files, so rerun them only when those files change.
 
 | Script | Writes | What it computes |
@@ -204,8 +204,17 @@ the committed data files, so rerun them only when those files change.
 | `scripts/reference-filters.R` | `tests/filter-reference.json` | GEOS radius, buffer and polygon filters on the display files, in EPSG:3814 |
 | `scripts/reference-counts.R` | `tests/counts-reference.json` | GEOS point-in-polygon counts per tract and county; pooled County Health Rankings measures by map_project's rules |
 | `scripts/reference-stats.R` | `tests/stats-reference.json` | R's distribution functions and quantiles (deep tails included) and `poisson.test` limits; spdep k-nearest, distance-band and inverse-distance weights between tract centers of population projected by PROJ, with Moran's I on each; GEOS centroids; spdep Gi* (`localG`), `globalG.test`, `geary.test`, `localmoran_bv` and `EBImoran.mc`; `EBest` and `EBlocal`; smerc `scan.test` clusters for county overdose deaths and tract poverty |
+| `scripts/reference-models.R` | `tests/models-reference.json` | `qr.coef`, `chol2inv`, `chol` and symmetric `eigen` on tract data and weights; `lm` with VIF, condition number and Jarque–Bera by formula, `lmtest::bptest`, spdep `lm.morantest` and `lm.RStests`; spatialreg `lagsarlm`, `errorsarlm` (eigen) and `impacts`; `glm` and `MASS::glm.nb` for overdose deaths with an offset; access (nearest, within, E2SFCA) and point patterns (nearest neighbor, Ripley's L, centrography, quartic density) by formula on sf's distances |
 
-The scripts need the R packages `classInt`, `spdep` and `smerc` besides those above. The statistics fixtures were written with spdep 1.4-3 and smerc 1.8.6 (installed November 23, 2026; `prepare-data.R`'s spdep reference reproduces with them to 4e-16). [METHODS.md](METHODS.md) lists each formula with the R function it is checked against and the tolerance.
+The scripts need the R packages `classInt`, `spdep`, `smerc`, `spatialreg`, `lmtest` and `MASS` besides those above. The statistics fixtures were written with spdep 1.4-3, smerc 1.8.6, spatialreg 1.4-3, lmtest 0.9-40 and MASS 7.3-65 (installed November 23, 2026; `prepare-data.R`'s spdep reference reproduces with them to 4e-16). [METHODS.md](METHODS.md) lists each formula with the R function it is checked against and the tolerance.
+
+### Region outline
+
+Point patterns need the region's area and shape: the average nearest neighbor uses the area, Ripley's L envelopes place random points inside the outline, and density surfaces are clipped to it. [`scripts/prepare-outline.R`](scripts/prepare-outline.R) takes Mississippi from the Census Bureau's 2024 cartographic boundary file of states (`cb_2024_us_state_500k.zip`, SHA-256 `3e81cbb6cf5f60d9b01ef3e730afa14d61ce5f784252a0b33a696135e71447bc` on November 23, 2026). It simplifies the state with shared arcs and writes `public/data/ms/outline.geojson` (5,694 bytes; SHA-256 `12e94462d7443b83db3b164a211d7998ba4ed19f7f8a5f060c94505f014dc508`). In EPSG:3814 the outline covers 47,682 square miles.
+
+```sh
+Rscript scripts/prepare-outline.R "$input_dir/outline"
+```
 
 ## 4. Verify the rebuild
 

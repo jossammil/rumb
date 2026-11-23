@@ -169,6 +169,27 @@ see [REPRODUCIBILITY.md](REPRODUCIBILITY.md)).
    and legend from the method's classes; `src/panels/inspector.js` draws its
    summary and feature rows; the CSV, PNG note and report read the same entry.
 
+### Fit a regression
+
+1. With **Regression** chosen, `src/panels/methods/model.js` lists the
+   covariates in the measure picker's groups. The measure on the map is the
+   outcome.
+2. `run()` sends `{ type: "model", modelType, values, covariates, … }`. For
+   count models it also sends the measure's numerator and denominator
+   (`poolOf`).
+3. In the worker, `fitModel()` (`stats/models.js`) keeps the areas with
+   every variable and an eligible neighbor, then fits the model:
+   - OLS always (`stats/regression.js`), for its diagnostics;
+   - the spatial model (`stats/spatial-models.js`) or the count model
+     (`stats/glm.js`) on top.
+   It classes the standardized residuals.
+4. The registry entry `model` (`stats/methods.js`) supplies the summary rows,
+   the coefficient, impact and diagnostic tables, and the two charts. The
+   inspector renders these generically.
+5. **Add predictions and residuals as fields** stores a model spec on the
+   stack entry. `app.ensureDerived()` refits it in the worker, so
+   `fit_*`, `res_*` and `sres_*` appear under Derived.
+
 ### Smooth a rate
 
 1. **Smooth a rate…** opens `src/panels/smooth.js`, which lists the focus
@@ -286,6 +307,15 @@ tokens, `src/map/basemap-style.js`) and redraws the data layer, because
 | `stats/scan.js` | yes | Kulldorff's spatial scan (Poisson) with Monte Carlo replicates | `scanAreas`, `scan`, `llr` |
 | `stats/dist.js` | yes | Normal, t, F, chi-square, gamma and Poisson distributions and quantiles | `pnorm`, `qnorm`, `pt`, `pchisq`, `qgamma`, `poissonCI` |
 | `stats/random.js` | yes | Seeded uniforms (Mulberry32), shuffles, binomial and multinomial draws | `randomGenerator`, `binomial`, `multinomial` |
+| `stats/linalg.js` | yes | Householder QR, (XᵀX)⁻¹, Cholesky, solves, symmetric eigenvalues | `leastSquares`, `qr`, `symmetricEigenvalues` |
+| `stats/regression.js` | yes | OLS with GeoDa's diagnostics and the spatial LM tests, from sparse traces | `ols`, `spatialDiagnostics`, `standardize` |
+| `stats/spatial-models.js` | yes | ML spatial lag and spatial error models, with impacts | `spatialModel`, `weightEigenvalues`, `brent` |
+| `stats/glm.js` | yes | Poisson and negative binomial regression with an offset | `countModel`, `thetaML` |
+| `stats/models.js` | yes | A model over a layer's areas: eligibility, residual classes, the worker entry | `fitModel`, `MODEL_TYPES` |
+| `stats/access.js` | yes | Nearest facility, facilities within a distance, E2SFCA | `accessMeasures`, `decay` |
+| `stats/points.js` | yes | Nearest neighbor, Ripley's L with envelopes, centrography, kernel density | `pointPattern`, `densityGrid`, `centrography` |
+| `core/derived.js` | yes | Derived-field and generated-layer specs: rates, models, access, density | `derivedSpec`, `modelSpec`, `accessSpec`, `densitySpec` |
+| `ui/chart.js` | partly | Moran scatterplot, point chart, line chart with a band, histogram; nice ticks (pure) | `scatter`, `pointChart`, `lineChart`, `histogram`, `niceTicks` |
 | `stats/weights.js` | yes | Queen/rook contiguity with jsts | `polygonNeighbors` |
 | `stats/compare-score.js` | yes | Compare percentiles, scores, ranks, CSV | `compareAreas`, `comparisonCSV` |
 | `stats/pool.js` | yes | Pooled measures (Σ numerator / Σ denominator) with coverage | `aggregate`, `poolOf`, `neighborsOf` |
@@ -293,6 +323,7 @@ tokens, `src/map/basemap-style.js`) and redraws the data layer, because
 | `stats/worker.js`, `stats/client.js` | worker | The worker and its persistent client | `callStats` |
 | `panels/*.js` | no | Layers, style, filter, tools, analysis, inspector, find, Compare, workbench, files, share, exports, smoothing | `create…`, `open…` |
 | `panels/methods/*.js` | no | Controls a method adds under the Method menu (loaded when chosen) | `render` |
+| `panels/access.js`, `panels/density.js`, `panels/smooth.js` | no | The access, density surface and smoothing dialogs (loaded when used) | `openAccess`, `openDensity`, `openSmooth` |
 | `report/report.js` | no | The printable report (loaded when used) | `openReport`, `buildReport` |
 | `ui/dom.js` | no | `$`, `h`, `s`, `fill`, `icon`, `toast`, `on` | — |
 | `ui/palette.js` | partly | Ranking (pure) and the palette dialog | `fuzzyScore`, `rankItems`, `createPalette` |
@@ -525,6 +556,8 @@ Build constants: `__RUMB_VERSION__`, `__RUMB_DEV__`, `__DUCKDB_FOLDER__`,
   `reference-filters.R` and `reference-counts.R` only when their inputs change.
   `scripts/reference-stats.R` writes every statistics fixture (distributions,
   weights, hot spots, variants, rates, scans) into `tests/stats-reference.json`.
+  `scripts/reference-models.R` writes the models, access and point-pattern
+  fixtures into `tests/models-reference.json`.
 - **The tract tables:** edit `scripts/tables.json` (a variable code must keep
   its label), run `Rscript scripts/prepare-tables.R <cache-folder>`, then
   `npm test`.
@@ -557,6 +590,10 @@ Build constants: `__RUMB_VERSION__`, `__RUMB_DEV__`, `__DUCKDB_FOLDER__`,
     - bivariate and EB-adjusted Moran (spdep);
     - EB, spatial EB and window rates (spdep, formulas) and Poisson limits;
     - the spatial scan's clusters (smerc);
+    - linear algebra (`qr.coef`, `chol2inv`, `eigen`), OLS and its
+      diagnostics (lm, lmtest, spdep), spatial lag and error models and
+      impacts (spatialreg), Poisson and negative binomial (glm, MASS);
+    - access measures and point patterns, by R formulas on sf's distances;
   - **Compare:** all 870 scores, ranks and quadrants against R;
   - **pure modules:** catalog and library against data, store, stack, layer
     specs, classes, CSV, keys, settings, palette ranking, popups, exports;
@@ -574,6 +611,8 @@ Build constants: `__RUMB_VERSION__`, `__RUMB_DEV__`, `__DUCKDB_FOLDER__`,
     - **startup:** the map before any analytics, roads or library layers load;
     - **statistics:** queen and rook global I; distance weights; hot spots;
       bivariate and EB clusters; rate smoothing and hatching; the scan;
+      regressions (OLS, lag, error) and count models; access to facilities;
+      point patterns and density surfaces;
       the tract tables (lazy, pooled, in SQL, shared);
     - **data:** imports, joins and mapped queries;
     - **projects:** save and restore, including old Field Atlas projects;

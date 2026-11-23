@@ -7,7 +7,7 @@
 //   an envelope of simulated CSR patterns drawn inside the region's outline;
 // - centrography: the (weighted) mean center, the median center (Weiszfeld's
 //   iteration), the standard distance and the standard deviational ellipse,
-//   with the √2 correction Esri adopted (Wang, Shi & Stump 2015);
+//   with the √2 correction Esri adopted (Wang, Shi & Miao 2015);
 // - kernel density with the quartic kernel (Silverman 1986, eq. 4.5), and
 //   Esri's spatial variant of Silverman's rule for the default bandwidth.
 // Pure.
