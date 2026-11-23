@@ -177,6 +177,20 @@ Rscript scripts/prepare-layers.R "$input_dir/layers"
 
 **County Health Rankings.** The rows come from the analytic CSV filtered to the 82 Mississippi counties, placed on the 2020 Census county geometry from the MARIS county layer, and joined on the five-digit FIPS code. Fractions become percentages, and provider ratios become rates per 100,000. Each pooled measure keeps its numerator, denominator and flag. The official file downloaded on November 22, 2026 has SHA-256 `5a129b856489fe6646013d7fcf85397dd576f6d67a65f5db72738a1df29643de` and matched map_project's copy. Cite it as: University of Wisconsin Population Health Institute, *County Health Rankings & Roadmaps 2025*.
 
+### Independent fixtures for the map tools
+
+Four R scripts write the fixtures the unit tests compare against. Each uses
+the committed data files, so rerun them only when those files change.
+
+| Script | Writes | What it computes |
+| --- | --- | --- |
+| `scripts/reference-classify.R` | `tests/classify-reference.json` | classInt Fisher natural breaks (no sampling) and standard-deviation breaks for six fields at 3 to 9 classes |
+| `scripts/reference-geo.R` | `tests/geo-reference.json` | 259 NAD83 positions projected to EPSG:3814 by PROJ |
+| `scripts/reference-filters.R` | `tests/filter-reference.json` | GEOS radius, buffer and polygon filters on the display files, in EPSG:3814 |
+| `scripts/reference-counts.R` | `tests/counts-reference.json` | GEOS point-in-polygon counts per tract and county; pooled County Health Rankings measures by map_project's rules |
+
+The scripts need the R package `classInt` besides those above.
+
 ## 4. Verify the rebuild
 
 Run the baseline checks after regenerating the inputs. The first command lists changed products. With the original inputs and the reference environment, the list was empty. With the fresh CDC export described above, expect only `public/data/ms/places-2025.json` and run its record comparison above.
@@ -196,7 +210,25 @@ npm run e2e
 BROWSER=webkit npm run e2e
 ```
 
-The checks cover the map, both neighbor rules (global I 0.2768 and 0.2846), imports, table joins, exports, project restore (including a version 1 Field Atlas archive), SQL and mobile layout; Compare's linked selections, weights, exclusions, imported polygons, narrow-screen resizing and restore with the PLACES request blocked; themes, the command palette, keyboard shortcuts and the status bar; and an offline reload. All of them check that runtime requests stay on the site's own origin. Playwright WebKit supplies engine coverage. Native Safari requires a separate device or browser check.
+The checks cover:
+
+- **the map:** both neighbor rules (global I 0.2768 and 0.2846);
+- **data:** imports, table joins, exports, SQL and mobile layout;
+- **projects:** project restore, including a version 1 Field Atlas archive;
+- **Compare:** linked selections, weights, exclusions, imported polygons,
+  narrow-screen resizing, and restore with the PLACES request blocked;
+- **the shell:** themes, the command palette, keyboard shortcuts and the
+  status bar;
+- **library layers:** stacking them, with the tract statistics and Compare
+  unchanged, and restoring them from a project without refetching;
+- **map tools:** looks, labels and popups; the new class methods; measuring,
+  location and go-to; the radius, buffer and area filters against the GEOS
+  fixture; pooled selections and point counts;
+- **sharing and output:** share links opened in a second browser; exports
+  read back in; the printed report;
+- **offline:** an offline reload.
+
+All of them check that runtime requests stay on the site's own origin. Playwright WebKit supplies engine coverage. Native Safari requires a separate device or browser check.
 
 **Verification on November 21, 2026 (baseline `4cbfc4a`).** A separate checkout reproduced all eight tracked files under `public/data/` and the R comparison fixture byte for byte using the archived inputs. The automated Census download reproduced the same source manifest and product hashes. All eight unit tests at that commit, the production build and both browser suites passed in Chrome and Playwright WebKit. The public CDC export comparison above records the one input-hash difference observed when fetching data again.
 

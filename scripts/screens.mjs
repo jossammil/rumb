@@ -1,7 +1,9 @@
 // Review screenshots for design/screens/<stage>/: every theme on the cluster
-// map, then Compare, SQL, the palette and a phone, as numbered JPEGs. Not a
-// test; run after `npm run build` when the look changes:
-//   node scripts/screens.mjs foundation
+// map, then Compare, SQL, the palette and a phone; then stacked library
+// layers, a filter, a pooled selection, natural breaks, measuring and a
+// 320px phone, as numbered JPEGs. Not a test; run after `npm run build` when
+// the look changes:
+//   node scripts/screens.mjs parity
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -52,6 +54,61 @@ await page.keyboard.press("Escape");
 await page.setViewportSize({ width: 390, height: 844 });
 await page.waitForTimeout(500);
 await shot("phone");
+
+// Map parity: library layers, styles, filters, pooled selections, field tools.
+await page.setViewportSize({ width: 1440, height: 900 });
+const add = async (id) => {
+  await page.keyboard.press("n");
+  await page.click(`[data-library="${id}"]`);
+  await page.locator("#toast", { hasText: "Added" }).waitFor();
+  await page.waitForTimeout(300);
+};
+await page.evaluate(() => window.rumb.runCommand("clear-selection"));
+await add("chr_counties_2025");
+await add("fire_stations_2020");
+await page.click("#look summary");
+await page.selectOption("#look-shape", "triangle");
+await page.evaluate(() => window.rumb.map.jumpTo({ center: [-90.1, 32.35], zoom: 7.4 }));
+await page.waitForTimeout(800);
+await shot("stacked-layers");
+await page.click('[data-layer="chr_counties_2025"]');
+await page.evaluate(() => window.rumb.app.filter.set({ kind: "radius", center: [-90.18, 32.3], miles: 25 }));
+await page.waitForTimeout(800);
+await shot("filter-radius");
+await page.evaluate(() => {
+  window.rumb.app.filter.clear();
+  window.rumb.app.selectFeature("28049");
+  window.rumb.app.togglePick("28121");
+});
+await page.waitForTimeout(800);
+await shot("pooled-selection");
+await page.click('[data-layer="tracts"]');
+await page.evaluate(() => {
+  window.rumb.runCommand("clear-selection");
+  window.rumb.app.store.set({ mode: "value", inspector: false });
+  window.rumb.app.toggleLayer("chr_counties_2025");
+  window.rumb.app.toggleLayer("fire_stations_2020");
+});
+await page.selectOption("#classification", "jenks");
+await page.selectOption("#class-count", "9");
+await page.click('[data-palette="RdBu"]');
+await page.evaluate(() => window.rumb.map.jumpTo({ center: [-89.7, 32.6], zoom: 6.4 }));
+await page.waitForTimeout(800);
+await shot("natural-breaks");
+await page.evaluate(() => window.rumb.map.jumpTo({ center: [-90.15, 32.3], zoom: 9 }));
+await page.keyboard.press("m");
+const box = await page.locator("#map").boundingBox();
+for (const pt of [[-90.3, 32.2], [-90.0, 32.2], [-90.0, 32.4]]) {
+  const xy = await page.evaluate((q) => window.rumb.map.project(q), pt);
+  await page.mouse.click(box.x + xy.x, box.y + xy.y);
+}
+await page.keyboard.press("Enter");
+await page.waitForTimeout(500);
+await shot("measure");
+await page.evaluate(() => window.rumb.app.tools.stop());
+await page.setViewportSize({ width: 320, height: 720 });
+await page.waitForTimeout(500);
+await shot("phone-320");
 await browser.close();
 server.kill();
 console.log(`Wrote ${n} screenshots to ${dir}/`);
