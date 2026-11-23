@@ -16,6 +16,7 @@ export const LAYER_VIEW_KEYS = [
   "yField",
   "scan",
   "model",
+  "pointWeight",
   "rule",
   "k",
   "band",
@@ -60,6 +61,8 @@ export function defaults(catalog) {
     scan: { maxPop: 0.25, maxMiles: null, direction: "high" },
     // Regression: the model type and its covariates (the measure is the outcome).
     model: { type: "ols", xs: [] },
+    // Point patterns: a field to weight the points by (null: each counts once).
+    pointWeight: null,
     rule: "queen",
     k: 6,
     band: null,

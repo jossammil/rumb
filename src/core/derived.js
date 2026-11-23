@@ -51,3 +51,23 @@ export const derivedSpec = (spec) =>
 
 /** The fields a model spec adds: predicted, residual and standardized residual. */
 export const modelFields = (spec) => ["fit_" + spec.y, "res_" + spec.y, "sres_" + spec.y];
+
+/**
+ * A density surface's spec made safe: { kind: "density", source (a point
+ * layer), weight (a field or null), bandwidth and cell (miles, or null for
+ * the defaults) }. The surface is a generated layer, density_<source>.
+ */
+export function densitySpec(spec) {
+  if (spec?.kind !== "density" || typeof spec.source !== "string" || !spec.source) return null;
+  const miles = (v) => (Number(v) >= 0.1 && Number(v) <= 200 ? Number(v) : null);
+  return {
+    kind: "density",
+    source: spec.source,
+    weight: typeof spec.weight === "string" && spec.weight ? spec.weight : null,
+    bandwidth: miles(spec.bandwidth),
+    cell: miles(spec.cell),
+  };
+}
+
+/** The id of a density surface's layer. */
+export const densityId = (spec) => "density_" + spec.source;

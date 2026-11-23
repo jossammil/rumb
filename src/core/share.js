@@ -8,14 +8,14 @@
 // where the browser cannot compress. Pure apart from CompressionStream.
 import { normalizeFilter } from "../geo/filter.js";
 import { METHODS } from "../stats/methods.js";
-import { derivedSpec, MODEL_KINDS } from "./derived.js";
+import { densitySpec, derivedSpec, MODEL_KINDS } from "./derived.js";
 import { WEIGHT_KINDS } from "../stats/neighbors.js";
 
 /** Longest link part rumb writes (characters after #state=). */
 export const SHARE_LIMIT = 8000;
 const VIEW_KEYS = [
   "measure", "category", "palette", "classification", "count", "breaks",
-  "method", "inference", "yField", "scan", "model", "rule", "k", "band", "power", "symmetric", "study", "permutations", "seed", "fdr",
+  "method", "inference", "yField", "scan", "model", "pointWeight", "rule", "k", "band", "power", "symmetric", "study", "permutations", "seed", "fdr",
 ];
 const LOOK_KEYS = ["color", "opacity", "size", "shape", "outline", "outlineColor", "hatch"];
 
@@ -79,9 +79,15 @@ export function shareState(state, { camera, isShared, reference }) {
     g: state.graticule ? 1 : undefined,
     vw: state.view === "compare" ? "compare" : undefined,
     c: state.comparisons?.[reference] ? pick(state.comparisons[reference], ["components", "color", "selected"]) : undefined,
+    // Generated layers (density surfaces) travel as their specs and are rebuilt.
+    gen: (state.layers || []).filter((l) => l.generated && stack.some((e) => e.id === l.id)).map((l) => l.generated),
   };
+  if (!data.gen.length) delete data.gen;
   return JSON.parse(JSON.stringify(data));
 }
+
+/** The generated layers a link asks for, as safe specs. */
+export const generatedOf = (data) => (Array.isArray(data?.gen) ? data.gen.slice(0, 4).map(densitySpec).filter(Boolean) : []);
 
 /** The text after #state= for shared data; shortened (picks, then the drawn area) to fit the limit. */
 export async function encodeShare(data, { limit = SHARE_LIMIT } = {}) {
@@ -147,6 +153,7 @@ export function readShare(data, { known, palettes, region }) {
         method: METHODS[w.method] ? w.method : undefined,
         inference: ["normal", "permutation"].includes(w.inference) ? w.inference : undefined,
         yField: str(w.yField),
+        pointWeight: str(w.pointWeight),
         model:
           w.model && typeof w.model === "object"
             ? {

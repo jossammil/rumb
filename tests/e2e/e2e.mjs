@@ -568,6 +568,41 @@ await check("access", async () => {
   await q.context().close();
 });
 
+await check("points", async () => {
+  const ref = JSON.parse(await readFile("tests/models-reference.json", "utf8")).points.health;
+  const p = await openPage();
+  await p.keyboard.press("n");
+  await p.click('[data-library="public_health_departments_2010"]');
+  await waitText("#toast", "Added Public health departments", p);
+  await p.selectOption("#method", "points");
+  await p.waitForSelector("#point-weight");
+  await p.click("#analyze");
+  // About one department per county: more even than random, as R's formula finds.
+  await waitText("#inspect-panel", "Nearest neighbor ratio" + ref.ann.ratio.toFixed(3) + ": dispersed", p);
+  expect((await p.locator("#inspect-panel svg.chart").count()) === 1, "Ripley's L chart");
+  await p.waitForFunction(() => window.rumb.map.querySourceFeatures("analysis").length >= 2);
+  // A density surface becomes a layer of its own.
+  await p.click("#density-tool");
+  await waitText("#density-note", "Auto bandwidth for 90 points", p);
+  await p.click("#density-go");
+  await waitText("#toast", "Added Density of public health departments", p);
+  await waitText("#legend", "per sq mi (quartic kernel", p);
+  const cells = await p.evaluate(() => window.rumb.app.layer().collection.features.length);
+  expect(cells > 1000, "density cells " + cells);
+  // The surface travels in a share link as its spec and is rebuilt.
+  await p.evaluate(() => window.rumb.runCommand("share"));
+  await p.locator("#share-link").waitFor();
+  const url = await p.inputValue("#share-link");
+  await p.context().close();
+  const q = await openPage();
+  await q.goto(url.replace(/^https?:\/\/[^/]+/, origin));
+  await ready(q);
+  await waitText("#toast", "Opened a shared map", q);
+  const rebuilt = await q.evaluate(() => window.rumb.state.layers.find((l) => l.generated)?.collection.features.length);
+  expect(rebuilt === cells, "rebuilt cells " + rebuilt);
+  await q.context().close();
+});
+
 await check("identity", async () => {
   const p = await openPage();
   const ids = ["lyr-tracts-fill", "lyr-tracts-outline", "anchor-areas", "anchor-points", "anchor-labels", "sel-line"];

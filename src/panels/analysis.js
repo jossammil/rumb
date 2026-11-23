@@ -4,6 +4,8 @@
 import { featureId, groups, isPolygon } from "../core/features.js";
 import { csvText } from "../data/csv.js";
 import { projectedIndex } from "../geo/filter.js";
+import { mapGeometry } from "../geo/spatial.js";
+import { ellipseRing } from "../stats/points.js";
 import { callStats } from "../stats/client.js";
 import { METHOD_LIST, methodId, methodOf } from "../stats/methods.js";
 import { poolOf } from "../stats/pool.js";
@@ -21,6 +23,7 @@ const PANELS = {
   eblisa: () => import("./methods/eblisa.js"),
   scan: () => import("./methods/scan.js"),
   model: () => import("./methods/model.js"),
+  points: () => import("./methods/points.js"),
 };
 
 export function createAnalysis(app) {
@@ -67,17 +70,18 @@ export function createAnalysis(app) {
     $("fdr").checked = state.fdr;
     renderWeights();
     // Contiguity needs polygons; distance weights work between any features.
+    // A point pattern needs points and no measure.
     const byDistance = DISTANCE_KINDS.has(state.rule);
-    button.disabled =
-      !fields.length ||
-      !state.measure ||
-      !!state.category ||
-      running != null ||
-      (!byDistance && !records.every(isPolygon));
+    const pattern = state.method === "points";
+    button.disabled = pattern
+      ? running != null || app.kindOf(l) !== "point" || records.length < 3
+      : !fields.length || !state.measure || !!state.category || running != null || (!byDistance && !records.every(isPolygon));
     button.title = button.disabled
-      ? byDistance
-        ? "Choose a numeric measure."
-        : "Choose a polygon layer with a numeric measure, or distance-based neighbors."
+      ? pattern
+        ? "Make a point layer the focus for a point pattern."
+        : byDistance
+          ? "Choose a numeric measure."
+          : "Choose a polygon layer with a numeric measure, or distance-based neighbors."
       : "";
   }
 
@@ -96,9 +100,10 @@ export function createAnalysis(app) {
     const { state } = app,
       rule = state.rule,
       scanning = state.method === "scan";
-    // A scan grows windows by distance; it has no neighbor weights.
-    $("rule").disabled = scanning;
-    $("weights-params").hidden = scanning || !DISTANCE_KINDS.has(rule);
+    // A scan grows windows by distance and a point pattern compares with random points: neither uses neighbors.
+    const free = scanning || state.method === "points";
+    $("rule").disabled = free;
+    $("weights-params").hidden = free || !DISTANCE_KINDS.has(rule);
     $("k-field").hidden = rule !== "knn";
     $("symmetric-field").hidden = rule !== "knn";
     $("band-field").hidden = rule !== "band" && rule !== "idw";
@@ -113,6 +118,23 @@ export function createAnalysis(app) {
       : DISTANCE_KINDS.has(rule)
         ? "Distances run between centers of population where the data has them, otherwise area centroids, in the region's projection."
         : "";
+  }
+
+  /** A point pattern's centers, standard distance circle and ellipse, in longitude and latitude. */
+  function patternShapes({ mean, median, standardDistance, ellipse }) {
+    const inv = app.tools.projection.inverse;
+    const ring = (pts) => ({ type: "Polygon", coordinates: [pts.map(inv)] });
+    const circle = Array.from({ length: 73 }, (_, i) => {
+      const t = (2 * Math.PI * (i % 72)) / 72;
+      return [mean[0] + standardDistance * Math.cos(t), mean[1] + standardDistance * Math.sin(t)];
+    });
+    const feature = (role, geometry) => ({ type: "Feature", properties: { role }, geometry });
+    return [
+      feature("ellipse", ring(ellipseRing(ellipse))),
+      feature("standard-distance", ring(circle)),
+      feature("mean", { type: "Point", coordinates: inv(mean) }),
+      feature("median", { type: "Point", coordinates: inv(median) }),
+    ];
   }
 
   /** Each scan cluster's window as a circle around its center, in longitude and latitude. */
@@ -162,9 +184,10 @@ export function createAnalysis(app) {
       const weights = { kind: state.rule, k: state.k, miles: state.band, power: state.power, symmetric: state.symmetric };
       const ids = new Set(items.map(featureId));
       let neighbors, points, from;
-      const scanning = state.method === "scan";
-      if (scanning || DISTANCE_KINDS.has(state.rule)) ({ points, from } = await locations(l, items));
-      else {
+      const scanning = state.method === "scan",
+        pattern = state.method === "points";
+      if (scanning || pattern || DISTANCE_KINDS.has(state.rule)) ({ points, from } = await locations(l, items));
+      if (!pattern && !scanning && !DISTANCE_KINDS.has(state.rule)) {
         // Reference and library polygons ship their neighbors; other layers compute them once.
         let graph = l.reference
           ? (await app.ws.neighbors())[state.rule]
@@ -203,6 +226,12 @@ export function createAnalysis(app) {
         if (!state.yField || state.yField === state.measure) throw new Error("Choose a second measure for bivariate clusters.");
         await app.ws.ensureFields([state.yField]);
         extra.second = byId(state.yField);
+      }
+      if (pattern) {
+        const outline = await app.ws.outline();
+        const projected = outline.features.map((f) => mapGeometry(f.geometry, app.tools.projection.forward));
+        extra.polygons = projected.flatMap((g) => (g.type === "Polygon" ? [g.coordinates] : g.coordinates));
+        if (state.pointWeight) extra.pointWeights = byId(state.pointWeight);
       }
       if (state.method === "model") {
         const xs = (state.model?.xs || []).filter((x) => x !== state.measure);
@@ -254,6 +283,7 @@ export function createAnalysis(app) {
         res.from = from;
         res.circles = scanShapes(res.clusters, points);
       }
+      if (pattern) res.circles = patternShapes(res.centers);
       if (state.method === "bilisa") res.secondLabel = app.label(state.yField);
       if (res.method === "model") {
         const name = (n) => (n === "(Intercept)" ? "Intercept" : app.label(n));

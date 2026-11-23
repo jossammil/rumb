@@ -5,6 +5,7 @@
 // existed) is a Local Moran result. Pure.
 import { number } from "../catalog/format.js";
 import { clusters } from "../map/classify.js";
+import { ellipseAxes } from "./points.js";
 
 const fixed = (v, d = 4) => (v == null || !Number.isFinite(v) ? "" : number(v, d));
 
@@ -581,6 +582,64 @@ function countDetails(result) {
 }
 
 const COUNTED = new Set(["poisson", "nb"]);
+
+// Point patterns: the points keep one color; the centers and ellipse are drawn over them.
+const MI = 1609.344;
+const reading = (ann) =>
+  ann.p > 0.05 ? "consistent with random" : ann.ratio < 1 ? "clustered" : "dispersed (more even than random)";
+METHODS.points = {
+  id: "points",
+  label: "Point pattern (nearest neighbor, Ripley's L, centers)",
+  title: "Point pattern",
+  legendTitle: "Point pattern",
+  modeLabel: "Centers",
+  short: "point pattern",
+  request: "points",
+  file: "point-pattern.csv",
+  classes: () => ({ P: ["Points (centers and spread dashed)", "#e0a030"], NA: ["Unavailable", "#8a918b"] }),
+  swatches: ["P"],
+  classOf: (record) => record?.cluster ?? "NA",
+  featureRows: (record) => [
+    ["Nearest other point", fixed(record.nearest, 2) + " mi"],
+    ...(record.weight != null ? [["Weight", number(record.weight)]] : []),
+  ],
+  summaryRows: (result) => {
+    const { ann, ripley, centers } = result;
+    const axes = ellipseAxes(centers.ellipse);
+    return [
+      ["Points", number(result.n, 0) + (result.weighted ? " (weighted)" : "")],
+      ["Study area", number(ann.area, 0) + " sq mi"],
+      ["Mean nearest distance", fixed(ann.observed, 2) + " mi (random: " + fixed(ann.expected, 2) + ")"],
+      ["Nearest neighbor ratio", fixed(ann.ratio, 3) + ": " + reading(ann) + " (z " + fixed(ann.z, 2) + ", p " + pText(ann.p) + ")"],
+      [
+        "Ripley’s L",
+        ripley.above || ripley.below
+          ? [ripley.above && "clustered at " + ripley.above, ripley.below && "dispersed at " + ripley.below].filter(Boolean).join(", ") + " of 25 distances"
+          : "within the random envelope at every distance",
+      ],
+      ["Standard distance", fixed(centers.standardDistance / MI, 1) + " mi"],
+      ["Ellipse", fixed(axes.major / MI, 1) + " × " + fixed(axes.minor / MI, 1) + " mi, major axis at " + fixed(axes.bearing, 0) + "° from north"],
+    ];
+  },
+  charts: (result) => [
+    {
+      kind: "line",
+      data: { x: result.ripley.d, y: result.ripley.L, lo: result.ripley.lo, hi: result.ripley.hi, reference: 0 },
+      xLabel: "Distance (mi)",
+      yLabel: "L(d) − d (mi)",
+    },
+  ],
+  reportText: (result) =>
+    number(result.n, 0) + " points · nearest neighbor ratio " + fixed(result.ann.ratio, 3) + " (" + reading(result.ann) + ", p " + pText(result.ann.p) + ")",
+  rule: (result) => "envelope of " + result.permutations + " random patterns",
+  ruleText: (result) => "The band is the range of L(d) − d over " + result.permutations + " random patterns inside the outline; above it means clustered at that distance.",
+  basis: () => "Points within the region's outline",
+  csvFields: ["feature_ID", "nearest_point_mi", "weight", "nearest_neighbor_ratio", "z", "p", "method"],
+  csvRow: (id, r, result) => [id, r.nearest, r.weight, result.ann.ratio, result.ann.z, result.ann.p, result.methodNote],
+  trials: "simulated patterns",
+  scatter: false,
+  reading: false,
+};
 
 /** The methods in the order the menu lists them. */
 export const METHOD_LIST = Object.values(METHODS);

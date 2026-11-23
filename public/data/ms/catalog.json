@@ -10,6 +10,7 @@
       "name": "NAD83 / Mississippi Transverse Mercator",
       "tmerc": { "lat0": 32.5, "lon0": -89.75, "k0": 0.9998335, "x0": 500000, "y0": 1300000, "a": 6378137, "rf": 298.257222101 }
     },
+    "outline": "outline.geojson",
     "backdrop": {
       "context": "context.geojson",
       "world": "world-land.geojson",

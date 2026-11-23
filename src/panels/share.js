@@ -1,14 +1,16 @@
 // Share links in the app: "Copy a share link" (U) packs the map into the
 // link (core/share.js); opening a link with #state= puts that map on screen.
 // The link carries only built-in data, never imported files or SQL.
-import { decodeShare, encodeShare, readShare, shareFromHash, shareState, shareUrl } from "../core/share.js";
+import { decodeShare, encodeShare, generatedOf, readShare, shareFromHash, shareState, shareUrl } from "../core/share.js";
+import { densityId } from "../core/derived.js";
 import { defaults, normalizeState } from "../core/state.js";
 import { palettes } from "../map/classify.js";
 import { $, h } from "../ui/dom.js";
 
 export function createShare(app) {
   const { store, ws, catalog } = app;
-  const isShared = (id) => id === ws.ref.id || !!ws.meta(id);
+  // The reference layer, library layers and generated layers (rebuilt from their specs) can travel.
+  const isShared = (id) => id === ws.ref.id || !!ws.meta(id) || store.state.layers.some((l) => l.id === id && l.generated);
 
   /** Makes a link for the current map and shows it, copying it when the browser allows. */
   async function copyLink() {
@@ -20,7 +22,7 @@ export function createShare(app) {
     const me = app.tools.located?.lonlat;
     const fromMe =
       me && state.filter?.kind === "radius" && Math.abs(state.filter.center[0] - me[0]) < 1e-9 && Math.abs(state.filter.center[1] - me[1]) < 1e-9;
-    const local = state.layers.length || state.stack.some((e) => !isShared(e.id)) || !isShared(state.active);
+    const local = state.layers.some((l) => !l.generated) || state.stack.some((e) => !isShared(e.id)) || !isShared(state.active);
     const input = h("input", { id: "share-link", type: "text", readonly: true, value: url, "aria-label": "Share link" });
     let copied = false;
     try {
@@ -71,17 +73,22 @@ export function createShare(app) {
   async function open(text) {
     const data = await decodeShare(text);
     await ws.library().catch(() => null);
+    // Density surfaces in the link are rebuilt here from their specs.
+    const specs = generatedOf(data),
+      generatedIds = specs.map(densityId);
     const { state: patch, camera, dropped } = readShare(data, {
-      known: isShared,
+      known: (id) => isShared(id) || generatedIds.includes(id),
       palettes: Object.keys(palettes),
       region: catalog.region.id,
     });
     const { comparisons: shared, ...rest } = patch;
     const now = store.state;
+    const generated = [];
+    for (const spec of specs) generated.push(await app.generateDensity(spec));
     const next = normalizeState(
       {
         ...defaults(catalog),
-        layers: now.layers,
+        layers: [...now.layers.filter((l) => !generatedIds.includes(l.id)), ...generated],
         sql: now.sql,
         comparisons: { ...now.comparisons, ...(shared && { [ws.ref.id]: shared.__reference }) },
         ...rest,

@@ -20,7 +20,8 @@ import { defaults, LAYER_VIEW_KEYS, layerViewDefaults, stateFields } from "./cor
 import { callStats } from "./stats/client.js";
 import { poolOf } from "./stats/pool.js";
 import { RATE_METHODS, rateFields } from "./stats/rates.js";
-import { accessFields, derivedSpec, modelFields } from "./core/derived.js";
+import { accessFields, densityId, densitySpec, derivedSpec, modelFields } from "./core/derived.js";
+import { mapGeometry } from "./geo/spatial.js";
 import { accessMeasures } from "./stats/access.js";
 import { createStore } from "./core/store.js";
 import { createWorkspace } from "./core/workspace.js";
@@ -142,6 +143,63 @@ async function start() {
       const counted = countedLayer(id),
         derived = store.state.stack.find((e) => e.id === id)?.derived;
       return counted && derived?.length ? withDerived(counted, derived) : counted;
+    },
+    /**
+     * Builds a density surface (a generated layer of square cells inside the
+     * region's outline) from a spec; quartic kernel in the worker.
+     */
+    async generateDensity(raw) {
+      const spec = densitySpec(raw);
+      if (!spec) throw new Error("That is not a density surface.");
+      const source = app.layerById(spec.source) || (await ws.loadLayer(spec.source).then(() => baseLayer(spec.source)));
+      if (!source || app.kindOf(source) !== "point") throw new Error("A density surface needs a point layer.");
+      const projection = app.tools.projection;
+      const outline = await ws.outline();
+      const polygons = outline.features
+        .map((f) => mapGeometry(f.geometry, projection.forward))
+        .flatMap((g) => (g.type === "Polygon" ? [g.coordinates] : g.coordinates));
+      const points = source.collection.features.filter((f) => f.geometry?.type === "Point");
+      const grid = await callStats({
+        type: "density",
+        xy: points.map((f) => projection.forward(f.geometry.coordinates)),
+        weights: spec.weight ? points.map((f) => Math.max(0, Number(f.properties?.[spec.weight]) || 0)) : null,
+        polygons,
+        bandwidth: spec.bandwidth ? spec.bandwidth * 1609.344 : null,
+        cell: spec.cell ? spec.cell * 1609.344 : null,
+      });
+      const half = grid.cell / 2;
+      const features = grid.cells.map(([x, y, v], i) => ({
+        type: "Feature",
+        id: "c" + i,
+        properties: { cell: "c" + i, density: v },
+        geometry: {
+          type: "Polygon",
+          coordinates: [
+            [[x - half, y - half], [x + half, y - half], [x + half, y + half], [x - half, y + half], [x - half, y - half]].map(projection.inverse),
+          ],
+        },
+      }));
+      const by = spec.weight ? " (" + app.label(spec.weight, source).toLowerCase() + ")" : "";
+      return {
+        id: densityId(spec),
+        name: "Density of " + source.name.toLowerCase(),
+        collection: { type: "FeatureCollection", features },
+        generated: spec,
+        preferredMeasure: "density",
+        extraFields: {
+          density: {
+            label: source.name + by + " per sq mi (quartic kernel, " + (grid.bandwidth / 1609.344).toFixed(1) + " mi)",
+            format: "number",
+          },
+        },
+      };
+    },
+    /** Puts a generated layer on the map (replacing one with its id) and focuses it. */
+    showGenerated(layer) {
+      store.set({ layers: [...store.state.layers.filter((l) => l.id !== layer.id), layer] });
+      focusLayer(layer.id, { fit: true });
+      // A surface reads as one field of color: no cell outlines.
+      app.setLook({ style: { outline: 0 } });
     },
     /**
      * Computes the derived rate fields the stack asks for that are not ready
@@ -368,7 +426,8 @@ async function start() {
           : {
             title: l.name,
             subtitle:
-              number(l.collection.features.length) + " features · " + (l.reference ? ref.name : "Local query layer"),
+              number(l.collection.features.length) +
+              (l.generated ? " cells · kernel density surface" : " features · " + (l.reference ? ref.name : "Local query layer")),
             credit: l.name,
             context: l.name,
           },
@@ -793,6 +852,10 @@ function wire(app) {
       if (app.state.view !== "map") app.setView("map");
       if (!$("analyze").disabled) app.analysis.run();
     },
+    density: () => {
+      if (app.state.view !== "map") app.setView("map");
+      import("./panels/density.js").then((m) => m.openDensity(app), report);
+    },
     access: () => {
       if (app.state.view !== "map") app.setView("map");
       import("./panels/access.js").then((m) => m.openAccess(app), report);
@@ -993,6 +1056,7 @@ function wire(app) {
   on("count-points", "click", () => runCommand("count-points"));
   on("smooth-rate", "click", () => runCommand("smooth-rate"));
   on("access-tool", "click", () => runCommand("access"));
+  on("density-tool", "click", () => runCommand("density"));
   on("look-hatch", "change", (ev) => app.setLook({ style: { hatch: ev.target.checked || undefined } }));
   on("share-map", "click", () => runCommand("share"));
   on("look-reset", "click", () => {

@@ -164,6 +164,63 @@ out$access <- list(
   nursingBeds = access("nursing_homes_2024", "beds", within = 15, catchment = 20)
 )
 
+# ---- point patterns: nearest neighbor, Ripley's L, centrography, kernel density ------------
+# Public health departments (90) and nursing homes weighted by beds, in EPSG:3814,
+# with the Mississippi outline's area; every formula written out here.
+outline <- st_transform(st_read("public/data/ms/outline.geojson", quiet = TRUE), 3814)
+A <- as.numeric(st_area(outline))
+pattern <- function(layer, weight = NULL) {
+  pts <- st_read(file.path("public/data/ms/layers", paste0(layer, ".geojson")), quiet = TRUE)
+  xy <- st_coordinates(st_transform(pts, 3814))
+  w <- if (is.null(weight)) rep(1, nrow(xy)) else pts[[weight]]
+  n <- nrow(xy)
+  D <- as.matrix(dist(xy))
+  diag(D) <- Inf
+  observed <- mean(apply(D, 1, min))
+  expected <- 0.5 / sqrt(n / A)
+  se <- 0.26136 / sqrt(n^2 / A)
+  d <- c(5, 10, 20, 40) * 1609.344
+  pd <- D[upper.tri(D)]
+  L <- vapply(d, function(r) sqrt(A * 2 * sum(pd <= r) / (n * (n - 1)) / pi) - r, numeric(1))
+  W <- sum(w)
+  mx <- sum(w * xy[, 1]) / W
+  my <- sum(w * xy[, 2]) / W
+  med <- c(mx, my)
+  for (i in 1:1000) {
+    dd <- pmax(sqrt((xy[, 1] - med[1])^2 + (xy[, 2] - med[2])^2), 1e-9)
+    nxt <- c(sum(w * xy[, 1] / dd), sum(w * xy[, 2] / dd)) / sum(w / dd)
+    step <- sqrt(sum((nxt - med)^2))
+    med <- nxt
+    if (step < 1e-6) break
+  }
+  dx <- xy[, 1] - mx
+  dy <- xy[, 2] - my
+  sxx <- sum(w * dx^2); syy <- sum(w * dy^2); sxy <- sum(w * dx * dy)
+  theta <- atan(((sxx - syy) + sqrt((sxx - syy)^2 + 4 * sxy^2)) / (2 * sxy))
+  sx <- sqrt(2) * sqrt(sum(w * (dx * cos(theta) - dy * sin(theta))^2) / W)
+  sy <- sqrt(2) * sqrt(sum(w * (dx * sin(theta) + dy * cos(theta))^2) / W)
+  # Esri's default bandwidth, and the quartic kernel at a few locations.
+  dm <- sqrt(dx^2 + dy^2)
+  o <- order(dm)
+  median_d <- dm[o][which(cumsum(w[o]) >= W / 2)[1]]
+  sd_dist <- sqrt((sxx + syy) / W)
+  bandwidth <- 0.9 * min(sd_dist, sqrt(1 / log(2)) * median_d) * W^-0.2
+  at <- rbind(c(mx, my), med, xy[1, ] + c(5000, -3000), c(mx + 40000, my - 60000))
+  quartic <- function(p, r) {
+    d2 <- (xy[, 1] - p[1])^2 + (xy[, 2] - p[2])^2
+    3 / pi * sum(ifelse(d2 < r^2, w * (1 - d2 / r^2)^2, 0)) * 1609.344^2 / r^2
+  }
+  list(
+    ann = list(observed = observed / 1609.344, expected = expected / 1609.344, ratio = observed / expected,
+               z = (observed - expected) / se),
+    distances = d, L = L,
+    mean = c(mx, my), median = med, standardDistance = sd_dist, theta = theta, sx = sx, sy = sy,
+    bandwidth = bandwidth, at = unname(at),
+    density = apply(at, 1, quartic, r = bandwidth), density15 = apply(at, 1, quartic, r = 15 * 1609.344)
+  )
+}
+out$points <- list(area = A, health = pattern("public_health_departments_2010"), nursing = pattern("nursing_homes_2024", "beds"))
+
 out$packages <- lapply(setNames(nm = c("sf", "jsonlite", "spdep", "lmtest", "spatialreg", "MASS")), function(p) as.character(packageVersion(p)))
 jsonlite::write_json(out, "tests/models-reference.json", digits = NA, auto_unbox = TRUE, dataframe = "rows", matrix = "rowmajor")
 message("Wrote tests/models-reference.json")

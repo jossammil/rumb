@@ -7,7 +7,13 @@ self.onmessage = async ({ data }) => {
   try {
     let result;
     if (type === "analyze") result = await analyze(data);
-    else if (type === "model") {
+    else if (type === "density") {
+      const { densityGrid } = await import("./points.js");
+      result = densityGrid(data.xy, data.weights, data.polygons, { bandwidth: data.bandwidth, cell: data.cell });
+    } else if (type === "points") {
+      const [{ pointPattern }, { randomGenerator }] = await Promise.all([import("./points.js"), import("./random.js")]);
+      result = pointPattern(data, randomGenerator(data.seed ?? 12345));
+    } else if (type === "model") {
       const { fitModel } = await import("./models.js");
       result = fitModel(data);
     } else if (type === "scan") {
