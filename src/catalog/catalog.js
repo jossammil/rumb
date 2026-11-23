@@ -36,13 +36,60 @@ export function validateCatalog(catalog) {
 /** The region's reference layer (the one that opens first). */
 export const referenceLayer = (catalog) => catalog.layers[0];
 
-/** Metadata for a field of the reference layer, or undefined. */
-export const fieldInfo = (catalog, field) =>
-  referenceLayer(catalog).fields?.[field];
+/**
+ * Metadata for a field, or undefined. `meta` is the layer's catalog or library
+ * entry; without it the reference layer is meant.
+ */
+export const fieldInfo = (catalog, field, meta = referenceLayer(catalog)) =>
+  meta?.fields?.[field];
 
 /** A field's display label: the catalog label, else the name with spaces. */
-export const fieldLabel = (catalog, field) =>
-  fieldInfo(catalog, field)?.label || field?.replaceAll("_", " ") || "Features";
+export const fieldLabel = (catalog, field, meta) =>
+  fieldInfo(catalog, field, meta)?.label || field?.replaceAll("_", " ") || "Features";
+
+// The library: add-on layers a reader can stack over the reference layer
+// (facilities, districts, County Health Rankings). It lives in its own file,
+// data/<region>/layers/library.json, written by scripts/prepare-layers.R, and is
+// read only when first needed, so the first map never waits for it.
+
+export const GEOMETRIES = ["point", "line", "polygon"];
+
+/** Loads a region's library, or an empty one when the region has none. */
+export async function loadLibrary(fetchJSON, catalog) {
+  if (!catalog.library) return { version: 1, groups: [], layers: [] };
+  return validateLibrary(await fetchJSON(catalog.path + catalog.library), catalog);
+}
+
+/** Throws with a readable message when a library entry lacks what the app needs. */
+export function validateLibrary(library, catalog) {
+  const fail = (what) => {
+    throw new Error("The layer library is missing " + what + ".");
+  };
+  if (!Array.isArray(library?.layers)) fail("its layer list");
+  const seen = new Set(catalog ? catalog.layers.map((l) => l.id) : []);
+  for (const layer of library.layers) {
+    if (!layer.id || !layer.name) fail("a layer's id or name");
+    if (seen.has(layer.id)) fail("a unique id for " + layer.id);
+    seen.add(layer.id);
+    if (!GEOMETRIES.includes(layer.geometry)) fail(layer.id + "'s geometry type");
+    if (!layer.file) fail(layer.id + "'s file");
+    for (const key of ["labelField", "typeField", "placeField", "populationField"])
+      if (layer[key] && !layer.fields?.[layer[key]]) fail(layer.id + "'s " + key);
+    for (const field of [...(layer.popupFields || []), ...(layer.measures || [])])
+      if (!layer.fields?.[field]) fail(layer.id + "'s field " + field);
+  }
+  return library;
+}
+
+/** Catalog or library metadata for a layer id, or undefined. */
+export function layerMeta(catalog, library, id) {
+  const ref = referenceLayer(catalog);
+  if (id === ref.id) return ref;
+  return library?.layers?.find((l) => l.id === id);
+}
+
+/** The geometry a catalog or library layer holds ("polygon" for the reference layer). */
+export const layerGeometry = (meta) => meta?.geometry || "polygon";
 
 /** The starter SQL for a reference layer. */
 export function starterSQL(layer) {

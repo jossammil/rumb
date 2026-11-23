@@ -136,6 +136,41 @@ Rscript scripts/prepare-basemap.R
 
 `context.geojson` contains the regional backdrop clipped to 98°W–82°W and 26°N–39°N. `world-land.geojson` supplies a global outline when the map leaves that region. These are display assets. The tract neighbor graph comes from TIGER geography.
 
+### Add-on layers (facilities, districts, County Health Rankings)
+
+The add-on layers a reader can stack over the tracts come from 32 MARIS downloads and the County Health Rankings 2025 analytic file. [`scripts/layers.json`](scripts/layers.json) lists each source URL, the fields kept, their labels and code meanings. [`scripts/prepare-layers.R`](scripts/prepare-layers.R) downloads each source, projects it to longitude and latitude, simplifies polygon display geometry with shared arcs, and writes the files under `public/data/ms/layers/`. Set the first argument or `RUMB_LAYER_CACHE` to a folder to keep the downloads.
+
+```sh
+Rscript scripts/prepare-layers.R "$input_dir/layers"
+```
+
+| Output under `public/data/ms/layers/` | Use |
+| --- | --- |
+| `<layer>.geojson` | Display geometry and the kept fields, one file per layer, keyed by a top-level `id` |
+| `<layer>.neighbors.json` | Queen and rook neighbors for polygon layers |
+| `library.json` | What the app shows about every layer: fields, formats, pooling rules, styles, credit, source URL, source SHA-256 and output SHA-256 |
+
+**Where each layer comes from.** The map_project workbench these layers were first gathered for kept 12 of them without a recorded source. On November 22, 2026 each of those 12 was found at `https://maris.mississippi.edu/MARISdata/<Category>/<Name>.zip`. All 32 MARIS downloads were byte-identical (`.shp` and `.dbf`) to the copies map_project had used. Their metadata states public use with no access constraints. MARIS asks to be credited as a source provider, and the Census Bureau's TIGER-derived layers ask for acknowledgement. No layer restricts reuse. The third-party ArcGIS copies map_project also used (HIFLD and RxOpen services with unstated terms) are not included.
+
+| Layers traced on November 22, 2026 | MARIS folder |
+| --- | --- |
+| Casinos 2020, law enforcement sites 2017, places of worship 2020 | `Cultural` |
+| Community college districts 1995, public school districts 2015–16, public schools 2024 | `Education` |
+| Mental health regions 1998, MSDH rural health facilities 2007, nursing homes 2024, pharmacies 2010, public health departments 2010 | `Health` |
+| Highway Patrol districts 2023 | `Boundaries` |
+
+**Cleaning rules.**
+- Placeholder text (`NOT AVAILABLE`, `N/A`) and `-999` become missing.
+- Coded fields get their published meanings: law enforcement site types from the MARIS metadata, and NCES school types and statuses.
+- All-capital names are shown in title case.
+- One courthouse record whose location is a placeholder at the largest representable coordinate is dropped. `library.json` records the count.
+- Four post-office multipoints keep their first point.
+- Point IDs are source row numbers; census polygons use their GEOIDs.
+
+**Neighbors.** Neighbors for these older layers use tolerances instead of exact shared vertices. Queen neighbors are polygons within 0.5 m of each other; rook neighbors share at least 1 m of boundary. 911 PSAP service areas overlap one another, so their queen graph is dense.
+
+**County Health Rankings.** The rows come from the analytic CSV filtered to the 82 Mississippi counties, placed on the 2020 Census county geometry from the MARIS county layer, and joined on the five-digit FIPS code. Fractions become percentages, and provider ratios become rates per 100,000. Each pooled measure keeps its numerator, denominator and flag. The official file downloaded on November 22, 2026 has SHA-256 `5a129b856489fe6646013d7fcf85397dd576f6d67a65f5db72738a1df29643de` and matched map_project's copy. Cite it as: University of Wisconsin Population Health Institute, *County Health Rankings & Roadmaps 2025*.
+
 ## 4. Verify the rebuild
 
 Run the baseline checks after regenerating the inputs. The first command lists changed products. With the original inputs and the reference environment, the list was empty. With the fresh CDC export described above, expect only `public/data/ms/places-2025.json` and run its record comparison above.

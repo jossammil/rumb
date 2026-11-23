@@ -1,0 +1,538 @@
+{
+  "version": 1,
+  "about": "Add-on layers for the Mississippi region: what scripts/prepare-layers.R downloads, which fields it keeps and how the app describes them. Every source is a public download; MARIS asks to be credited as the source provider, the Census Bureau asks for acknowledgement, and County Health Rankings asks for its citation.",
+  "na": ["", "NOT AVAILABLE", "N/A", "-999", "-999.0"],
+  "groups": ["Health", "Emergency services", "Public safety", "Education", "Community", "Government", "Census", "Boundaries"],
+  "terms": {
+    "maris": "MARIS metadata: public use; MARIS should be recognized as a source data provider on derived data. Not survey products; not for legal use.",
+    "census": "U.S. Census Bureau products are not copyrighted and are free to use with acknowledgement of the Census Bureau as the source.",
+    "chr": "County Health Rankings & Roadmaps data are free to use with citation: University of Wisconsin Population Health Institute. County Health Rankings & Roadmaps 2025. www.countyhealthrankings.org."
+  },
+  "layers": [
+    {
+      "id": "fire_stations_2020", "name": "Fire stations", "group": "Emergency services", "geometry": "point",
+      "url": "https://maris.mississippi.edu/MARISdata/Cultural/MS_FireStations_2020.zip", "vintage": "2020",
+      "credit": "MARIS · USGS", "terms": "maris", "color": "#ff5a36",
+      "label": "name", "place": "city",
+      "fields": {
+        "name": { "from": "NAME", "label": "Name" },
+        "address": { "from": "ADDRESS", "label": "Address" },
+        "city": { "from": "CITY", "label": "City" },
+        "zip": { "from": "ZIPCODE", "label": "ZIP code" },
+        "volunteer": { "from": "Volunteer", "label": "Staffing", "values": { "1": "Volunteer" } }
+      },
+      "popup": ["name", "address", "city", "zip", "volunteer"]
+    },
+    {
+      "id": "local_eocs_2009", "name": "Local emergency operations centers", "group": "Emergency services", "geometry": "point",
+      "url": "https://maris.mississippi.edu/MARISdata/Cultural/MS_LocalEmergencyOperationsCenters_2009.zip", "vintage": "2009",
+      "credit": "MARIS · HSIP", "terms": "maris", "color": "#ffb000",
+      "label": "name", "place": "county",
+      "fields": {
+        "name": { "from": "NAME", "label": "Name", "title": true },
+        "address": { "from": "ADDRESS", "label": "Address", "title": true },
+        "city": { "from": "CITY", "label": "City", "title": true },
+        "county": { "from": "COUNTY", "label": "County", "title": true },
+        "phone": { "from": "TELEPHONE", "label": "Phone", "format": "phone" }
+      },
+      "popup": ["name", "address", "city", "county", "phone"]
+    },
+    {
+      "id": "mema_shelters_2015", "name": "MEMA 361 shelters", "group": "Emergency services", "geometry": "point",
+      "url": "https://maris.mississippi.edu/MARISdata/Cultural/MS_MEMA361_Shelters_2015.zip", "vintage": "2015",
+      "credit": "MARIS · MEMA", "terms": "maris", "color": "#ffd23f",
+      "label": "name", "type": "type",
+      "fields": {
+        "name": { "from": "Name", "label": "Name" },
+        "address": { "from": "Address", "label": "Address" },
+        "type": { "from": "Type_", "label": "Shelter type" },
+        "capacity": { "from": "Cap", "label": "Capacity (people)", "format": "integer" }
+      },
+      "popup": ["name", "address", "type", "capacity"]
+    },
+    {
+      "id": "psap_areas_2009", "name": "911 PSAP service areas", "group": "Emergency services", "geometry": "polygon",
+      "url": "https://maris.mississippi.edu/MARISdata/Boundaries/MS_911PSAPServiceAreas_2009.zip", "vintage": "2009",
+      "credit": "MARIS · HSIP", "terms": "maris", "color": "#ff5a36", "keep": 0.04,
+      "label": "name", "place": "county",
+      "fields": {
+        "name": { "from": "PSAP_NAME", "label": "Answering point", "title": true },
+        "district": { "from": "NAME", "label": "District", "title": true },
+        "address": { "from": "ADDRESS", "label": "Address", "title": true },
+        "city": { "from": "CITY", "label": "City", "title": true },
+        "county": { "from": "COUNTY", "label": "County", "title": true },
+        "phone": { "from": "TELEPHONE", "label": "Phone", "format": "phone" }
+      },
+      "popup": ["name", "district", "address", "city", "phone"]
+    },
+    {
+      "id": "law_enforcement_2017", "name": "Law enforcement sites", "group": "Public safety", "geometry": "point",
+      "url": "https://maris.mississippi.edu/MARISdata/Cultural/MS_LawEnforcementSites_2017.zip", "vintage": "2017",
+      "credit": "MARIS · USGS GNIS", "terms": "maris", "color": "#4d9dff",
+      "label": "name", "type": "type", "place": "county",
+      "fields": {
+        "name": { "from": "gaz_name", "label": "Name" },
+        "type": { "from": "Type", "label": "Type", "values": { "1": "Police station", "2": "Sheriff's office or substation", "3": "Campus police" } },
+        "county": { "from": "county_nam", "label": "County", "title": true },
+        "address": { "from": "Address", "label": "Address" },
+        "phone": { "from": "Phone", "label": "Phone", "format": "phone" },
+        "website": { "from": "Website", "label": "Website", "format": "url" }
+      },
+      "popup": ["name", "type", "address", "county", "phone", "website"]
+    },
+    {
+      "id": "highway_patrol_districts_2023", "name": "Highway Patrol districts", "group": "Public safety", "geometry": "polygon",
+      "url": "https://maris.mississippi.edu/MARISdata/Boundaries/MS_HighwayPatrolDistricts_2023.zip", "vintage": "2023",
+      "credit": "MARIS", "terms": "maris", "color": "#4d9dff", "keep": 0.05,
+      "label": "troop",
+      "fields": {
+        "troop": { "from": "Troop", "label": "Troop" },
+        "district": { "from": "Distnum", "label": "District", "format": "integer" }
+      },
+      "popup": ["troop", "district"]
+    },
+    {
+      "id": "chr_counties_2025", "name": "County Health Rankings 2025", "group": "Health", "geometry": "polygon",
+      "source": "chr", "url": "https://www.countyhealthrankings.org/sites/default/files/media/document/analytic_data2025_v3.csv",
+      "geometryFrom": "census_county_housing_2020", "vintage": "2025",
+      "credit": "County Health Rankings & Roadmaps 2025 · U.S. Census Bureau", "terms": "chr", "color": "#c86bfa",
+      "label": "name", "population": "v051_rawvalue",
+      "lead": ["v085_rawvalue", "v023_rawvalue", "v138_rawvalue", "v002_rawvalue", "v063_rawvalue"],
+      "fraction": ["v002", "v003", "v009", "v011", "v021", "v023", "v024", "v037", "v049", "v050", "v052", "v053", "v054", "v055", "v056", "v057", "v058", "v059", "v060", "v065", "v067", "v069", "v070", "v080", "v081", "v082", "v083", "v085", "v122", "v126", "v132", "v134", "v136", "v137", "v139", "v143", "v144", "v145", "v149", "v153", "v154", "v155", "v166", "v167", "v168", "v171", "v177", "v178", "v179", "v180", "v183", "v184"],
+      "scaleBy": { "v004": 100000, "v062": 100000, "v088": 100000, "v131": 100000 },
+      "display": [
+        ["v001", "Premature death (YPLL per 100,000)", "rate", "Health outcomes"],
+        ["v002", "Poor or fair health", "percent", "Health outcomes"],
+        ["v009", "Adult smoking", "percent", "Health behaviors"],
+        ["v011", "Adult obesity", "percent", "Health behaviors"],
+        ["v049", "Excessive drinking", "percent", "Health behaviors"],
+        ["v070", "Physical inactivity", "percent", "Health behaviors"],
+        ["v063", "Median household income", "currency", "Social & economic"],
+        ["v147", "Life expectancy (years)", "number", "Health outcomes"],
+        ["v051", "Population", "integer", "Demographics"]
+      ],
+      "measures": [
+        ["v085", "Uninsured", "ratio", 100, "percent", "Clinical care"],
+        ["v003", "Uninsured adults", "ratio", 100, "percent", "Clinical care"],
+        ["v122", "Uninsured children", "ratio", 100, "percent", "Clinical care"],
+        ["v004", "Primary care physicians (per 100,000)", "ratio", 100000, "rate", "Clinical care"],
+        ["v088", "Dentists (per 100,000)", "ratio", 100000, "rate", "Clinical care"],
+        ["v062", "Mental health providers (per 100,000)", "ratio", 100000, "rate", "Clinical care"],
+        ["v131", "Other primary care providers (per 100,000)", "ratio", 100000, "rate", "Clinical care"],
+        ["v037", "Low birth weight", "ratio", 100, "percent", "Health outcomes"],
+        ["v014", "Teen births (per 1,000)", "ratio", 1000, "rate", "Health outcomes"],
+        ["v129", "Infant mortality (per 1,000)", "ratio", 1000, "rate", "Health outcomes"],
+        ["v128", "Child mortality (per 100,000)", "ratio", 100000, "rate", "Health outcomes"],
+        ["v135", "Injury deaths (per 100,000)", "ratio", 100000, "rate", "Health outcomes"],
+        ["v138", "Drug overdose deaths (per 100,000)", "ratio", 100000, "rate", "Health outcomes"],
+        ["v015", "Homicides (per 100,000)", "ratio", 100000, "rate", "Health outcomes"],
+        ["v039", "Motor vehicle crash deaths (per 100,000)", "ratio", 100000, "rate", "Health outcomes"],
+        ["v148", "Firearm fatalities (per 100,000)", "ratio", 100000, "rate", "Health outcomes"],
+        ["v134", "Alcohol-impaired driving deaths", "ratio", 100, "percent", "Health behaviors"],
+        ["v083", "Limited access to healthy foods", "ratio", 100, "percent", "Physical environment"],
+        ["v132", "Access to exercise opportunities", "ratio", 100, "percent", "Physical environment"],
+        ["v179", "Access to parks", "ratio", 100, "percent", "Physical environment"],
+        ["v045", "Sexually transmitted infections (per 100,000)", "count", null, "rate", "Health outcomes"],
+        ["v061", "HIV prevalence (per 100,000)", "count", null, "rate", "Health outcomes"],
+        ["v023", "Unemployment", "ratio", 100, "percent", "Social & economic"],
+        ["v021", "High school graduation", "ratio", 100, "percent", "Social & economic"],
+        ["v168", "High school completion", "ratio", 100, "percent", "Social & economic"],
+        ["v069", "Some college", "ratio", 100, "percent", "Social & economic"],
+        ["v065", "Children eligible for free or reduced-price lunch", "ratio", 100, "percent", "Social & economic"],
+        ["v149", "Disconnected youth", "ratio", 100, "percent", "Social & economic"],
+        ["v153", "Homeownership", "ratio", 100, "percent", "Physical environment"],
+        ["v154", "Severe housing cost burden", "ratio", 100, "percent", "Physical environment"],
+        ["v136", "Severe housing problems", "ratio", 100, "percent", "Physical environment"],
+        ["v166", "Broadband access", "ratio", 100, "percent", "Physical environment"],
+        ["v067", "Driving alone to work", "ratio", 100, "percent", "Physical environment"],
+        ["v177", "Voter turnout", "ratio", 100, "percent", "Social & economic"],
+        ["v082", "Children in single-parent households", "ratio", 100, "percent", "Social & economic"],
+        ["v140", "Social associations (per 10,000)", "ratio", 10000, "rate", "Social & economic"],
+        ["v172", "Child care centers (per 1,000 children)", "ratio", 1000, "rate", "Social & economic"],
+        ["v024", "Children in poverty", "count", null, "percent", "Social & economic"],
+        ["v139", "Food insecurity", "count", null, "percent", "Social & economic"],
+        ["v052", "Below 18 years of age", "ratio", 100, "percent", "Demographics"],
+        ["v053", "65 and older", "ratio", 100, "percent", "Demographics"],
+        ["v054", "Non-Hispanic Black", "ratio", 100, "percent", "Demographics"],
+        ["v055", "American Indian or Alaska Native", "ratio", 100, "percent", "Demographics"],
+        ["v056", "Hispanic", "ratio", 100, "percent", "Demographics"],
+        ["v057", "Female", "ratio", 100, "percent", "Demographics"],
+        ["v058", "Rural", "ratio", 100, "percent", "Demographics"],
+        ["v059", "Not proficient in English", "ratio", 100, "percent", "Demographics"],
+        ["v080", "Native Hawaiian or Other Pacific Islander", "ratio", 100, "percent", "Demographics"],
+        ["v081", "Asian", "ratio", 100, "percent", "Demographics"],
+        ["v126", "Non-Hispanic White", "ratio", 100, "percent", "Demographics"]
+      ],
+      "popup": ["name", "v051_rawvalue", "v085_rawvalue", "v023_rawvalue", "v002_rawvalue", "v063_rawvalue"]
+    },
+    {
+      "id": "nursing_homes_2024", "name": "Nursing homes", "group": "Health", "geometry": "point",
+      "url": "https://maris.mississippi.edu/MARISdata/Health/MS_NursingHomes_2024.zip", "vintage": "2024",
+      "credit": "MARIS · HIFLD · MSDH", "terms": "maris", "color": "#c86bfa",
+      "label": "name", "type": "ownership", "place": "county",
+      "fields": {
+        "name": { "from": "NAME", "label": "Name", "title": true },
+        "address": { "from": "ADDRESS", "label": "Address", "title": true },
+        "city": { "from": "CITY", "label": "City", "title": true },
+        "zip": { "from": "ZIP", "label": "ZIP code" },
+        "county": { "from": "COUNTY", "label": "County", "title": true },
+        "phone": { "from": "TELEPHONE", "label": "Phone", "format": "phone" },
+        "beds": { "from": "BEDS", "label": "Beds", "format": "integer" },
+        "ownership": { "from": "OWNERSHIP", "label": "Ownership", "title": true },
+        "website": { "from": "WEBSITE", "label": "Website", "format": "url" }
+      },
+      "popup": ["name", "address", "city", "phone", "beds", "ownership", "website"]
+    },
+    {
+      "id": "pharmacies_2010", "name": "Pharmacies", "group": "Health", "geometry": "point",
+      "url": "https://maris.mississippi.edu/MARISdata/Health/MS_Pharmacies_2010.zip", "vintage": "2010",
+      "credit": "MARIS · HSIP", "terms": "maris", "color": "#3ddc97",
+      "label": "name", "place": "county",
+      "fields": {
+        "name": { "from": "NAME", "label": "Name", "title": true },
+        "address": { "from": "ADDRESS", "label": "Address", "title": true },
+        "city": { "from": "CITY", "label": "City", "title": true },
+        "zip": { "from": "ZIP", "label": "ZIP code" },
+        "county": { "from": "COUNTY", "label": "County", "title": true },
+        "phone": { "from": "TELEPHONE", "label": "Phone", "format": "phone" }
+      },
+      "popup": ["name", "address", "city", "zip", "phone"]
+    },
+    {
+      "id": "public_health_departments_2010", "name": "Public health departments", "group": "Health", "geometry": "point",
+      "url": "https://maris.mississippi.edu/MARISdata/Health/MS_PublicHealthDepartments_2010.zip", "vintage": "2010",
+      "credit": "MARIS · HSIP", "terms": "maris", "color": "#9be564",
+      "label": "name", "place": "county",
+      "fields": {
+        "name": { "from": "NAME", "label": "Name", "title": true },
+        "address": { "from": "ADDRESS", "label": "Address", "title": true },
+        "city": { "from": "CITY", "label": "City", "title": true },
+        "zip": { "from": "ZIP", "label": "ZIP code" },
+        "county": { "from": "COUNTY", "label": "County", "title": true },
+        "phone": { "from": "TELEPHONE", "label": "Phone", "format": "phone" },
+        "level": { "from": "GOVT_LEVEL", "label": "Government level", "title": true }
+      },
+      "popup": ["name", "address", "city", "phone", "level"]
+    },
+    {
+      "id": "rural_health_facilities_2007", "name": "MSDH rural health facilities", "group": "Health", "geometry": "point",
+      "url": "https://maris.mississippi.edu/MARISdata/Health/MS_MSDHRuralHealthFacilities_2007.zip", "vintage": "2007",
+      "credit": "MARIS · MSDH", "terms": "maris", "color": "#00c2c7",
+      "label": "name", "place": "county",
+      "fields": {
+        "name": { "from": "Provider", "label": "Provider" },
+        "address": { "from": "Address", "label": "Address" },
+        "city": { "from": "City", "label": "City" },
+        "zip": { "from": "ZIP", "label": "ZIP code", "format": "text" },
+        "county": { "from": "County", "label": "County" },
+        "phone": { "from": "Phone", "label": "Phone", "format": "phone" }
+      },
+      "popup": ["name", "address", "city", "phone"]
+    },
+    {
+      "id": "mental_health_regions_1998", "name": "Mental health regions", "group": "Health", "geometry": "polygon",
+      "url": "https://maris.mississippi.edu/MARISdata/Health/MS_MentalHealthRegions_1998.zip", "vintage": "1998",
+      "credit": "MARIS", "terms": "maris", "color": "#c86bfa", "keep": 0.05,
+      "label": "name",
+      "fields": {
+        "name": { "from": "NAME", "label": "Name" },
+        "region": { "from": "REGNUM", "label": "Region", "format": "integer" },
+        "location": { "from": "LOCATION", "label": "Location" },
+        "phone": { "from": "PHONE", "label": "Phone (as published)", "format": "phone" }
+      },
+      "popup": ["name", "region", "location", "phone"]
+    },
+    {
+      "id": "public_schools_2024", "name": "Public schools", "group": "Education", "geometry": "point",
+      "url": "https://maris.mississippi.edu/MARISdata/Education/MS_PublicSchools_2024.zip", "vintage": "2024",
+      "credit": "MARIS · HIFLD · NCES", "terms": "maris", "color": "#4d9dff",
+      "label": "name", "type": "level", "place": "county",
+      "fields": {
+        "name": { "from": "NAME", "label": "Name", "title": true },
+        "level": { "from": "LEVEL_", "label": "Level", "title": true },
+        "type": { "from": "TYPE", "label": "School type", "values": { "1": "Regular", "2": "Special education", "3": "Vocational", "4": "Other or alternative", "5": "Reportable program" } },
+        "status": { "from": "STATUS", "label": "Status", "values": { "1": "Open", "2": "Closed since last report", "3": "New since last report", "4": "Added", "5": "Changed affiliation" } },
+        "enrollment": { "from": "ENROLLMENT", "label": "Enrollment", "format": "integer" },
+        "address": { "from": "ADDRESS", "label": "Address", "title": true },
+        "city": { "from": "CITY", "label": "City", "title": true },
+        "zip": { "from": "ZIP", "label": "ZIP code" },
+        "county": { "from": "COUNTY", "label": "County", "title": true },
+        "phone": { "from": "TELEPHONE", "label": "Phone", "format": "phone" },
+        "website": { "from": "WEBSITE", "label": "Website", "format": "url" }
+      },
+      "popup": ["name", "level", "type", "status", "enrollment", "address", "city", "phone"]
+    },
+    {
+      "id": "private_schools_2017", "name": "Private schools", "group": "Education", "geometry": "point",
+      "url": "https://maris.mississippi.edu/MARISdata/Education/MS_PrivateSchools_2017.zip", "vintage": "2017",
+      "credit": "MARIS", "terms": "maris", "color": "#a6c8ff",
+      "label": "name", "type": "type", "place": "city",
+      "fields": {
+        "name": { "from": "School_Nam", "label": "Name" },
+        "type": { "from": "School_Typ", "label": "Affiliation" },
+        "grades": { "from": "Grades", "label": "Grades" },
+        "students": { "from": "Students", "label": "Students", "format": "integer" },
+        "address": { "from": "Physical_A", "label": "Address" },
+        "city": { "from": "City", "label": "City" },
+        "zip": { "from": "Zip", "label": "ZIP code", "format": "text" },
+        "phone": { "from": "Phone", "label": "Phone", "format": "phone" },
+        "website": { "from": "Website", "label": "Website", "format": "url" }
+      },
+      "popup": ["name", "type", "grades", "students", "address", "city", "phone"]
+    },
+    {
+      "id": "public_higher_education_2009", "name": "Public higher education sites", "group": "Education", "geometry": "point",
+      "url": "https://maris.mississippi.edu/MARISdata/Education/MS_PublicHigherEducationSites_2009.zip", "vintage": "2009",
+      "credit": "MARIS", "terms": "maris", "color": "#ffd23f",
+      "label": "name", "type": "type",
+      "fields": {
+        "name": { "from": "NAME", "label": "Name" },
+        "institution": { "from": "Main_C", "label": "Institution" },
+        "type": { "from": "CampusType", "label": "Campus type" },
+        "website": { "from": "Website", "label": "Website", "format": "url" }
+      },
+      "popup": ["name", "institution", "type", "website"]
+    },
+    {
+      "id": "private_colleges_2017", "name": "Private colleges", "group": "Education", "geometry": "point",
+      "url": "https://maris.mississippi.edu/MARISdata/Education/MS_PrivateColleges_2017.zip", "vintage": "2017",
+      "credit": "MARIS", "terms": "maris", "color": "#ffb000",
+      "label": "name",
+      "fields": {
+        "name": { "from": "NAME", "label": "Name" },
+        "affiliation": { "from": "Relig_Affi", "label": "Religious affiliation" },
+        "website": { "from": "Web_Site", "label": "Website", "format": "url" }
+      },
+      "popup": ["name", "affiliation", "website"]
+    },
+    {
+      "id": "childcare_2023", "name": "Licensed child care facilities", "group": "Education", "geometry": "point",
+      "url": "https://maris.mississippi.edu/MARISdata/Education/MS_LicensedChildcareFacilities_2023.zip", "vintage": "2023",
+      "credit": "MARIS · HIFLD", "terms": "maris", "color": "#ff8fab",
+      "label": "name", "type": "type", "place": "county",
+      "fields": {
+        "name": { "from": "NAME", "label": "Name", "title": true },
+        "type": { "from": "TYPE", "label": "Type", "title": true },
+        "capacity": { "from": "POPULATION", "label": "Capacity", "format": "integer" },
+        "address": { "from": "ADDRESS", "label": "Address", "title": true },
+        "city": { "from": "CITY", "label": "City", "title": true },
+        "zip": { "from": "ZIP", "label": "ZIP code" },
+        "county": { "from": "COUNTY", "label": "County", "title": true },
+        "phone": { "from": "TELEPHONE", "label": "Phone", "format": "phone" }
+      },
+      "popup": ["name", "type", "capacity", "address", "city", "phone"]
+    },
+    {
+      "id": "public_school_districts_2016", "name": "Public school districts (2015–16)", "group": "Education", "geometry": "polygon",
+      "url": "https://maris.mississippi.edu/MARISdata/Education/MS_PublicSchoolDistricts_2015to2016.zip", "vintage": "2015–16",
+      "credit": "MARIS · U.S. Census Bureau", "terms": "census", "color": "#4d9dff", "keep": 0.03, "idFrom": "GEOID",
+      "label": "name",
+      "fields": {
+        "name": { "from": "NAME", "label": "District" },
+        "lea": { "from": "GEOID", "label": "LEA ID" }
+      },
+      "popup": ["name", "lea"]
+    },
+    {
+      "id": "community_college_districts_1995", "name": "Community college districts", "group": "Education", "geometry": "polygon",
+      "url": "https://maris.mississippi.edu/MARISdata/Education/MS_CommunityCollegeDistricts_1995.zip", "vintage": "1995",
+      "credit": "MARIS", "terms": "maris", "color": "#ffd23f", "keep": 0.05,
+      "label": "name",
+      "fields": {
+        "name": { "from": "NAME", "label": "District", "title": true },
+        "campus": { "from": "MAINCAMPUS", "label": "Main campus", "title": true }
+      },
+      "popup": ["name", "campus"]
+    },
+    {
+      "id": "public_libraries_2021", "name": "Public libraries", "group": "Community", "geometry": "point",
+      "url": "https://maris.mississippi.edu/MARISdata/Cultural/MS_PublicLibraries_2021.zip", "vintage": "2021",
+      "credit": "MARIS", "terms": "maris", "color": "#3ddc97",
+      "label": "name", "place": "county",
+      "fields": {
+        "name": { "from": "OffName", "label": "Name" },
+        "system": { "from": "System", "label": "Library system" },
+        "address": { "from": "Address", "label": "Address" },
+        "city": { "from": "City", "label": "City" },
+        "zip": { "from": "ZipCode", "label": "ZIP code" },
+        "county": { "from": "CONAME", "label": "County" },
+        "phone": { "from": "Telephone", "label": "Phone", "format": "phone" },
+        "website": { "from": "Website", "label": "Website", "format": "url" }
+      },
+      "popup": ["name", "system", "address", "city", "phone", "website"]
+    },
+    {
+      "id": "places_of_worship_2020", "name": "Places of worship", "group": "Community", "geometry": "point",
+      "url": "https://maris.mississippi.edu/MARISdata/Cultural/MS_PlacesofWorship_2020.zip", "vintage": "2020",
+      "credit": "MARIS · HIFLD", "terms": "maris", "color": "#b39ddb",
+      "label": "name", "place": "city",
+      "fields": {
+        "name": { "from": "NAME", "label": "Name", "title": true },
+        "address": { "from": "STREET", "label": "Address", "title": true },
+        "city": { "from": "CITY", "label": "City", "title": true },
+        "zip": { "from": "ZIP", "label": "ZIP code", "format": "text" }
+      },
+      "popup": ["name", "address", "city", "zip"]
+    },
+    {
+      "id": "post_offices_2015", "name": "Post offices", "group": "Community", "geometry": "point",
+      "url": "https://maris.mississippi.edu/MARISdata/Cultural/MS_PostOffices_2015.zip", "vintage": "2015",
+      "credit": "MARIS · USGS GNIS", "terms": "maris", "color": "#8ecae6",
+      "label": "name", "place": "county",
+      "fields": {
+        "name": { "from": "gaz_name", "label": "Name" },
+        "county": { "from": "county_nam", "label": "County", "title": true },
+        "zip": { "from": "Zip_Code", "label": "ZIP code", "format": "text" }
+      },
+      "popup": ["name", "county", "zip"]
+    },
+    {
+      "id": "msu_extension_offices_2014", "name": "MSU county extension offices", "group": "Community", "geometry": "point",
+      "url": "https://maris.mississippi.edu/MARISdata/Cultural/MS_MSUCountyExtensionOffices_2014.zip", "vintage": "2014",
+      "credit": "MARIS · MSU Extension", "terms": "maris", "color": "#9be564",
+      "label": "county",
+      "fields": {
+        "county": { "from": "COUNTY", "label": "County" },
+        "address": { "from": "Mailing_Ad", "label": "Mailing address" }
+      },
+      "popup": ["county", "address"]
+    },
+    {
+      "id": "casinos_2020", "name": "Casinos", "group": "Community", "geometry": "point",
+      "url": "https://maris.mississippi.edu/MARISdata/Cultural/MS_Casinos_2020.zip", "vintage": "2020",
+      "credit": "MARIS", "terms": "maris", "color": "#ff8fab",
+      "label": "name",
+      "fields": {
+        "name": { "from": "NAME", "label": "Name" }
+      },
+      "popup": ["name"]
+    },
+    {
+      "id": "courthouses_2017", "name": "Courthouses", "group": "Government", "geometry": "point",
+      "url": "https://maris.mississippi.edu/MARISdata/Cultural/MS_Courthouses_2017.zip", "vintage": "2017",
+      "credit": "MARIS", "terms": "maris", "color": "#e0e0e0",
+      "label": "name", "type": "type",
+      "fields": {
+        "name": { "from": "County_Nam", "label": "Name" },
+        "type": { "from": "Type", "label": "Jurisdiction" },
+        "court": { "from": "Subtype", "label": "Court" },
+        "address": { "from": "Address", "label": "Address" },
+        "phone": { "from": "Phone", "label": "Phone", "format": "phone" },
+        "website": { "from": "WEB_Site", "label": "Website", "format": "url" }
+      },
+      "popup": ["name", "type", "court", "address", "phone", "website"]
+    },
+    {
+      "id": "chancery_court_districts_2005", "name": "Chancery court districts", "group": "Government", "geometry": "polygon",
+      "url": "https://maris.mississippi.edu/MARISdata/Boundaries/MS_ChanceryCourtDistricts_2005.zip", "vintage": "2005",
+      "credit": "MARIS", "terms": "maris", "color": "#e0e0e0", "keep": 0.05,
+      "label": "district",
+      "fields": {
+        "district": { "from": "DistrictID", "label": "District" }
+      },
+      "popup": ["district"]
+    },
+    {
+      "id": "psc_districts_2010", "name": "Public Service Commission districts", "group": "Government", "geometry": "polygon",
+      "url": "https://maris.mississippi.edu/MARISdata/Boundaries/MS_PublicServiceCommissionDistricts_2010.zip", "vintage": "2010",
+      "credit": "MARIS", "terms": "maris", "color": "#e0e0e0", "keep": 0.05,
+      "label": "district",
+      "fields": {
+        "district": { "from": "DIST", "label": "District", "values": { "N": "Northern", "C": "Central", "S": "Southern" } }
+      },
+      "popup": ["district"]
+    },
+    {
+      "id": "census_county_housing_2020", "name": "Counties: population and housing (2020 Census)", "group": "Census", "geometry": "polygon",
+      "url": "https://maris.mississippi.edu/MARISdata/Census/MS_CENSUSCountiesPopulationHousing_2020.zip", "vintage": "2020",
+      "credit": "MARIS · U.S. Census Bureau", "terms": "census", "color": "#8ecae6", "keep": 0.03, "idFrom": "GEOID20",
+      "label": "name",
+      "fields": {
+        "name": { "from": "NAMELSAD20", "label": "County" },
+        "population": { "from": "P0010001", "label": "Population (2020)", "format": "integer", "measure": true, "source": "2020 Census P.L. 94-171" },
+        "population_2010": { "from": "Pop2010", "label": "Population (2010)", "format": "integer", "measure": true },
+        "adults": { "from": "P0030001", "label": "Population 18 and over", "format": "integer", "measure": true },
+        "white": { "from": "P0010003", "label": "White alone", "format": "integer" },
+        "black": { "from": "P0010004", "label": "Black or African American alone", "format": "integer" },
+        "group_quarters": { "from": "P0050001", "label": "In group quarters", "format": "integer" },
+        "housing_units": { "from": "H0010001", "label": "Housing units", "format": "integer", "measure": true },
+        "occupied": { "from": "H0010002", "label": "Occupied housing units", "format": "integer" },
+        "vacant": { "from": "H0010003", "label": "Vacant housing units", "format": "integer" },
+        "black_pct": { "ratio": ["black", "population"], "scale": 100, "label": "Black or African American alone", "format": "percent", "measure": true },
+        "white_pct": { "ratio": ["white", "population"], "scale": 100, "label": "White alone", "format": "percent", "measure": true },
+        "vacant_pct": { "ratio": ["vacant", "housing_units"], "scale": 100, "label": "Vacant housing units", "format": "percent", "measure": true }
+      },
+      "popup": ["name", "population", "population_2010", "housing_units", "vacant_pct"]
+    },
+    {
+      "id": "census_county_density_2020", "name": "Counties: population density (2020 Census)", "group": "Census", "geometry": "polygon",
+      "url": "https://maris.mississippi.edu/MARISdata/Census/MS_CENSUSCountiesPopulationDensity_2020.zip", "vintage": "2020",
+      "credit": "MARIS · U.S. Census Bureau", "terms": "census", "color": "#8ecae6", "keep": 0.03, "idFrom": "GEOID20",
+      "label": "name",
+      "fields": {
+        "name": { "from": "NAMELSAD20", "label": "County" },
+        "population": { "from": "P0010001", "label": "Population (2020)", "format": "integer", "measure": true },
+        "sq_miles": { "from": "SqMiles", "label": "Land area (sq mi)", "format": "number" },
+        "density": { "ratio": ["population", "sq_miles"], "scale": 1, "label": "People per square mile", "format": "rate", "measure": true }
+      },
+      "popup": ["name", "population", "sq_miles", "density"]
+    },
+    {
+      "id": "census_county_poverty_2020", "name": "Counties: poverty (MARIS census layer)", "group": "Census", "geometry": "polygon",
+      "url": "https://maris.mississippi.edu/MARISdata/Census/MS_CENSUSCountyPoverty_2020.zip", "vintage": "2020",
+      "credit": "MARIS · U.S. Census Bureau", "terms": "census", "color": "#8ecae6", "keep": 0.03, "idFrom": "GEOID20",
+      "label": "name",
+      "fields": {
+        "name": { "from": "NAMELSAD20", "label": "County" },
+        "poverty_pct": { "from": "Perc_BPL", "label": "Below poverty", "format": "percent", "measure": true },
+        "below_poverty": { "from": "Pop_BPL", "label": "People below poverty", "format": "integer", "measure": true },
+        "children_below": { "from": "BPL_U18", "label": "Children below poverty", "format": "integer", "measure": true },
+        "seniors_below": { "from": "BPL_GT65", "label": "Adults 65+ below poverty", "format": "integer", "measure": true },
+        "white_poverty_pct": { "from": "PBPL_Wht", "label": "White poverty rate", "format": "percent", "measure": true },
+        "black_poverty_pct": { "from": "PBPL_Blk", "label": "Black poverty rate", "format": "percent", "measure": true },
+        "hispanic_poverty_pct": { "from": "PBPL_Hisp", "label": "Hispanic poverty rate", "format": "percent", "measure": true }
+      },
+      "popup": ["name", "poverty_pct", "below_poverty", "children_below"]
+    },
+    {
+      "id": "census_school_districts_2020", "name": "School districts: population and housing (2020 Census)", "group": "Census", "geometry": "polygon",
+      "url": "https://maris.mississippi.edu/MARISdata/Census/MS_CENSUSSchoolDistrictsPopulationHousing_2020.zip", "vintage": "2020",
+      "credit": "MARIS · U.S. Census Bureau", "terms": "census", "color": "#8ecae6", "keep": 0.03, "idFrom": "GEOID20",
+      "label": "name",
+      "fields": {
+        "name": { "from": "NAME20", "label": "District" },
+        "population": { "from": "P0010001", "label": "Population (2020)", "format": "integer", "measure": true },
+        "adults": { "from": "P0030001", "label": "Population 18 and over", "format": "integer", "measure": true },
+        "white": { "from": "P0010003", "label": "White alone", "format": "integer" },
+        "black": { "from": "P0010004", "label": "Black or African American alone", "format": "integer" },
+        "housing_units": { "from": "H0010001", "label": "Housing units", "format": "integer", "measure": true },
+        "vacant": { "from": "H0010003", "label": "Vacant housing units", "format": "integer" },
+        "black_pct": { "ratio": ["black", "population"], "scale": 100, "label": "Black or African American alone", "format": "percent", "measure": true },
+        "white_pct": { "ratio": ["white", "population"], "scale": 100, "label": "White alone", "format": "percent", "measure": true },
+        "vacant_pct": { "ratio": ["vacant", "housing_units"], "scale": 100, "label": "Vacant housing units", "format": "percent", "measure": true }
+      },
+      "popup": ["name", "population", "housing_units", "vacant_pct"]
+    },
+    {
+      "id": "county_boundaries_2015", "name": "County boundaries (2015)", "group": "Boundaries", "geometry": "polygon",
+      "url": "https://maris.mississippi.edu/MARISdata/Boundaries/MS_CountyBoundaries_2015.zip", "vintage": "2015",
+      "credit": "MARIS", "terms": "maris", "color": "#e0e0e0", "keep": 0.03,
+      "label": "name",
+      "fields": {
+        "name": { "from": "CONAME", "label": "County" },
+        "seat": { "from": "CO_SEAT", "label": "County seat" }
+      },
+      "popup": ["name", "seat"]
+    },
+    {
+      "id": "indian_lands_2020", "name": "Mississippi Choctaw lands", "group": "Boundaries", "geometry": "polygon",
+      "url": "https://maris.mississippi.edu/MARISdata/Boundaries/MS_IndianLands_2020.zip", "vintage": "2020",
+      "credit": "MARIS · U.S. Census Bureau", "terms": "census", "color": "#ffb000", "keep": 0.2, "idFrom": "GEOID20",
+      "label": "name",
+      "fields": {
+        "name": { "from": "NAMELSAD20", "label": "Name" }
+      },
+      "popup": ["name"]
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+"type": "FeatureCollection",
+"features": [
+{ "type": "Feature", "id": "1", "properties": { "name": "Sams Town Hotel and Casino" }, "geometry": { "type": "Point", "coordinates": [ -90.41049, 34.81932 ] } },
+{ "type": "Feature", "id": "2", "properties": { "name": "Hollywood Casino and Resort Gulf C" }, "geometry": { "type": "Point", "coordinates": [ -89.35429, 30.33488 ] } },
+{ "type": "Feature", "id": "3", "properties": { "name": "Golden Nuggett  Biloxi Hotel & Cas" }, "geometry": { "type": "Point", "coordinates": [ -88.86071, 30.39109 ] } },
+{ "type": "Feature", "id": "4", "properties": { "name": "Beau-Rivage Casino" }, "geometry": { "type": "Point", "coordinates": [ -88.89108, 30.39246 ] } },
+{ "type": "Feature", "id": "5", "properties": { "name": "Palace Casino Resort" }, "geometry": { "type": "Point", "coordinates": [ -88.85994, 30.39661 ] } },
+{ "type": "Feature", "id": "6", "properties": { "name": "Treasure Bay Casino & Hotel" }, "geometry": { "type": "Point", "coordinates": [ -88.95511, 30.39382 ] } },
+{ "type": "Feature", "id": "7", "properties": { "name": "Boomtown Casino Biloxi" }, "geometry": { "type": "Point", "coordinates": [ -88.88528, 30.41266 ] } },
+{ "type": "Feature", "id": "8", "properties": { "name": "Hard Rock Hotel and Casino Biloxi" }, "geometry": { "type": "Point", "coordinates": [ -88.88808, 30.39216 ] } },
+{ "type": "Feature", "id": "9", "properties": { "name": "Harlows Casino Resort and Spa" }, "geometry": { "type": "Point", "coordinates": [ -91.14095, 33.3001 ] } },
+{ "type": "Feature", "id": "10", "properties": { "name": "Island View Casino Resort" }, "geometry": { "type": "Point", "coordinates": [ -89.10259, 30.36324 ] } },
+{ "type": "Feature", "id": "11", "properties": { "name": "Magnolia Bluffs Casino" }, "geometry": { "type": "Point", "coordinates": [ -91.40499, 31.56574 ] } },
+{ "type": "Feature", "id": "12", "properties": { "name": "Hollywood Casino Tunica" }, "geometry": { "type": "Point", "coordinates": [ -90.41582, 34.81297 ] } },
+{ "type": "Feature", "id": "13", "properties": { "name": "Waterview Casino and Hotel" }, "geometry": { "type": "Point", "coordinates": [ -90.89689, 32.32407 ] } },
+{ "type": "Feature", "id": "14", "properties": { "name": "Ameristar Casino - Vicksburg" }, "geometry": { "type": "Point", "coordinates": [ -90.90067, 32.31527 ] } },
+{ "type": "Feature", "id": "15", "properties": { "name": "Silver Slipper Casino" }, "geometry": { "type": "Point", "coordinates": [ -89.42547, 30.23923 ] } },
+{ "type": "Feature", "id": "16", "properties": { "name": "Lady Luck Casino Vicksburg" }, "geometry": { "type": "Point", "coordinates": [ -90.91482, 32.29623 ] } },
+{ "type": "Feature", "id": "17", "properties": { "name": "IP Casino Resort Spa" }, "geometry": { "type": "Point", "coordinates": [ -88.89008, 30.41281 ] } },
+{ "type": "Feature", "id": "18", "properties": { "name": "1st Jackpot Casino" }, "geometry": { "type": "Point", "coordinates": [ -90.32233, 34.84558 ] } },
+{ "type": "Feature", "id": "19", "properties": { "name": "Horeshoe Casino and Hotel" }, "geometry": { "type": "Point", "coordinates": [ -90.33084, 34.84741 ] } },
+{ "type": "Feature", "id": "20", "properties": { "name": "Gold Strike Casino Resort" }, "geometry": { "type": "Point", "coordinates": [ -90.33281, 34.84616 ] } },
+{ "type": "Feature", "id": "21", "properties": { "name": "Fitz Casino & Hotel" }, "geometry": { "type": "Point", "coordinates": [ -90.35895, 34.84092 ] } },
+{ "type": "Feature", "id": "22", "properties": { "name": "Isle of Capri - Lula" }, "geometry": { "type": "Point", "coordinates": [ -90.58048, 34.49817 ] } },
+{ "type": "Feature", "id": "23", "properties": { "name": "SilverStar Hotel & Casino" }, "geometry": { "type": "Point", "coordinates": [ -89.20577, 32.77141 ] } },
+{ "type": "Feature", "id": "24", "properties": { "name": "Golden Moon Casino" }, "geometry": { "type": "Point", "coordinates": [ -89.20378, 32.77379 ] } },
+{ "type": "Feature", "id": "25", "properties": { "name": "Riverwalk Casino" }, "geometry": { "type": "Point", "coordinates": [ -90.91354, 32.29794 ] } },
+{ "type": "Feature", "id": "26", "properties": { "name": "Trop Greenville Casino" }, "geometry": { "type": "Point", "coordinates": [ -91.0642, 33.41539 ] } },
+{ "type": "Feature", "id": "27", "properties": { "name": "Scarlet Pearl Casino Resort" }, "geometry": { "type": "Point", "coordinates": [ -88.88999, 30.42476 ] } },
+{ "type": "Feature", "id": "28", "properties": { "name": "Harrah's Gulf Coast" }, "geometry": { "type": "Point", "coordinates": [ -88.86682, 30.39305 ] } }
+]
+}

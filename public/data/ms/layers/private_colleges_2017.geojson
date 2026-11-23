@@ -1,0 +1,14 @@
+{
+"type": "FeatureCollection",
+"features": [
+{ "type": "Feature", "id": "1", "properties": { "name": "Mississippi College", "affiliation": "Baptist", "website": "https://www.mc.edu/" }, "geometry": { "type": "Point", "coordinates": [ -90.33189, 32.33525 ] } },
+{ "type": "Feature", "id": "2", "properties": { "name": "Millsaps College", "affiliation": "Methodist", "website": "http://www.millsaps.edu/" }, "geometry": { "type": "Point", "coordinates": [ -90.18042, 32.32405 ] } },
+{ "type": "Feature", "id": "3", "properties": { "name": "Tougaloo College", "affiliation": "United Church of Christ", "website": "https://www.tougaloo.edu/" }, "geometry": { "type": "Point", "coordinates": [ -90.15963, 32.40454 ] } },
+{ "type": "Feature", "id": "4", "properties": { "name": "Belhaven College", "affiliation": "Presbyterian", "website": "http://www.belhaven.edu/" }, "geometry": { "type": "Point", "coordinates": [ -90.16916, 32.32058 ] } },
+{ "type": "Feature", "id": "5", "properties": { "name": "Reformed Theological Seminary", "affiliation": "Presbyterian", "website": "http://www.rts.edu/" }, "geometry": { "type": "Point", "coordinates": [ -90.269, 32.3346 ] } },
+{ "type": "Feature", "id": "6", "properties": { "name": "Blue Mountain", "affiliation": "Baptist", "website": "http://www.bmc.edu/" }, "geometry": { "type": "Point", "coordinates": [ -89.02658, 34.67202 ] } },
+{ "type": "Feature", "id": "7", "properties": { "name": "Rust College", "affiliation": "United Methodist", "website": "http://www.rustcollege.edu/" }, "geometry": { "type": "Point", "coordinates": [ -89.44568, 34.77602 ] } },
+{ "type": "Feature", "id": "8", "properties": { "name": "William Carey University", "affiliation": "Baptist", "website": "https://wmcarey.edu/" }, "geometry": { "type": "Point", "coordinates": [ -89.29156, 31.30454 ] } },
+{ "type": "Feature", "id": "9", "properties": { "name": "Southeastern Bible College", "affiliation": "Baptist", "website": "http://www.southeasternbaptist.edu/" }, "geometry": { "type": "Point", "coordinates": [ -89.14947, 31.74843 ] } }
+]
+}

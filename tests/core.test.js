@@ -1,13 +1,22 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { createStore } from "../src/core/store.js";
 import { defaults, normalizeState, LAYER_VIEW_KEYS } from "../src/core/state.js";
 import { featureId, groups, numericFields } from "../src/core/features.js";
 import { classify, classOf, ramp, palettes } from "../src/map/classify.js";
 import { csvCell, csvText } from "../src/data/csv.js";
 import { ident, sqlString } from "../src/data/sql.js";
-import { fieldLabel, starterSQL, validateCatalog, referenceLayer } from "../src/catalog/catalog.js";
+import {
+  fieldLabel,
+  fieldInfo,
+  starterSQL,
+  validateCatalog,
+  validateLibrary,
+  referenceLayer,
+  layerMeta,
+} from "../src/catalog/catalog.js";
 import { findFeatures } from "../src/panels/find.js";
 
 const read = (p) => JSON.parse(readFileSync(new URL(p, import.meta.url)));
@@ -113,4 +122,53 @@ test("finding features by name, group or ID", () => {
   assert.ok(findFeatures(features, "adams county", ref).length > 1);
   assert.equal(findFeatures(features, "zzz", ref).length, 0);
   assert.equal(findFeatures(features, "", ref).length, 12);
+});
+
+test("the layer library matches the files it describes", () => {
+  const library = read("../public/data/ms/" + catalog.library);
+  validateLibrary(library, catalog);
+  const size = (p) => statSync(new URL("../public/data/ms/" + p, import.meta.url)).size;
+  // The catalog is read before the first map; the library only when needed.
+  assert.ok(size("catalog.json") <= 40 * 1024, "catalog.json stays small");
+  assert.ok(size(catalog.library) <= 100 * 1024, "library.json stays small");
+  assert.equal(catalog.layers.length, 1, "add-on layers live in the library, not the catalog");
+  const [west, south, east, north] = catalog.region.bounds.flat();
+  const types = { point: ["Point"], polygon: ["Polygon", "MultiPolygon"], line: ["LineString", "MultiLineString"] };
+  for (const layer of library.layers) {
+    assert.ok(library.groups.includes(layer.group), layer.id);
+    assert.ok(layer.file.startsWith("layers/"), layer.id);
+    const text = readFileSync(new URL("../public/data/ms/" + layer.file, import.meta.url));
+    const sha = (buf) => createHash("sha256").update(buf).digest("hex");
+    const file = layer.file.slice("layers/".length);
+    assert.equal(sha(text), layer.source.output[file], layer.id + " output checksum");
+    const geo = JSON.parse(text);
+    assert.equal(geo.features.length, layer.count, layer.id);
+    const ids = new Set(geo.features.map((f) => String(f.id)));
+    assert.equal(ids.size, layer.count, layer.id + " ids are unique");
+    assert.ok(geo.features.every((f) => types[layer.geometry].includes(f.geometry?.type)), layer.id);
+    const keys = new Set(geo.features.flatMap((f) => Object.keys(f.properties)));
+    for (const field of Object.keys(layer.fields)) assert.ok(keys.has(field), layer.id + "." + field);
+    for (const field of layer.measures)
+      assert.ok(geo.features.some((f) => Number.isFinite(f.properties[field])), layer.id + "." + field);
+    for (const info of Object.values(layer.fields))
+      for (const key of ["numerator", "denominator", "flag"])
+        if (info.pool?.[key]) assert.ok(keys.has(info.pool[key]), layer.id + " pool " + info.pool[key]);
+    const [x0, y0, x1, y1] = layer.bbox;
+    assert.ok(x0 >= west - 0.5 && y0 >= south - 0.5 && x1 <= east + 0.5 && y1 <= north + 0.5, layer.id + " bbox");
+    if (layer.geometry === "polygon") {
+      assert.ok(layer.neighbors, layer.id + " neighbors");
+      const graph = read("../public/data/ms/" + layer.neighbors);
+      for (const rule of ["queen", "rook"])
+        assert.deepEqual(new Set(Object.keys(graph[rule])), ids, layer.id + " " + rule);
+    }
+    assert.equal(layerMeta(catalog, library, layer.id), layer);
+  }
+  assert.equal(layerMeta(catalog, library, "tracts"), referenceLayer(catalog));
+  const chr = layerMeta(catalog, library, "chr_counties_2025");
+  assert.equal(chr.count, 82);
+  assert.equal(fieldInfo(catalog, "v085_rawvalue", chr).unit, "%");
+  assert.equal(fieldLabel(catalog, "v085_rawvalue", chr), "Uninsured");
+  assert.equal(fieldInfo(catalog, "poverty_pct").label, "Population below poverty");
+  assert.throws(() => validateLibrary({ layers: [{ id: "tracts", name: "x", geometry: "point", file: "f" }] }, catalog));
+  assert.throws(() => validateLibrary({ layers: [{ id: "a", name: "A", geometry: "blob", file: "f" }] }));
 });
