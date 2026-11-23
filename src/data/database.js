@@ -518,6 +518,25 @@ export async function openDatabase({ reference }) {
       await engine.dropFile(file).catch(() => {});
     }
   }
+  /**
+   * A GeoParquet file of a GeoJSON FeatureCollection (text), written by DuckDB
+   * spatial, which adds the GeoParquet metadata for the geometry column.
+   */
+  async function exportGeoParquet(geojson) {
+    const stem = "rumb_export_" + crypto.randomUUID();
+    const source = stem + ".geojson",
+      file = stem + ".parquet";
+    await engine.registerFileBuffer(source, new TextEncoder().encode(geojson));
+    try {
+      await conn.query(
+        "COPY (SELECT * FROM ST_Read(" + sqlString(source) + ")) TO " + sqlString(file) + " (FORMAT PARQUET)",
+      );
+      return new Blob([await engine.copyFileToBuffer(file)], { type: "application/vnd.apache.parquet" });
+    } finally {
+      await engine.dropFile(source).catch(() => {});
+      await engine.dropFile(file).catch(() => {});
+    }
+  }
   async function close() {
     await conn.close();
     await engine.terminate();
@@ -543,6 +562,7 @@ export async function openDatabase({ reference }) {
       joinReport: serial(joinReport),
       pointCountSQL,
       exportCSV: serial(exportCSV),
+      exportGeoParquet: serial(exportGeoParquet),
       close: serial(close),
     };
   } catch (error) {

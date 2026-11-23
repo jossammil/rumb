@@ -1,0 +1,111 @@
+/* The printable report (src/report/report.js): hidden on screen; when
+   printing, it is the only thing on the page. Ink on white whatever the theme. */
+#print-root {
+  display: none;
+}
+@page {
+  size: letter;
+  margin: 0.5in;
+}
+@media print {
+  body > *:not(#print-root) {
+    display: none !important;
+  }
+  html,
+  body {
+    background: #fff !important;
+    color: #111 !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  #print-root {
+    display: block;
+    font: 10pt/1.35 Arial, Helvetica, sans-serif;
+    color: #111;
+  }
+  #print-root h1,
+  #print-root h2,
+  #print-root th,
+  #print-root td,
+  #print-root p {
+    color: #111 !important;
+    font-family: Arial, Helvetica, sans-serif !important;
+    text-transform: none !important;
+    letter-spacing: normal !important;
+    text-shadow: none !important;
+  }
+  .print-head h1 {
+    font-size: 18pt;
+    font-weight: 700;
+    margin: 0 0 2pt;
+  }
+  .print-head p {
+    margin: 0 0 8pt;
+    color: #444;
+  }
+  .print-map {
+    width: 100%;
+    max-height: 5.2in;
+    object-fit: contain;
+    border: 1px solid #999;
+  }
+  .print-section {
+    margin-top: 10pt;
+    break-inside: avoid-page;
+  }
+  .print-section h2 {
+    font-size: 11pt;
+    margin: 0 0 4pt;
+    border-bottom: 1px solid #999;
+  }
+  .print-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2pt 10pt;
+  }
+  .print-legend span,
+  .print-other {
+    display: inline-flex;
+    align-items: center;
+    gap: 4pt;
+    margin: 0;
+  }
+  .print-legend i,
+  .print-other i {
+    display: inline-block;
+    width: 12pt;
+    height: 8pt;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .print-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .print-table th,
+  .print-table td {
+    text-align: left;
+    padding: 1.5pt 4pt;
+    border-bottom: 0.5pt solid #ccc;
+    font-weight: 400;
+  }
+  .print-table th {
+    color: #444;
+    width: 30%;
+  }
+  .print-table thead th {
+    font-weight: 700;
+  }
+  .print-table .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .print-note,
+  .print-notes {
+    color: #444;
+    font-size: 9pt;
+  }
+  .print-notes {
+    white-space: pre-wrap;
+  }
+}

@@ -25,6 +25,8 @@ export function createStyle(app) {
   let items = [],
     others = [],
     lastCuts = [];
+  /** Each layer's features as last drawn (with __rumb_color and __rumb_class), for exports. */
+  const lastDrawn = new Map();
   /** Features of the active layer by ID, as last drawn. */
   const values = new Map();
 
@@ -147,6 +149,13 @@ export function createStyle(app) {
     const annotated = features.map((f, i) => {
       const id = featureId(f),
         v = data[i];
+      const cls = clustered
+        ? view.result.byId[id]?.cluster ?? "NA"
+        : cats
+          ? f.properties?.[category] ?? null
+          : measure && Number.isFinite(v)
+            ? classOf(v, cuts) + 1
+            : null;
       let color = cats
         ? cats.colorOf(f.properties?.[category]) || na
         : !measure
@@ -155,7 +164,7 @@ export function createStyle(app) {
             ? na
             : colors[classOf(v, cuts)];
       if (clustered) color = clusterColor(view.result.byId[id]?.cluster ?? "NA");
-      return { ...f, properties: { ...f.properties, __rumb_id: id, __rumb_color: color } };
+      return { ...f, properties: { ...f.properties, __rumb_id: id, __rumb_color: color, __rumb_class: cls } };
     });
     return { annotated, data, cuts, colors, cats, measure, clustered, clusterColor, uniform, na, suppressed };
   }
@@ -181,6 +190,7 @@ export function createStyle(app) {
       const l = app.layerById(e.id);
       if (!l || !app.atlas.has(e.id)) continue;
       const drawn = colorize(l, viewOf(l));
+      lastDrawn.set(e.id, drawn.annotated);
       // The spatial filter dims (or hides) what it leaves out.
       const kept = app.filter?.keptFor(l);
       let features = drawn.annotated;
@@ -250,6 +260,7 @@ export function createStyle(app) {
     legendItems: () => items,
     /** The other shown layers' legend entries, top first: { name, kind, colors, note, credit }. */
     legendOthers: () => others,
+    drawn: (id) => lastDrawn.get(id) || [],
     /** The focus layer's class breaks as last drawn. */
     cuts: () => lastCuts,
   };

@@ -31,6 +31,8 @@ export const SHORTCUTS = [
   ["save", "Ctrl/⌘ S", "Save the project"],
   ["export", "E", "Export the map as PNG"],
   ["share", "U", "Copy a share link"],
+  ["export-data", "W", "Export layer data"],
+  ["report", "P", "Printable report"],
   ["theme-next", "T", "Next theme"],
   ["help", "?", "About rumb and these shortcuts"],
   ["escape", "Esc", "Close a panel or dialog; back to the map"],
@@ -67,6 +69,8 @@ export const KEY_OF = {
   o: "open",
   e: "export",
   u: "share",
+  w: "export-data",
+  p: "report",
   t: "theme-next",
   "?": "help",
 };

@@ -738,6 +738,62 @@ await check("share", async () => {
   await p.context().close();
 });
 
+await check("exports", async () => {
+  const ref = JSON.parse(await readFile("tests/filter-reference.json", "utf8"));
+  const p = await openPage();
+  await p.keyboard.press("n");
+  await p.click('[data-library="fire_stations_2020"]');
+  await waitText("#toast", "Added Fire stations", p);
+  await p.evaluate((c) => window.rumb.app.filter.set({ kind: "radius", center: c, miles: 25 }), ref.center);
+  // CSV of what the filter keeps, with distances and the drawn color.
+  await p.keyboard.press("w");
+  expect((await p.inputValue("#export-scope")) === "filtered", "filtered by default");
+  const csv = csvRows(await download("#export-go", p));
+  expect(csv.length === ref.stations25.length, "CSV rows " + csv.length);
+  expect(JSON.stringify(csv.map((r) => r.id).sort()) === JSON.stringify(ref.stations25), "CSV ids");
+  expect(csv.every((r) => Number(r.distance_mi) <= 25 && /^#[0-9a-f]{6}$/i.test(r.style_color) && r.lon && r.lat), "CSV columns");
+  // GeoJSON of all of them.
+  await p.keyboard.press("w");
+  await p.selectOption("#export-scope", "all");
+  await p.selectOption("#export-format", "geojson");
+  const geo = JSON.parse((await download("#export-go", p)).toString("utf8"));
+  expect(geo.features.length === 1043 && geo.features[0].geometry.type === "Point", "GeoJSON");
+  // GeoParquet, written by DuckDB, reads back in with its geometry.
+  await p.keyboard.press("w");
+  await p.selectOption("#export-format", "parquet");
+  const parquet = await download("#export-go", p);
+  expect(parquet.subarray(0, 4).toString() === "PAR1", "a Parquet file");
+  await p.setInputFiles("#file-picker", { name: "kept.parquet", mimeType: "application/octet-stream", buffer: parquet });
+  await waitText("#work-content", "Table preview", p);
+  await waitText("#work-content", ref.stations25.length + " rows", p);
+  await p.context().close();
+});
+
+await check("report", async () => {
+  const p = await openPage();
+  await p.evaluate(() => window.rumb.app.filter.set({ kind: "radius", center: [-90.18, 32.3], miles: 10 }));
+  await p.evaluate(() => (window.print = () => (window.__printed = true)));
+  await p.keyboard.press("p");
+  await p.locator("#report-print").waitFor();
+  await p.fill("#report-notes", "Checked on site.");
+  await p.click("#report-print");
+  await p.waitForFunction(() => window.__printed === true);
+  const sections = await p.$$eval("#print-root [data-section]", (els) => els.map((e) => e.dataset.section));
+  expect(sections.join() === "map,legend,summary,features,counts,sources,notes", "sections " + sections);
+  // The report is hidden on screen; it shows only when printing.
+  expect((await p.textContent("#print-root")).includes("Kept by the filter"), "filtered features in the report");
+  expect((await p.$eval("#print-root .print-map", (img) => img.src.length)) > 10000, "map image");
+  // Printing shows only the report.
+  await p.emulateMedia({ media: "print" });
+  const shown = await p.evaluate(() => [getComputedStyle(document.querySelector("#print-root")).display, getComputedStyle(document.querySelector("#map-view")).display]);
+  expect(shown.join() === "block,none", "print layout " + shown);
+  if (which === "chromium") {
+    const pdf = await p.pdf({ format: "Letter" });
+    expect(pdf.length > 20000 && pdf.subarray(0, 4).toString() === "%PDF", "PDF");
+  }
+  await p.context().close();
+});
+
 // ---- compare -----------------------------------------------------------------
 await check("compare", async () => {
   const p = await openPage();

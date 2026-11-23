@@ -309,3 +309,19 @@ test("a layer's look becomes MapLibre paint, shapes and labels", async () => {
   assert.equal(specShape(plain), specShape(layerSpecs("x", "point", colors)));
   assert.notEqual(specShape(plain), specShape(points));
 });
+
+test("exported features carry their fields, look and distance", async () => {
+  const { exportFeatures, featuresCSV, featuresGeoJSON, exportName } = await import("../src/data/export.js");
+  const features = [
+    { type: "Feature", id: "1", properties: { name: "A, Inc", n: 2, __rumb_color: "#000" }, geometry: { type: "Point", coordinates: [-90.1, 32.2] } },
+    { type: "Feature", id: "2", properties: { name: "B", n: 5 }, geometry: { type: "Point", coordinates: [-90.3, 32.4] } },
+  ];
+  const drawn = [{ properties: { __rumb_id: "1", __rumb_color: "#ff0000", __rumb_class: 2 } }];
+  const out = exportFeatures(features, { ids: new Set(["1"]), drawn, distances: new Map([["1", 3.14159]]), idOf: (f) => String(f.id) });
+  assert.equal(out.length, 1);
+  assert.deepEqual(out[0].properties, { name: "A, Inc", n: 2, style_color: "#ff0000", style_class: 2, distance_mi: 3.142 });
+  assert.equal(featuresCSV(out), 'id,name,n,style_color,style_class,distance_mi,lon,lat\r\n1,"A, Inc",2,#ff0000,2,3.142,-90.1,32.2');
+  assert.equal(JSON.parse(featuresGeoJSON(out)).features[0].id, "1");
+  assert.equal(exportFeatures(features, { idOf: (f) => String(f.id) }).length, 2);
+  assert.equal(exportName("fire stations/2020", "filtered"), "fire_stations_2020-filtered");
+});

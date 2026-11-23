@@ -7,6 +7,7 @@ import "./styles/shell.css";
 import "./styles/map.css";
 import "./styles/panels.css";
 import "./styles/themes.css";
+import "./styles/print.css";
 import { fieldInfo, fieldLabel, loadCatalog } from "./catalog/catalog.js";
 import { number } from "./catalog/format.js";
 import { featureTitle, popupRows } from "./catalog/popup.js";
@@ -33,6 +34,7 @@ import { createStyle } from "./panels/style.js";
 import { createTools } from "./panels/tools.js";
 import { createFilter } from "./panels/filter.js";
 import { createShare } from "./panels/share.js";
+import { openExport } from "./panels/exports.js";
 import { parseCoordinate } from "./geo/coords.js";
 import { countPoints } from "./geo/counts.js";
 import { projectedIndex } from "./geo/filter.js";
@@ -630,6 +632,13 @@ function wire(app) {
     "filter-clear": () => app.filter.clear(),
     "count-points": () => toggleCounts(app),
     share: () => app.perform(null, app.share.copyLink),
+    "export-data": () => openExport(app),
+    report: () =>
+      app.perform(null, async () => {
+        if (app.state.view !== "map") app.setView("map");
+        const { openReport } = await import("./report/report.js");
+        openReport(app);
+      }),
     "layer-down": () => stepFocus(app, -1),
     "layer-up": () => stepFocus(app, 1),
   });
