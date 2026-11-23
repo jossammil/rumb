@@ -347,3 +347,38 @@ export function poissonCI(count, level = 0.95) {
   const alpha = 1 - level;
   return [count > 0 ? qgamma(alpha / 2, count) : 0, qgamma(1 - alpha / 2, count + 1)];
 }
+
+/**
+ * ψ(x), the digamma function: shifted up past 10 by ψ(x) = ψ(x + 1) − 1/x,
+ * then the asymptotic series (Abramowitz & Stegun 6.3.18).
+ */
+export function digamma(x) {
+  let shift = 0;
+  while (x < 10) {
+    shift -= 1 / x;
+    x += 1;
+  }
+  const f = 1 / (x * x);
+  return (
+    shift +
+    Math.log(x) -
+    0.5 / x -
+    f * (1 / 12 - f * (1 / 120 - f * (1 / 252 - f * (1 / 240 - f * (1 / 132 - (f * 691) / 32760)))))
+  );
+}
+
+/** ψ′(x), the trigamma function, the same way (Abramowitz & Stegun 6.4.12). */
+export function trigamma(x) {
+  let shift = 0;
+  while (x < 10) {
+    shift += 1 / (x * x);
+    x += 1;
+  }
+  const f = 1 / (x * x);
+  return (
+    shift +
+    1 / x +
+    f / 2 +
+    (f / x) * (1 / 6 - f * (1 / 30 - f * (1 / 42 - f * (1 / 30 - (f * 5) / 66))))
+  );
+}

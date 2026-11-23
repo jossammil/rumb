@@ -8,6 +8,7 @@ import { callStats } from "../stats/client.js";
 import { METHOD_LIST, methodId, methodOf } from "../stats/methods.js";
 import { poolOf } from "../stats/pool.js";
 import { modelSpec } from "../core/derived.js";
+import { COUNT_TYPES } from "../stats/models.js";
 import { centroid, DISTANCE_KINDS, summaryText } from "../stats/neighbors.js";
 import { $, icon, options, saveBlob } from "../ui/dom.js";
 
@@ -208,6 +209,12 @@ export function createAnalysis(app) {
         if (!xs.length) throw new Error("Choose at least one covariate for the regression.");
         await app.ws.ensureFields(xs);
         Object.assign(extra, { modelType: state.model.type || "ols", covariates: Object.fromEntries(xs.map((x) => [x, byId(x)])) });
+        // Count models explain the measure's numerator with log(denominator) as the offset.
+        if (COUNT_TYPES.has(extra.modelType)) {
+          const pool = poolOf(app.fieldMeta(l, state.measure));
+          if (!pool?.denominator) throw new Error("Count models need a rate with counts: choose a measure with a numerator and a denominator.");
+          Object.assign(extra, { events: byId(pool.numerator), base: byId(pool.denominator) });
+        }
       }
       if (scanning) {
         const pool = poolOf(app.fieldMeta(l, state.measure));
@@ -328,6 +335,12 @@ export function createAnalysis(app) {
       covariates: Object.fromEntries(spec.xs.map((x) => [x, byId(x)])),
       weights: spec.weights,
     };
+    if (COUNT_TYPES.has(spec.type)) {
+      const pool = poolOf(app.fieldMeta(l, spec.y));
+      if (!pool?.denominator) throw new Error("Count models need a rate with counts.");
+      await app.ws.ensureFields([pool.numerator, pool.denominator]);
+      Object.assign(request, { events: byId(pool.numerator), base: byId(pool.denominator) });
+    }
     const ids = new Set(items.map(featureId));
     if (DISTANCE_KINDS.has(spec.weights.kind)) request.points = (await locations(l, items)).points;
     else {

@@ -1,16 +1,26 @@
 // Regression controls: the model type and its covariates. The measure on the
-// map is the outcome; the Neighbors setting gives the weights for the
-// spatial diagnostics (and, later, the spatial models).
+// map is the outcome (for count models, its numerator with the denominator
+// as the offset); the Neighbors setting gives the weights for the spatial
+// diagnostics and the spatial models.
 import { h, options } from "../../ui/dom.js";
-import { MODEL_TYPES } from "../../stats/models.js";
+import { COUNT_TYPES, MODEL_TYPES } from "../../stats/models.js";
+import { poolOf } from "../../stats/pool.js";
 
 export function render(app, mount) {
   const { state } = app,
     l = app.layer();
   const model = { type: "ols", xs: [], ...state.model };
+  const countNote = () => {
+    const pool = poolOf(app.fieldMeta(l, state.measure));
+    return pool?.denominator
+      ? " Counts: " + app.label(pool.numerator, l) + ", with log(" + app.label(pool.denominator, l) + ") as the offset."
+      : " This measure has no counts; choose a rate with a numerator and a denominator.";
+  };
+  // Read the model at the moment of the change: quick ticks can outrun a redraw.
+  const current = () => ({ type: "ols", xs: [], ...app.state.model });
   const set = (patch) => {
     app.analysis.clearResults();
-    app.store.set({ model: { ...model, ...patch } });
+    app.store.set({ model: { ...current(), ...patch } });
     app.renderAll();
   };
   const type = h(
@@ -34,7 +44,8 @@ export function render(app, mount) {
         "data-covariate": f,
         checked: chosen.has(f),
         onchange: async (ev) => {
-          const xs = ev.target.checked ? [...model.xs, f] : model.xs.filter((x) => x !== f);
+          const now = current().xs;
+          const xs = ev.target.checked ? [...new Set([...now, f])] : now.filter((x) => x !== f);
           if (ev.target.checked) await app.ws.ensureFields([f]).catch(app.fail);
           set({ xs });
         },
@@ -55,7 +66,10 @@ export function render(app, mount) {
       id: "model-note",
       text:
         (model.xs.length ? model.xs.length + " covariates chosen." : "Choose at least one covariate.") +
-        (model.type === "ols" ? "" : " Spatial models use the Neighbors setting below, which must be symmetric (not plain k nearest)."),
+        (model.type === "lag" || model.type === "error"
+          ? " Spatial models use the Neighbors setting below, which must be symmetric (not plain k nearest)."
+          : "") +
+        (COUNT_TYPES.has(model.type) ? countNote() : ""),
     }),
   );
 }

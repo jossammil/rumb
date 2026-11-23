@@ -504,6 +504,32 @@ await check("regression", async () => {
   await p.context().close();
 });
 
+await check("counts-model", async () => {
+  const ref = JSON.parse(await readFile("tests/models-reference.json", "utf8")).counts;
+  const p = await openPage();
+  await p.keyboard.press("n");
+  await p.click('[data-library="chr_counties_2025"]');
+  await waitText("#toast", "Added County Health Rankings", p);
+  await p.evaluate(() => window.rumb.app.setMeasure("v138_rawvalue"));
+  await p.selectOption("#method", "model");
+  await p.waitForSelector("#model-type");
+  await p.selectOption("#model-type", "poisson");
+  for (const x of ref.covariates) await p.check(`[data-covariate="${x}"]`);
+  await waitText("#model-note", "with log(", p);
+  await p.click("#analyze");
+  // Drug overdose deaths are overdispersed for a Poisson model, so it says so.
+  await waitText("#inspect-panel", "overdispersed", p);
+  await waitText("#inspect-panel", "Log-likelihood · AIC", p);
+  await p.selectOption("#model-type", "nb");
+  await p.click("#analyze");
+  // The negative binomial fit is MASS::glm.nb's.
+  await waitText("#inspect-panel", "θ (dispersion)" + ref.nb.theta.toFixed(3), p);
+  const ratio = await p.locator('[data-table="Coefficients"] tbody tr:nth-child(2) td:nth-child(6)').textContent();
+  expect(ratio === String(Number(Math.exp(ref.nb.coef[1]).toPrecision(3))), "rate ratio " + ratio);
+  await waitText("#legend", "Standardized residuals", p);
+  await p.context().close();
+});
+
 await check("identity", async () => {
   const p = await openPage();
   const ids = ["lyr-tracts-fill", "lyr-tracts-outline", "anchor-areas", "anchor-points", "anchor-labels", "sel-line"];

@@ -4,7 +4,9 @@
 // area. Areas missing any variable, outside the study area or without an
 // eligible neighbor are left out and say why. Areas are classed by their
 // standardized residual for the map. Pure.
-import { ols, standardize } from "./regression.js";
+import { countModel } from "./glm.js";
+import { randomGenerator, shuffle } from "./random.js";
+import { lag, ols, standardize } from "./regression.js";
 import { spatialModel, weightEigenvalues } from "./spatial-models.js";
 import { prepareUniverse } from "./stats.js";
 
@@ -12,7 +14,31 @@ export const MODEL_TYPES = {
   ols: "Ordinary least squares",
   lag: "Spatial lag (maximum likelihood)",
   error: "Spatial error (maximum likelihood)",
+  poisson: "Poisson (counts, log-population offset)",
+  nb: "Negative binomial (counts, log-population offset)",
 };
+export const COUNT_TYPES = new Set(["poisson", "nb"]);
+
+/** Moran's I of residuals over row-standardized W, with a seeded two-sided permutation p. */
+function residualMoran(e, W, permutations = 999, seed = 12345) {
+  const I = (v) => {
+    const l = lag(W, v);
+    let num = 0,
+      den = 0;
+    for (let i = 0; i < v.length; i++) {
+      num += v[i] * l[i];
+      den += v[i] * v[i];
+    }
+    return num / den;
+  };
+  const observed = I(e),
+    expected = -1 / (e.length - 1);
+  const random = randomGenerator(seed),
+    shuffled = e.slice();
+  let extreme = 0;
+  for (let d = 0; d < permutations; d++) if (Math.abs(I(shuffle(shuffled, random)) - expected) >= Math.abs(observed - expected) - 1e-12) extreme++;
+  return { I: observed, p: (extreme + 1) / (permutations + 1), permutations };
+}
 
 /** Residual classes by standardized residual, as GeoDa and ArcGIS map them. */
 export function residualClass(z) {
@@ -48,10 +74,16 @@ export function suggestion(spatial, alpha = 0.05) {
  * ({ name: { id: x } }), and the weights inputs of stats.analyze }.
  */
 export function fitModel(input) {
-  const { values, covariates = {}, modelType: type = "ols" } = input;
+  const { covariates = {}, modelType: type = "ols", events, base } = input;
   const names = Object.keys(covariates);
   if (!names.length) throw new Error("Choose at least one covariate.");
   if (!MODEL_TYPES[type]) throw new Error("Unknown model type " + type + ".");
+  const counting = COUNT_TYPES.has(type);
+  if (counting && !events) throw new Error("Count models need a measure with counts: a numerator and a denominator.");
+  // Count models explain the events with log(base) as the offset.
+  const values = counting
+    ? Object.fromEntries(Object.keys(events).map((id) => [id, base?.[id] > 0 ? events[id] : null]))
+    : input.values;
   // An area needs the outcome and every covariate.
   const complete = Object.fromEntries(
     Object.entries(values).map(([id, v]) => [
@@ -65,6 +97,7 @@ export function fitModel(input) {
   const y = ids.map((id) => values[id]),
     X = ids.map((id) => [1, ...names.map((n) => covariates[n][id])]);
   const W = standardize(rows, w);
+  if (counting) return countResult(type, ids, byId, X, y, ids.map((id) => Math.log(base[id])), W, names, weights);
   const olsFit = ols(X, y, { names: ["(Intercept)", ...names], W });
   // A spatial model reports its own estimates; the OLS diagnostics stay beside them.
   const fit =
@@ -106,5 +139,34 @@ export function fitModel(input) {
       "; OLS residual Moran's I with its exact moments and Lagrange multiplier tests over row-standardized " +
       weights.label +
       ".",
+  };
+}
+
+// A count model's result, in the same shape as the linear models'.
+function countResult(type, ids, byId, X, y, offset, W, names, weights) {
+  const fit = countModel(type, X, y, offset, { names: ["(Intercept)", ...names] });
+  ids.forEach((id, i) => {
+    const z = fit.residuals[i];
+    Object.assign(byId[id], { value: y[i], fitted: fit.fitted[i], residual: z, standardized: z, cluster: residualClass(z) });
+  });
+  const { fitted, residuals, standardized, ...summary } = fit;
+  return {
+    ...summary,
+    method: "model",
+    modelType: type,
+    byId,
+    weights,
+    covariates: names,
+    residualMoran: residualMoran(residuals, W),
+    permutations: 0,
+    alpha: 0.05,
+    fdr: false,
+    methodNote:
+      MODEL_TYPES[type] +
+      " with an intercept, log link and log-population offset; " +
+      (type === "nb" ? "β by IRLS alternating with θ by maximum likelihood; " : "fitted by IRLS; ") +
+      "Wald z tests and rate ratios; Pearson residuals, with Moran's I over row-standardized " +
+      weights.label +
+      " and a 999-permutation p.",
   };
 }

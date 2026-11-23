@@ -364,6 +364,8 @@ const MODEL_NAMES = {
   ols: "Ordinary least squares",
   lag: "Spatial lag (maximum likelihood)",
   error: "Spatial error (maximum likelihood)",
+  poisson: "Poisson (log-population offset)",
+  nb: "Negative binomial (log-population offset)",
 };
 
 // Regression residuals: standardized, in GeoDa's bands, on RdBu (red: the
@@ -379,11 +381,13 @@ const residualClasses = {
   NA: ["Unavailable", "#8a918b"],
 };
 const pText = (p) => (p < 0.0001 ? "<0.0001" : fixed(p));
+/** Three significant digits, for rate ratios that can be very small. */
+const sig = (v) => (Number.isFinite(v) ? String(Number(v.toPrecision(3))) : "");
 const testRow = (name, t) => (t ? [name, fixed(t.statistic, 3), String(t.df ?? ""), pText(t.p)] : null);
 
 METHODS.model = {
   id: "model",
-  label: "Regression (OLS, spatial lag or spatial error)",
+  label: "Regression (linear, spatial or count)",
   title: "Regression",
   legendTitle: "Standardized residuals",
   modeLabel: "Residuals",
@@ -393,88 +397,54 @@ METHODS.model = {
   classes: () => residualClasses,
   swatches: ["P3", "P1", "N1", "N3"],
   classOf: (record) => record?.cluster ?? "NA",
-  featureRows: (record) => [
-    ["Predicted", fixed(record.fitted, 3)],
-    ["Residual", fixed(record.residual, 3)],
-    ["Standardized residual", fixed(record.standardized, 2)],
-  ],
+  featureRows: (record, result) =>
+    COUNTED.has(result?.modelType)
+      ? [
+          ["Observed count", number(record.value, 0)],
+          ["Expected by the model", fixed(record.fitted, 1)],
+          ["Pearson residual", fixed(record.residual, 2)],
+        ]
+      : [
+          ["Predicted", fixed(record.fitted, 3)],
+          ["Residual", fixed(record.residual, 3)],
+          ["Standardized residual", fixed(record.standardized, 2)],
+        ],
   summaryRows: (result) => [
     ["Model", MODEL_NAMES[result.modelType || "ols"]],
     ["Areas", number(result.n, 0)],
-    ...(result.parameter
+    ...(COUNTED.has(result.modelType)
       ? [
-          [result.parameter.name, fixed(result.parameter.estimate, 4) + " (SE " + fixed(result.parameter.se, 4) + ", p " + pText(result.parameter.p) + ")"],
-          ["LR test against OLS", fixed(result.lr.statistic, 2) + " (p " + pText(result.lr.p) + ")"],
-          ["AIC · OLS AIC", fixed(result.aic, 2) + " · " + fixed(result.olsAic, 2)],
-          ["Model residual Moran’s I", fixed(result.residualMoran, 4)],
+          ["Deviance · null", fixed(result.deviance.residual, 2) + " · " + fixed(result.deviance.null, 2) + " (df " + result.deviance.df + ")"],
+          ["Log-likelihood · AIC", fixed(result.logLik, 2) + " · " + fixed(result.aic, 2)],
+          result.theta
+            ? ["θ (dispersion)", fixed(result.theta.estimate, 3) + " (SE " + fixed(result.theta.se, 3) + ")"]
+            : ["Pearson χ² / df", fixed(result.dispersion, 2) + (result.dispersion > 1.5 ? " (overdispersed: try negative binomial)" : "")],
+          ["Residual Moran’s I", fixed(result.residualMoran.I, 4) + " (permutation p " + fixed(result.residualMoran.p, 3) + ")"],
         ]
-      : [
-          ["R² · adjusted", fixed(result.r2, 3) + " · " + fixed(result.adjR2, 3)],
-          ["F", fixed(result.F.statistic, 2) + " (p " + pText(result.F.p) + ")"],
-        ]),
-    ["Log-likelihood · AIC", fixed(result.logLik, 2) + " · " + fixed(result.aic, 2)],
-    ["Condition number", fixed(result.conditionNumber, 1) + (result.conditionNumber > 30 ? " (collinearity likely)" : "")],
-    ...(result.spatial
-      ? [[(result.parameter ? "OLS residual" : "Residual") + " Moran’s I", fixed(result.spatial.moran.I, 4) + " (z " + fixed(result.spatial.moran.z, 2) + ", p " + pText(result.spatial.moran.p) + ")"]]
-      : []),
+      : linearSummary(result)),
   ],
   /** Tables under the summary: [{ caption, head, rows }]. */
-  details: (result) => [
-    {
-      caption: "Coefficients",
-      head: ["", "Estimate", "SE", result.parameter ? "z" : "t", "p", "VIF"],
-      rows: result.coefficients.map((c, j) => [
-        c.label || c.name,
-        fixed(c.estimate, 4),
-        fixed(c.se, 4),
-        fixed(c.statistic, 2),
-        pText(c.p),
-        j && result.vif?.[j - 1] != null ? fixed(result.vif[j - 1], 2) : "",
-      ]),
-    },
-    ...(result.impacts
-      ? [
-          {
-            caption: "Impacts (average effect of a unit change)",
-            head: ["", "Direct", "Indirect", "Total"],
-            rows: result.impacts.map((m) => [m.label || m.name, fixed(m.direct, 4), fixed(m.indirect, 4), fixed(m.total, 4)]),
-          },
-        ]
-      : []),
-    {
-      caption: result.parameter ? "OLS diagnostics" : "Diagnostics",
-      head: ["Test", "Value", "df", "p"],
-      rows: [
-        testRow("Jarque–Bera (normality)", result.jarqueBera),
-        testRow("Breusch–Pagan", result.breuschPagan),
-        testRow("Koenker–Bassett", result.koenker),
-        result.spatial && ["Moran’s I (residuals)", fixed(result.spatial.moran.I, 4), "", pText(result.spatial.moran.p)],
-        testRow("LM-lag", result.spatial?.lmLag),
-        testRow("Robust LM-lag", result.spatial?.robustLmLag),
-        testRow("LM-error", result.spatial?.lmError),
-        testRow("Robust LM-error", result.spatial?.robustLmError),
-        testRow("SARMA", result.spatial?.sarma),
-      ].filter(Boolean),
-      note: result.suggestion,
-    },
-  ],
+  details: (result) => (COUNTED.has(result.modelType) ? countDetails(result) : linearDetails(result)),
   /** Charts under the tables: [{ kind, … }] for ui/chart.js. */
   charts: (result) => {
+    const counted = COUNTED.has(result.modelType);
     const records = Object.entries(result.byId).filter(([, r]) => Number.isFinite(r.fitted));
     return [
       {
         kind: "points",
         points: records.map(([id, r]) => ({ id, x: r.fitted, y: r.residual })),
-        xLabel: "Predicted",
-        yLabel: "Residual",
+        xLabel: counted ? "Expected count" : "Predicted",
+        yLabel: counted ? "Pearson residual" : "Residual",
         reference: 0,
       },
-      { kind: "histogram", values: records.map(([, r]) => r.standardized), xLabel: "Standardized residual" },
+      { kind: "histogram", values: records.map(([, r]) => r.standardized), xLabel: counted ? "Pearson residual" : "Standardized residual" },
     ];
   },
   reportText: (result) =>
-    "R² " + fixed(result.r2, 3) + " on " + result.covariates.length + " covariates, " + number(result.n, 0) + " areas" +
-    (result.spatial ? " · residual Moran's I " + fixed(result.spatial.moran.I, 3) + " (p " + pText(result.spatial.moran.p) + ")" : "") +
+    (COUNTED.has(result.modelType)
+      ? MODEL_NAMES[result.modelType] + ": AIC " + fixed(result.aic, 1) + ", " + number(result.n, 0) + " areas · residual Moran's I " + fixed(result.residualMoran.I, 3)
+      : "R² " + fixed(result.r2, 3) + " on " + result.covariates.length + " covariates, " + number(result.n, 0) + " areas" +
+        (result.spatial ? " · residual Moran's I " + fixed(result.spatial.moran.I, 3) + " (p " + pText(result.spatial.moran.p) + ")" : "")) +
     " · " + result.studyName,
   rule: () => "residuals in standard deviations",
   ruleText: (result) => result.suggestion || "",
@@ -512,6 +482,105 @@ METHODS.model = {
   reading: false,
   trials: null,
 };
+
+// The linear models' summary rows (after the model and area count).
+function linearSummary(result) {
+  return [
+    ...(result.parameter
+      ? [
+          [result.parameter.name, fixed(result.parameter.estimate, 4) + " (SE " + fixed(result.parameter.se, 4) + ", p " + pText(result.parameter.p) + ")"],
+          ["LR test against OLS", fixed(result.lr.statistic, 2) + " (p " + pText(result.lr.p) + ")"],
+          ["AIC · OLS AIC", fixed(result.aic, 2) + " · " + fixed(result.olsAic, 2)],
+          ["Model residual Moran’s I", fixed(result.residualMoran, 4)],
+        ]
+      : [
+          ["R² · adjusted", fixed(result.r2, 3) + " · " + fixed(result.adjR2, 3)],
+          ["F", fixed(result.F.statistic, 2) + " (p " + pText(result.F.p) + ")"],
+        ]),
+    ["Log-likelihood · AIC", fixed(result.logLik, 2) + " · " + fixed(result.aic, 2)],
+    ["Condition number", fixed(result.conditionNumber, 1) + (result.conditionNumber > 30 ? " (collinearity likely)" : "")],
+    ...(result.spatial
+      ? [[(result.parameter ? "OLS residual" : "Residual") + " Moran’s I", fixed(result.spatial.moran.I, 4) + " (z " + fixed(result.spatial.moran.z, 2) + ", p " + pText(result.spatial.moran.p) + ")"]]
+      : []),
+  ];
+}
+
+// The linear models' tables: coefficients, impacts (lag), diagnostics.
+function linearDetails(result) {
+  return [
+    {
+      caption: "Coefficients",
+      head: ["", "Estimate", "SE", result.parameter ? "z" : "t", "p", "VIF"],
+      rows: result.coefficients.map((c, j) => [
+        c.label || c.name,
+        fixed(c.estimate, 4),
+        fixed(c.se, 4),
+        fixed(c.statistic, 2),
+        pText(c.p),
+        j && result.vif?.[j - 1] != null ? fixed(result.vif[j - 1], 2) : "",
+      ]),
+    },
+    ...(result.impacts
+      ? [
+          {
+            caption: "Impacts (average effect of a unit change)",
+            head: ["", "Direct", "Indirect", "Total"],
+            rows: result.impacts.map((m) => [m.label || m.name, fixed(m.direct, 4), fixed(m.indirect, 4), fixed(m.total, 4)]),
+          },
+        ]
+      : []),
+    {
+      caption: result.parameter ? "OLS diagnostics" : "Diagnostics",
+      head: ["Test", "Value", "df", "p"],
+      rows: [
+        testRow("Jarque–Bera (normality)", result.jarqueBera),
+        testRow("Breusch–Pagan", result.breuschPagan),
+        testRow("Koenker–Bassett", result.koenker),
+        result.spatial && ["Moran’s I (residuals)", fixed(result.spatial.moran.I, 4), "", pText(result.spatial.moran.p)],
+        testRow("LM-lag", result.spatial?.lmLag),
+        testRow("Robust LM-lag", result.spatial?.robustLmLag),
+        testRow("LM-error", result.spatial?.lmError),
+        testRow("Robust LM-error", result.spatial?.robustLmError),
+        testRow("SARMA", result.spatial?.sarma),
+      ].filter(Boolean),
+      note: result.suggestion,
+    },
+  ];
+}
+
+// A count model's tables: coefficients as rate ratios, and the fit tests.
+function countDetails(result) {
+  return [
+    {
+      caption: "Coefficients",
+      head: ["", "Estimate", "SE", "z", "p", "Rate ratio", "95% CI"],
+      rows: result.coefficients.map((c) => [
+        c.label || c.name,
+        fixed(c.estimate, 4),
+        fixed(c.se, 4),
+        fixed(c.statistic, 2),
+        pText(c.p),
+        sig(c.ratio),
+        sig(c.lower) + "–" + sig(c.upper),
+      ]),
+    },
+    {
+      caption: "Fit",
+      head: ["Test", "Value", "df", "p"],
+      rows: [
+        ["Residual deviance", fixed(result.deviance.residual, 2), String(result.deviance.df), pText(result.deviance.p)],
+        ["Moran’s I (Pearson residuals)", fixed(result.residualMoran.I, 4), "", fixed(result.residualMoran.p, 3)],
+      ],
+      note: result.theta
+        ? "θ = " + fixed(result.theta.estimate, 3) + ": the variance is μ + μ²/θ."
+        : result.dispersion > 1.5
+          ? "The Pearson χ²/df of " + fixed(result.dispersion, 2) + " shows overdispersion; the negative binomial model allows for it."
+          : null,
+    },
+  ];
+}
+
+const COUNTED = new Set(["poisson", "nb"]);
 
 /** The methods in the order the menu lists them. */
 export const METHOD_LIST = Object.values(METHODS);

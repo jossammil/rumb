@@ -112,6 +112,33 @@ spatial_fits <- function(nb) {
 }
 out$spatial <- list(queen = spatial_fits(queen_nb), band = spatial_fits(band_nb))
 
-out$packages <- lapply(setNames(nm = c("sf", "jsonlite", "spdep", "lmtest", "spatialreg")), function(p) as.character(packageVersion(p)))
+# ---- count models: Poisson and negative binomial with a log-population offset ------------
+# Drug overdose deaths by county (County Health Rankings 2025) on three county measures,
+# with log person-years as the offset, over the counties with every value.
+chr <- st_drop_geometry(st_read("public/data/ms/layers/chr_counties_2025.geojson", quiet = TRUE))
+chr <- chr[order(as.character(chr$id)), ]
+count_covariates <- c("v085_rawvalue", "v023_rawvalue", "v058_rawvalue")
+cd <- chr[complete.cases(chr[, c("v138_numerator", "v138_denominator", count_covariates)]) & chr$v138_denominator > 0, ]
+# Like every rumb analysis, keep the counties with a queen neighbor among them.
+chr_queen <- jsonlite::read_json("public/data/ms/layers/chr_counties_2025.neighbors.json")$queen
+cd_ids <- as.character(cd$id)
+cd <- cd[vapply(cd_ids, function(id) any(unlist(chr_queen[[id]]) %in% cd_ids), logical(1)), ]
+count_formula <- reformulate(c(count_covariates, "offset(log(v138_denominator))"), "v138_numerator")
+tight <- glm.control(epsilon = 1e-14, maxit = 100)
+pois <- glm(count_formula, family = poisson, data = cd, control = tight)
+nb <- MASS::glm.nb(count_formula, data = cd, control = tight)
+summarize_count <- function(fit) {
+  s <- summary(fit)
+  list(coef = unname(coef(fit)), se = unname(s$coefficients[, 2]), z = unname(s$coefficients[, 3]),
+       deviance = fit$deviance, nullDeviance = fit$null.deviance, aic = AIC(fit), logLik = as.numeric(logLik(fit)),
+       pearson = unname(residuals(fit, type = "pearson")))
+}
+out$counts <- list(
+  ids = I(as.character(cd$id)), covariates = I(count_covariates),
+  poisson = summarize_count(pois),
+  nb = c(summarize_count(nb), list(theta = nb$theta, thetaSe = nb$SE.theta))
+)
+
+out$packages <- lapply(setNames(nm = c("sf", "jsonlite", "spdep", "lmtest", "spatialreg", "MASS")), function(p) as.character(packageVersion(p)))
 jsonlite::write_json(out, "tests/models-reference.json", digits = NA, auto_unbox = TRUE, dataframe = "rows", matrix = "rowmajor")
 message("Wrote tests/models-reference.json")
