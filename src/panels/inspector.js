@@ -105,7 +105,9 @@ export function createInspector(app) {
       return null;
     }
     const graph = graphOf(app.layer());
-    const adjacent = state.result?.byId?.[id]?.neighbors ?? graph?.[id];
+    // An analysis on weights shows its own neighbors; a scan has none, so touching areas show.
+    const weighted = state.result && methodOf(state.result).id !== "scan";
+    const adjacent = (weighted && state.result.byId?.[id]?.neighbors) ?? graph?.[id];
     const dashed = ids.length > 1 ? neighborsOf(ids, graph) : adjacent || [];
     app.atlas.select({ layer: state.active, ids, neighbors: dashed });
     return adjacent;
@@ -224,7 +226,9 @@ export function createInspector(app) {
       for (const r of popupRows(l.meta, props, { skip: [fields.labelField, measure] }))
         metrics.push(row(r.label, r.text));
     if (adjacent)
-      metrics.push(row(state.result ? "Eligible neighbors" : "Adjacent areas", adjacent.length));
+      metrics.push(
+        row(state.result && methodOf(state.result).id !== "scan" ? "Eligible neighbors" : "Adjacent areas", adjacent.length),
+      );
     const method = methodOf(state.result);
     if (record) {
       if (record.reason) metrics.push(row("Analysis", record.reason));
@@ -299,6 +303,7 @@ export function createInspector(app) {
       h("div", { class: "inspection-head" }, h("h3", { text: method.title })),
       h("p", { class: "subtle", text: result.studyName + " · " + basisOf(result, state.rule) }),
       h("dl", { class: "metrics" }, method.summaryRows(result).map(([k, v]) => row(k, v))),
+      result.caution && h("p", { class: "caution", id: "analysis-caution", text: result.caution }),
       h("div", { class: "segmented" }, mode("value", "Measure"), mode("cluster", method.modeLabel)),
       method.scatter && scatter(result, state.selected, (id) => app.selectFeature(id), method.scatterLabels),
       h(

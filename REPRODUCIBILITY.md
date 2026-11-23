@@ -55,7 +55,7 @@ input_dir="$(mktemp -d)"
 Use Python 3 (standard library only) and R. To install the required R packages at their currently available versions, run the command below. For exact baseline reproduction, use the versions in the table.
 
 ```sh
-Rscript -e 'install.packages(c("sf", "spdep", "arrow", "rmapshaper", "jsonlite", "digest", "httr2"), repos="https://cloud.r-project.org")'
+Rscript -e 'install.packages(c("sf", "spdep", "arrow", "rmapshaper", "jsonlite", "digest", "httr2", "classInt", "smerc"), repos="https://cloud.r-project.org")'
 ```
 
 A source installation of `sf` needs GDAL, GEOS and PROJ. The repository locks JavaScript dependencies. R and native library versions are recorded here as a reference environment.
@@ -203,9 +203,9 @@ the committed data files, so rerun them only when those files change.
 | `scripts/reference-geo.R` | `tests/geo-reference.json` | 259 NAD83 positions projected to EPSG:3814 by PROJ |
 | `scripts/reference-filters.R` | `tests/filter-reference.json` | GEOS radius, buffer and polygon filters on the display files, in EPSG:3814 |
 | `scripts/reference-counts.R` | `tests/counts-reference.json` | GEOS point-in-polygon counts per tract and county; pooled County Health Rankings measures by map_project's rules |
-| `scripts/reference-stats.R` | `tests/stats-reference.json` | R's distribution functions and quantiles (deep tails included) and `poisson.test` limits; spdep k-nearest, distance-band and inverse-distance weights between tract centers of population projected by PROJ, with Moran's I on each; GEOS centroids of tract and county polygons |
+| `scripts/reference-stats.R` | `tests/stats-reference.json` | R's distribution functions and quantiles (deep tails included) and `poisson.test` limits; spdep k-nearest, distance-band and inverse-distance weights between tract centers of population projected by PROJ, with Moran's I on each; GEOS centroids; spdep Gi* (`localG`), `globalG.test`, `geary.test`, `localmoran_bv` and `EBImoran.mc`; `EBest` and `EBlocal`; smerc `scan.test` clusters for county overdose deaths and tract poverty |
 
-The scripts need the R packages `classInt` and `spdep` besides those above. The statistics fixtures were written with spdep 1.4-3 (installed November 23, 2026; `prepare-data.R`'s spdep reference reproduces with it to 4e-16).
+The scripts need the R packages `classInt`, `spdep` and `smerc` besides those above. The statistics fixtures were written with spdep 1.4-3 and smerc 1.8.6 (installed November 23, 2026; `prepare-data.R`'s spdep reference reproduces with them to 4e-16). [METHODS.md](METHODS.md) lists each formula with the R function it is checked against and the tolerance.
 
 ## 4. Verify the rebuild
 

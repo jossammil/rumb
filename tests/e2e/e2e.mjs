@@ -382,6 +382,10 @@ await check("bivariate", async () => {
   // A measure without counts says why it cannot be used.
   await p.evaluate(() => window.rumb.app.setMeasure("places_diabetes"));
   await waitText("#eb-note", "This measure has no counts", p);
+  // Results on model-based estimates carry a caution.
+  await p.selectOption("#method", "gistar");
+  await p.click("#analyze");
+  await waitText("#analysis-caution", "Model-based estimates (Diagnosed diabetes)", p);
   await p.context().close();
 });
 
@@ -1273,6 +1277,16 @@ await check("offline", async () => {
   await p.keyboard.press("1");
   await p.click("#analyze");
   await waitText("#inspect-panel", "0.2768", p);
+  // Tract tables, hot spots on distance weights from the centers, and smoothing.
+  await p.evaluate(() => window.rumb.app.setMeasure("acs_uninsured_pct"));
+  await waitText("#legend", "No health insurance", p);
+  await p.selectOption("#rule", "knn");
+  await p.keyboard.press("h");
+  await waitText("#inspect-panel", "Hot spot analysis", p);
+  await waitText("#weights-note", "from 2020 centers of population", p);
+  await p.click("#smooth-rate");
+  await p.click("#smooth-go");
+  await waitText("#legend", "No health insurance: empirical Bayes", p);
   // The library, its layers, the roads, filters and the report work offline too.
   await p.keyboard.press("n");
   await p.click('[data-library="fire_stations_2020"]');

@@ -84,6 +84,14 @@
   z-index: 1;
   margin: -4px -6px 0 6px;
 }
+/* A caution under an analysis summary (model-based estimates, say). */
+.inspect-block .caution {
+  margin: 6px 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--sem-warn);
+  color: var(--text2);
+  font-size: 0.78rem;
+}
 .inspect-block + .inspect-block {
   margin-top: 14px;
   padding-top: 12px;

@@ -52,14 +52,28 @@ navigator's course of constant bearing. It was called Field Atlas (repository
   - **U** copies a share link that carries the map but no data.
   - **W** exports a layer, filtered or not, as CSV, GeoJSON or GeoParquet.
   - **P** prints a report, or saves it as a PDF.
-- **Cluster statistics.** Global Moran's I and Local Moran (LISA) with
-  permutation inference, which matches R/spdep to nine decimal places.
-  - Queen or rook contiguity; the whole state, one county or the current map
-    extent as the study area.
-  - 99 to 9,999 permutations with a fixed seed, and optional
-    Benjamini–Hochberg adjustment.
-  - Linked cluster map, Moran scatterplot and a plain-language reading of each
-    area. **Export statistics** writes every result and setting to CSV.
+- **Tract data for analysis.** Beyond ACS poverty, tracts carry 15 ACS
+  2020–2024 profile covariates with their margins of error, all 40 CDC
+  PLACES 2025 health estimates with 95% intervals, and 2020 Census centers of
+  population. They load only when a field needs them.
+- **Spatial statistics** (**A**), each checked against R:
+  - **Clusters and outliers**: global Moran's I and Local Moran (LISA), also
+    **bivariate** (a measure against neighbors' values of another) and
+    **EB-adjusted** for rates on small populations.
+  - **Hot and cold spots** (**H**): Getis–Ord Gi* binned at 90, 95 and 99%
+    confidence, by the normal approximation or permutations, with General G
+    and Geary's C.
+  - **Rate clusters**: Kulldorff's spatial scan (Poisson), with Monte Carlo
+    p-values and secondary clusters, drawn as circles on the map.
+  - **Neighbors**: queen or rook contiguity, k nearest, a distance band or
+    inverse distance, measured between centers of population.
+  - The whole state, one county or the current map extent as the study area;
+    99 to 9,999 permutations with a fixed seed; optional Benjamini–Hochberg
+    adjustment. **Export statistics** writes every result and setting to CSV.
+- **Rates and reliability.** **Smooth a rate…** adds empirical Bayes,
+  spatial empirical Bayes and window rates, excess risk and exact Poisson
+  limits as new fields. **Hatch unreliable estimates** stripes ACS estimates
+  with a margin over 40% of the estimate and rates on fewer than 20 events.
 - **Compare areas.** Rank polygons on two or three weighted indicators, with
   a linked map, scatterplot and table, and each area's percentiles,
   contributions and uncertainty.
@@ -121,7 +135,7 @@ Single keys work when the cursor is not in a text box.
 
 The 2020–2024 ACS five-year S1701 estimates use the population for whom poverty status is determined. Zero-denominator tracts have unavailable rates. The regional display uses simplified boundaries. The canonical GeoParquet and the rook and queen graphs use full-resolution 2024 TIGER/Line tract polygons. Reference geography and analysis weights stop at the Mississippi state boundary. The [Census source manifest](public/data/ms/sources.json) records the variables, original sources, preparation versions and checksums. The backdrop uses public-domain [Natural Earth](https://www.naturalearthdata.com/) geography. What each field means, and which files make up the region, is in its [catalog](public/data/ms/catalog.json).
 
-Clustering uses first-order, row-standardized adjacency. Each run excludes missing measurements, zero denominators and areas with no eligible neighbors. The scatterplot locates each eligible area by its standardized measure and the mean of its neighbors' standardized measures. Observed local Moran statistics use GeoDaLib and sample variance. Global inference shuffles labels. Local inference holds the focal value fixed and samples neighbor values without replacement. The two-sided permutation tests count ties around the appropriate null expectation and use the plus-one correction. The default is 999 permutations with seed 12345, alpha 0.05. Optional Benjamini–Hochberg adjustment applies across tested local areas. The ACS margin of error describes survey sampling uncertainty. The permutation test conditions on the published estimates.
+The statistics, their formulas, references and the R checks for each are in [METHODS.md](METHODS.md). In brief: clustering uses row-standardized weights (contiguity, k nearest, a distance band or inverse distance). Each run excludes missing measurements, zero denominators and areas with no eligible neighbors. The scatterplot locates each eligible area by its standardized measure and the mean of its neighbors' standardized measures. Observed local Moran statistics use GeoDaLib and sample variance. Global inference shuffles labels. Local inference holds the focal value fixed and samples neighbor values without replacement. The two-sided permutation tests count ties around the appropriate null expectation and use the plus-one correction. The default is 999 permutations with seed 12345, alpha 0.05. Optional Benjamini–Hochberg adjustment applies across tested local areas. The ACS margin of error describes survey sampling uncertainty. The permutation test conditions on the published estimates.
 
 The comparison uses complete cases across all enabled indicators. Each percentile equals the number of lower values divided by the eligible count minus one. Constant fields receive 0.5. A lower-values direction uses one minus the percentile. Positive weights sum to 100. Scores are rounded to one decimal before competition ranking. Raw values at their median fall in the high half of their axis. Eight Mississippi tracts lack a complete default pair and remain visible as unranked. Tract PLACES estimates represent adults and carry 95% confidence intervals. These descriptive rankings use point estimates. [CDC PLACES 2025 tract data](https://data.cdc.gov/d/yjkw-uj5s) · [CDC methodology](https://www.cdc.gov/places/methodology/index.html)
 
@@ -183,9 +197,15 @@ The spatial query returned one result per tract and counted 39,670 points inside
   `data/<region>/` layout are ready for more states; adding them is data work.
 - Map layers from SQL hold at most 10,000 features and 32 MiB of geometry; the
   SQL preview shows 100 rows. Filter or aggregate large inputs first.
-- Weights are first-order queen or rook contiguity. Distance-band and
-  nearest-neighbor weights, Getis-Ord Gi*, rate smoothing and regression are
-  planned.
+- Statistics cover clusters, hot spots, rate smoothing and the purely
+  spatial Poisson scan. Regression, access to facilities and point patterns
+  are next. Distances are straight lines in the state's projection, not
+  travel times.
+- CDC PLACES values are model-based; patterns in them partly reflect CDC's
+  model, and results on them say so. County Health Rankings suppresses
+  death counts under 10, so those counties drop out of smoothing and scans.
+- A spatial scan of tracts at windows up to 50% of the population takes
+  about 5 seconds; the default is 25%.
 - The library's older layers keep their original vintages. Older MARIS
   districts get neighbors from tolerances (0.5 m), not exact shared vertices,
   and 911 service areas overlap.
@@ -193,7 +213,9 @@ The spatial query returned one result per tract and counted 39,670 points inside
   stay on the device; save a project to pass those on. Links stay under
   8,000 characters, shortening a large selection or drawn area if they must.
 - A project or share link that uses a newer palette or focuses a library
-  layer will not open in builds from before November 2026.
+  layer will not open in builds from before November 2026. Nor will one
+  that uses the statistics methods, weights or derived fields added later
+  that month.
 - Imports are CSV, Parquet, GeoParquet and GeoJSON. Shapefile, GeoPackage and
   KML are not read yet.
 - Everything stays on your device. That also means a project file is the only
@@ -227,13 +249,14 @@ the data and checks results against R. Pushes to `main` publish to GitHub Pages.
 | [DuckDB-Wasm](https://github.com/duckdb/duckdb-wasm) and its parquet, json and spatial extensions | MIT | Spatial SQL in the browser |
 | [Apache Arrow](https://arrow.apache.org/) and FlatBuffers | Apache-2.0 | DuckDB result tables |
 | [GeoDaLib](https://github.com/geodaai/geodalib) (`@geoda/lisa`) | MIT | Local Moran statistics |
+| R packages [spdep](https://r-spatial.github.io/spdep/), [smerc](https://cran.r-project.org/package=smerc) and R itself | GPL-2 or later | Reference values for the tests (not shipped; nothing is ported from them) |
 | [JSTS](https://github.com/bjornharrtell/jsts) | EDL-1.0 or EPL-1.0 | Polygon contiguity for imported layers |
 | [zip.js](https://gildas-lormeau.github.io/zip.js/) | BSD-3-Clause | `.rumb` project files |
 | [ColorBrewer](https://colorbrewer2.org/) diverging schemes (Cynthia Brewer, Mark Harrower and The Pennsylvania State University) | Apache-2.0 | Red–blue, pink–green and brown–teal palettes |
 | Okabe and Ito's color-blind-safe colors | Free to use | Category colors |
 | JetBrains Mono, Antonio, Chakra Petch and Saira Stencil One, via [Fontsource](https://fontsource.org/) | SIL OFL 1.1 | Theme fonts |
 | [esbuild](https://esbuild.github.io/), [Playwright](https://playwright.dev/) | MIT, Apache-2.0 | Building and testing (not shipped) |
-| U.S. Census Bureau TIGER/Line and ACS; CDC PLACES | Public data | Reference layer and roads |
+| U.S. Census Bureau TIGER/Line, ACS and 2020 centers of population; CDC PLACES | Public data | Reference layer, tract tables and roads |
 | [MARIS](https://maris.mississippi.edu/) layers | Public use; credit MARIS | Library layers (facilities, districts, Census tables) |
 | [County Health Rankings & Roadmaps 2025](https://www.countyhealthrankings.org/) (University of Wisconsin Population Health Institute) | Free with citation | County health measures |
 | [Natural Earth](https://www.naturalearthdata.com/) | Public domain | Backdrop |

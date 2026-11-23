@@ -240,6 +240,13 @@ export function createAnalysis(app) {
         res.circles = scanShapes(res.clusters, points);
       }
       if (state.method === "bilisa") res.secondLabel = app.label(state.yField);
+      // Model-based estimates (CDC PLACES) borrow strength from covariates, so their patterns are partly the model's.
+      const modeled = [state.measure, state.method === "bilisa" && state.yField]
+        .filter(Boolean)
+        .filter((f) => app.fieldMeta(l, f)?.modelBased);
+      if (modeled.length)
+        res.caution =
+          "Model-based estimates (" + modeled.map((f) => app.label(f)).join(", ") + "): CDC's models use ACS and county covariates, so spatial patterns partly reflect the model.";
       app.store.set({ result: { ...res, studyName }, mode: "cluster", inspector: true });
       renderWeights();
       $("settings").classList.remove("open");

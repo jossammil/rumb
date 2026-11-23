@@ -140,24 +140,47 @@ see [REPRODUCIBILITY.md](REPRODUCIBILITY.md)).
 
 ## 4. Follow an action through the code
 
-### Find clusters
+### Run a spatial analysis
 
-1. The button `#analyze` (or **R**, or the palette's "Find clusters") calls
-   `app.analysis.run()` in `src/panels/analysis.js`.
-2. `run()` gets the neighbor graph: for the reference layer, the precomputed
-   `neighbors.json` (`ws.neighbors()` in `src/core/workspace.js`); for an
-   imported polygon layer, it asks the statistics worker for queen or rook
-   contiguity and caches it in `ws.graphs`.
-3. It builds `{ values, neighbors, denominators, studyIds }`. The denominator
-   field comes from the catalog (`fields.<measure>.universe`), so a zero
-   denominator excludes an area instead of reading as 0%.
+1. The button `#analyze` (or **R**; **H** picks Gi* first) calls
+   `app.analysis.run()` in `src/panels/analysis.js`. The **Method** menu
+   (`state.method`) lists the entries of `src/stats/methods.js`; a method with
+   controls of its own loads them from `src/panels/methods/<id>.js` the first
+   time it is chosen.
+2. `run()` gets what the weights need. For queen or rook, it uses the
+   neighbor graph: the precomputed `neighbors.json` for the reference layer
+   (`ws.neighbors()` in `src/core/workspace.js`), a library layer's own, or
+   contiguity the worker computes for an imported layer (cached in
+   `ws.graphs`). For k nearest, a band or inverse distance (and for a scan),
+   it projects each feature's 2020 center of population (`ws.centers()`) or
+   its area-weighted centroid to EPSG:3814.
+3. It builds `{ values, neighbors | points, weights, denominators, studyIds }`
+   plus the method's extras: a second measure (bivariate), the counts behind a
+   rate (EB-adjusted, scan) or the scan's window limits. A zero denominator
+   excludes an area instead of reading as 0%.
 4. `callStats()` (`src/stats/client.js`) posts the request to the one
-   statistics worker, which runs `analyze()` in `src/stats/stats.js`: GeoDaLib
-   supplies observed local statistics; permutation inference, global I and FDR
-   are plain JavaScript with a seeded Mulberry32 generator.
-5. The result goes into the store (`result`, `mode: "cluster"`), and
-   `app.draw()` (`src/panels/style.js`) recolors the map and legend, then
-   `src/panels/inspector.js` draws the summary and scatterplot.
+   statistics worker, which runs the method's `request`: `analyze()` in
+   `stats/stats.js` (Local Moran), `hotSpots()` in `stats/hotspots.js`,
+   `bivariate()` or `ebMoran()` in `stats/variants.js`, or `scanAreas()` in
+   `stats/scan.js`. All share `prepareUniverse()` (eligibility and weights)
+   and the seeded generator in `stats/random.js`. A scan posts progress.
+5. The result, which names its method, goes into the store (`result`,
+   `mode: "cluster"`). `app.draw()` (`src/panels/style.js`) recolors the map
+   and legend from the method's classes; `src/panels/inspector.js` draws its
+   summary and feature rows; the CSV, PNG note and report read the same entry.
+
+### Smooth a rate
+
+1. **Smooth a rate…** opens `src/panels/smooth.js`, which lists the focus
+   layer's measures with a numerator and denominator (`poolOf` in
+   `stats/pool.js`).
+2. It stores a spec on the layer's stack entry:
+   `derived: [{ kind: "rate", measure, methods }]`.
+3. `app.ensureDerived()` (`main.js`) computes the fields with `rateFields()`
+   (`stats/rates.js`), using the queen graph for the spatial methods, and
+   caches them by collection. `app.layerById()` adds them, so they appear
+   under "Derived" and work everywhere a field does. Restores and share links
+   carry the spec and call `ensureDerived()` again.
 
 ### Import a CSV, check the join and map it
 
@@ -254,13 +277,22 @@ tokens, `src/map/basemap-style.js`) and redraws the data layer, because
 | `data/csv.js`, `data/sql.js` | yes | CSV cells; SQL quoting | `csvText`, `ident`, `sqlString` |
 | `data/export.js` | yes | A layer's features for CSV and GeoJSON export | `exportFeatures`, `featuresCSV` |
 | `data/offline.js` | no | Registers the service worker; Download for offline | `createOffline` |
-| `stats/stats.js` | yes | Moran's I, LISA, permutations, FDR | `analyze`, `adjustFdr` |
+| `stats/stats.js` | yes | Moran's I and LISA on contiguity or distance weights; eligibility, permutations, FDR | `analyze`, `prepareUniverse`, `adjustFdr` |
+| `stats/methods.js` | yes | The analysis methods: how each result reads in the legend, inspector, CSV, PNG and report | `METHODS`, `methodOf`, `basisOf` |
+| `stats/neighbors.js` | yes | k nearest, distance-band and inverse-distance weights; centroids; summaries | `distanceWeights`, `centroid`, `weightsSpec` |
+| `stats/hotspots.js` | yes | Getis–Ord Gi*, General G, Geary's C | `hotSpots`, `giStar`, `generalG`, `gearyC` |
+| `stats/variants.js` | yes | Bivariate and EB-adjusted Local Moran | `bivariate`, `ebMoran`, `ebStandardize` |
+| `stats/rates.js` | yes | EB, spatial EB and window rates, excess risk, Poisson limits, reliability | `rateFields`, `empiricalBayes`, `acsReliability` |
+| `stats/scan.js` | yes | Kulldorff's spatial scan (Poisson) with Monte Carlo replicates | `scanAreas`, `scan`, `llr` |
+| `stats/dist.js` | yes | Normal, t, F, chi-square, gamma and Poisson distributions and quantiles | `pnorm`, `qnorm`, `pt`, `pchisq`, `qgamma`, `poissonCI` |
+| `stats/random.js` | yes | Seeded uniforms (Mulberry32), shuffles, binomial and multinomial draws | `randomGenerator`, `binomial`, `multinomial` |
 | `stats/weights.js` | yes | Queen/rook contiguity with jsts | `polygonNeighbors` |
 | `stats/compare-score.js` | yes | Compare percentiles, scores, ranks, CSV | `compareAreas`, `comparisonCSV` |
 | `stats/pool.js` | yes | Pooled measures (Σ numerator / Σ denominator) with coverage | `aggregate`, `poolOf`, `neighborsOf` |
 | `stats/buffer.js` | worker | Buffer outlines with jsts | `bufferOutline` |
 | `stats/worker.js`, `stats/client.js` | worker | The worker and its persistent client | `callStats` |
-| `panels/*.js` | no | Layers, style, filter, tools, analysis, inspector, find, Compare, workbench, files, share, exports | `create…`, `open…` |
+| `panels/*.js` | no | Layers, style, filter, tools, analysis, inspector, find, Compare, workbench, files, share, exports, smoothing | `create…`, `open…` |
+| `panels/methods/*.js` | no | Controls a method adds under the Method menu (loaded when chosen) | `render` |
 | `report/report.js` | no | The printable report (loaded when used) | `openReport`, `buildReport` |
 | `ui/dom.js` | no | `$`, `h`, `s`, `fill`, `icon`, `toast`, `on` | — |
 | `ui/palette.js` | partly | Ranking (pure) and the palette dialog | `fuzzyScore`, `rankItems`, `createPalette` |
@@ -435,7 +467,7 @@ least two weeks old.
 | --- | --- | --- | --- |
 | maplibre-gl | 5.24.1 | BSD-3-Clause | WebGL map, globe and terrain ready for later |
 | @duckdb/duckdb-wasm | 1.32.0 | MIT | SQL, spatial joins and Parquet in the browser |
-| @geoda/lisa | 0.0.25 | MIT | GeoDaLib local statistics (more are available: Gi*, Geary, bivariate) |
+| @geoda/lisa | 0.0.25 | MIT | GeoDaLib observed Local Moran on binary weights (everything else is rumb's own code) |
 | jsts | 2.12.1 | EDL-1.0 / EPL-1.0 | DE-9IM contiguity for imported polygons |
 | @zip.js/zip.js | 2.8.11 | BSD-3-Clause | Project files |
 | @fontsource(-variable)/* | 5.3.0 | OFL-1.1 | Theme fonts |
@@ -444,6 +476,11 @@ least two weeks old.
 
 DuckDB's extensions (parquet, json, spatial for DuckDB 1.4.3) are fetched by
 `scripts/vendor-db.mjs` and checked against SHA-256 pins.
+
+**Numerics rule:** rumb's statistics are written from the published methods
+(papers and textbooks, cited at the top of each module), not ported from R's
+or other GPL sources. R, spdep, spatialreg and smerc only produce the
+reference values the tests compare against.
 
 **Licence rule:** a shipped library must have a compatible licence. List it in
 `shipped` in `scripts/build.mjs`, which writes `dist/THIRD-PARTY.txt`, and in
@@ -486,6 +523,23 @@ Build constants: `__RUMB_VERSION__`, `__RUMB_DEV__`, `__DUCKDB_FOLDER__`,
 - **The R fixtures** for class breaks, the projection, filters, and counts and
   pooling: rerun `scripts/reference-classify.R`, `reference-geo.R`,
   `reference-filters.R` and `reference-counts.R` only when their inputs change.
+  `scripts/reference-stats.R` writes every statistics fixture (distributions,
+  weights, hot spots, variants, rates, scans) into `tests/stats-reference.json`.
+- **The tract tables:** edit `scripts/tables.json` (a variable code must keep
+  its label), run `Rscript scripts/prepare-tables.R <cache-folder>`, then
+  `npm test`.
+- **A new analysis method:**
+  1. Write it as a pure module in `src/stats/` that takes the same inputs as
+     `analyze()` and returns `{ method, byId, … }`. Use `prepareUniverse()`
+     for eligibility and weights.
+  2. Route its `request` in `src/stats/worker.js`.
+  3. Add its entry to `METHODS` in `src/stats/methods.js`: classes and
+     colors, feature and summary rows, CSV, report line.
+  4. If it needs controls, add `src/panels/methods/<id>.js` and list it in
+     `PANELS` in `src/panels/analysis.js`; put new state keys in
+     `LAYER_VIEW_KEYS` and the share whitelist.
+  5. Add an R fixture to `scripts/reference-stats.R`, a unit test and an e2e
+     check.
 - **The logo:** edit `public/rumb.svg`, then `node scripts/make-icons.mjs`.
 - **Review screenshots:** `npm run build`, then
   `node scripts/screens.mjs <stage>`.
@@ -495,6 +549,14 @@ Build constants: `__RUMB_VERSION__`, `__RUMB_DEV__`, `__DUCKDB_FOLDER__`,
 - `npm test` runs `node --test tests/*.test.js`, in under a second:
   - **statistics:** 872 local Moran values against R/spdep under queen and
     rook; small cases against matrix algebra and exhaustive permutations;
+  - **more statistics against R:**
+    - distributions and quantiles to 1e-12, deep tails included;
+    - k-nearest, band and inverse-distance weights and Moran's I on each
+      (spdep);
+    - Gi*, General G and Geary's C (spdep);
+    - bivariate and EB-adjusted Moran (spdep);
+    - EB, spatial EB and window rates (spdep, formulas) and Poisson limits;
+    - the spatial scan's clusters (smerc);
   - **Compare:** all 870 scores, ranks and quadrants against R;
   - **pure modules:** catalog and library against data, store, stack, layer
     specs, classes, CSV, keys, settings, palette ranking, popups, exports;
@@ -510,7 +572,9 @@ Build constants: `__RUMB_VERSION__`, `__RUMB_DEV__`, `__DUCKDB_FOLDER__`,
     `ONLY=clusters,keys`, `HEADED=1`, `RUMB_BASE=/other/` (another subpath).
   - What it checks:
     - **startup:** the map before any analytics, roads or library layers load;
-    - **statistics:** queen and rook global I;
+    - **statistics:** queen and rook global I; distance weights; hot spots;
+      bivariate and EB clusters; rate smoothing and hatching; the scan;
+      the tract tables (lazy, pooled, in SQL, shared);
     - **data:** imports, joins and mapped queries;
     - **projects:** save and restore, including old Field Atlas projects;
     - **map:** layer identity on click; stacking library layers and

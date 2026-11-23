@@ -73,6 +73,7 @@ export async function buildReport(app, { sections, title, notes }) {
       filter && ["Filter", describeFilter(filter, where) + (state.filterMode === "hide" ? " (others hidden)" : " (others dimmed)")],
       selected.length && ["Selection", plural(selected.length, "feature")],
       state.result && [methodOf(state.result).title, methodOf(state.result).reportText(state.result)],
+      state.result?.caution && ["Caution", state.result.caution],
       ["Layers shown", state.stack.filter((e) => e.visible).map((e) => app.layerById(e.id)?.name).filter(Boolean).join(", ")],
       ["Made", new Date().toLocaleString() + " · rumb " + app.version],
     ].filter(Boolean);
