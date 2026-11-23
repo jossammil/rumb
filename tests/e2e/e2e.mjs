@@ -259,11 +259,14 @@ await check("boot", async () => {
     const first = window.rumb.timings.firstMap;
     return performance
       .getEntriesByType("resource")
-      .filter((e) => /roads\.geojson|\/layers\//.test(e.name))
+      .filter((e) => /roads\.geojson|\/layers\/|\/tables\//.test(e.name))
       .every((e) => e.startTime >= first - 1);
   });
-  expect(late, "roads or layer files were requested before the first map");
+  expect(late, "roads, layer or table files were requested before the first map");
   expect(!requests.some((u) => /\/layers\//.test(u)), "add-on layers loaded without being asked for");
+  // The table index follows the first map; its values wait until a field needs them.
+  await page.waitForSelector('#measure optgroup[label="CDC PLACES 2025 (model-based)"]', { state: "attached" });
+  expect(!requests.some((u) => /tables\/tracts-(acs|places)/.test(u)), "table values loaded without being asked for");
   await page.waitForTimeout(500);
   await shot("map");
 });
@@ -678,6 +681,53 @@ await check("pooled", async () => {
   await p.keyboard.press("q");
   await p.waitForFunction(() => !window.rumb.app.layer().countFields);
   await p.context().close();
+});
+
+await check("tables", async () => {
+  const places = JSON.parse(await dataFile("tables/tracts-places.json"));
+  const p = await openPage();
+  await p.waitForSelector('#measure optgroup[label="ACS 2020–2024 profile"] option[value="acs_uninsured_pct"]', { state: "attached" });
+  await p.selectOption("#measure", "places_diabetes");
+  await waitText("#legend", "Diagnosed diabetes", p);
+  const drawn = await p.evaluate(() =>
+    window.rumb.app.layer().collection.features.filter((f) => Number.isFinite(f.properties.places_diabetes)).length,
+  );
+  expect(drawn === 870, "PLACES values on " + drawn + " tracts");
+  await p.evaluate((id) => window.rumb.app.selectFeature(id), ids[0]);
+  await waitText("#inspect-panel", "95% confidence interval", p);
+  await waitText("#inspect-panel", "Model-based", p);
+  // Two tracts pool as an adult-population-weighted mean.
+  await p.evaluate((list) => window.rumb.app.selectMany(list), [ids[0], ids[1]]);
+  const i = [0, 1].map((k) => places.ids.indexOf(ids[k]));
+  const w = i.map((k) => places.columns.places_pop18[k]),
+    v = i.map((k) => places.columns.places_diabetes[k]);
+  const want = ((v[0] * w[0] + v[1] * w[1]) / (w[0] + w[1])).toFixed(1).replace(/\.0$/, "") + "%";
+  await p.waitForFunction(() => document.querySelector('[data-pool="places_diabetes"] td'));
+  const got = await p.$eval('[data-pool="places_diabetes"] td', (td) => td.textContent);
+  expect(got === want, "pooled diabetes " + got + " vs " + want);
+  // SQL sees the tables as views keyed by GEOID.
+  await p.evaluate(() => window.rumb.app.store.set({ sql: "SELECT count(*) AS n, round(avg(acs_uninsured_pct), 3) AS u FROM tract_acs JOIN tracts USING (GEOID)" }));
+  await p.evaluate(() => window.rumb.app.setView("sql"));
+  await p.click("#run-query");
+  await waitText("#work-content", "878", p);
+  await p.context().close();
+  // A shared link with a table field reads that table before drawing.
+  const q = await openPage();
+  await q.evaluate(async () => {
+    await window.rumb.app.setMeasure("acs_no_vehicle_pct");
+  });
+  await q.keyboard.press("u");
+  await q.locator("#share-link").waitFor();
+  const url = await q.inputValue("#share-link");
+  await q.context().close();
+  const r = await openPage();
+  await r.goto(url.replace(/^https?:\/\/[^/]+/, origin));
+  await ready(r);
+  await waitText("#toast", "Opened a shared map", r);
+  await waitText("#legend", "Households with no vehicle", r);
+  const restored = await r.evaluate(() => window.rumb.app.layer().collection.features.some((f) => Number.isFinite(f.properties.acs_no_vehicle_pct)));
+  expect(restored, "shared table field has values");
+  await r.context().close();
 });
 
 await check("share", async () => {

@@ -66,3 +66,11 @@ test("pooling rules, coverage labels and reference fields", () => {
   assert.deepEqual(tract, { kind: "ratio", numerator: "poverty_count", denominator: "poverty_universe", scale: 100 });
   assert.equal(poolOf({ label: "x" }), null);
 });
+
+test("prevalence estimates pool as a population-weighted mean", () => {
+  const pool = poolOf({ pool: { kind: "weighted", numerator: "p", weight: "w" } });
+  const agg = aggregate([{ p: 10, w: 100 }, { p: 20, w: 300 }, { p: null, w: 50 }, { p: 5, w: 0 }], pool);
+  assert.equal(agg.value, 17.5);
+  assert.equal(agg.used, 2);
+  assert.equal(coverageLabel(agg), "2 of 4");
+});

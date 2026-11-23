@@ -1,6 +1,7 @@
 // Pooled measures over a set of areas: sum the numerators and denominators,
 // then recompute the rate (ported from map_project's measure_aggregate). Only
-// true additive counts pool. Rows that are suppressed (flag 2) or missing
+// true additive counts pool, plus population-weighted means of prevalence
+// estimates (kind "weighted": Σ value × weight / Σ weight, as for CDC PLACES). Rows that are suppressed (flag 2) or missing
 // either side are left out of both sums and reported as reduced coverage,
 // never dropped from one side alone. Pure.
 
@@ -18,7 +19,8 @@ export function poolOf(info) {
 
 /** { value, used, total, suppressed, unreliable } of a pool over rows of properties. */
 export function aggregate(rows, pool) {
-  const ratio = (pool.kind || "ratio") === "ratio";
+  const ratio = (pool.kind || "ratio") === "ratio",
+    weighted = pool.kind === "weighted";
   let num = 0,
     den = 0,
     used = 0,
@@ -31,14 +33,14 @@ export function aggregate(rows, pool) {
       continue;
     }
     const n = p?.[pool.numerator],
-      d = ratio ? p?.[pool.denominator] : 1;
-    if (!Number.isFinite(n) || (ratio && !(Number.isFinite(d) && d > 0))) continue;
-    num += n;
+      d = ratio ? p?.[pool.denominator] : weighted ? p?.[pool.weight] : 1;
+    if (!Number.isFinite(n) || ((ratio || weighted) && !(Number.isFinite(d) && d > 0))) continue;
+    num += weighted ? n * d : n;
     den += d;
     used++;
     if (flag === 1) unreliable++;
   }
-  const value = !used ? null : ratio ? (num / den) * (pool.scale ?? 1) : num;
+  const value = !used ? null : ratio ? (num / den) * (pool.scale ?? 1) : weighted ? num / den : num;
   return { value, used, total: rows.length, suppressed, unreliable };
 }
 

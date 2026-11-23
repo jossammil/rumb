@@ -114,7 +114,10 @@ export function createInspector(app) {
     const { state } = app,
       ids = selection();
     if (!ids.length || app.kindOf(l) === "point") return null;
-    const fields = app.fieldList(l).filter((f) => poolOf(app.fieldMeta(l, f)));
+    // Table fields pool once their table is read.
+    const fields = app
+      .fieldList(l)
+      .filter((f) => poolOf(app.fieldMeta(l, f)) && !app.ws.missingFields([f]).length);
     if (!fields.length) return null;
     const ordered = [state.measure, ...fields].filter((f, i, all) => fields.includes(f) && all.indexOf(f) === i);
     const props = new Map(l.collection.features.map((f) => [featureId(f), f.properties]));
@@ -132,7 +135,9 @@ export function createInspector(app) {
         const agg = aggregate(list.map((id) => props.get(id)).filter(Boolean), pool);
         return h("td", { title: "Coverage " + coverageLabel(agg), text: agg.value == null ? "—" : formatValue(agg.value, { format: info.format || "number", unit: info.unit }) });
       });
-      return h("tr", { "data-pool": field }, h("th", { scope: "row", text: app.label(field, l) }), cells);
+      // Pools of an age-adjusted measure's counts give a crude rate.
+      const label = app.label(field, l) + (pool.crude ? " (crude)" : "");
+      return h("tr", { "data-pool": field }, h("th", { scope: "row", text: label }), cells);
     };
     const head = h("tr", null, h("th"), sets.map(([name, list]) => h("th", { scope: "col", text: name + " (" + list.length + ")" })));
     const first = ordered.slice(0, 4),
@@ -177,6 +182,14 @@ export function createInspector(app) {
           props[info.moe] == null ? "Unavailable" : "±" + number(props[info.moe]) + " pp",
         ),
       );
+    if (info?.lcl && info?.ucl)
+      metrics.push(
+        row(
+          (info.ci || 95) + "% confidence interval",
+          props[info.lcl] == null ? "Unavailable" : number(props[info.lcl]) + "–" + number(props[info.ucl]) + unit,
+        ),
+      );
+    if (info?.modelBased) metrics.push(row("Estimate", "Model-based (" + (info.source || "modeled") + ")"));
     if (info?.count)
       metrics.push(row(info.countLabel || app.label(info.count), number(props[info.count], 0)));
     if (info?.universe)

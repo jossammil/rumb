@@ -50,7 +50,7 @@ export function createStyle(app) {
     const measure = $("measure");
     const cats = categoryChoices(l);
     measure.replaceChildren(
-      ...(fields.length ? [h("optgroup", { label: "Measure" }, options(fields.map((f) => [f, app.label(f)])))] : []),
+      ...app.fieldGroups(l).map((g) => h("optgroup", { label: g.label }, options(g.fields.map((f) => [f, app.label(f)])))),
       ...(cats.length
         ? [h("optgroup", { label: "Category" }, options(cats.map((f) => ["category:" + f, app.label(f)])))]
         : []),

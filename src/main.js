@@ -16,7 +16,7 @@ import { featureId } from "./core/features.js";
 import { drawnIds, moveLayer, setVisible, stackEntry, withLayer, withoutLayer } from "./core/stack.js";
 import { isTyping, SHORTCUTS, shortcutFor } from "./core/keys.js";
 import { THEMES } from "./core/settings.js";
-import { defaults, LAYER_VIEW_KEYS, layerViewDefaults } from "./core/state.js";
+import { defaults, LAYER_VIEW_KEYS, layerViewDefaults, stateFields } from "./core/state.js";
 import { createStore } from "./core/store.js";
 import { createWorkspace } from "./core/workspace.js";
 import { createOffline } from "./data/offline.js";
@@ -50,7 +50,8 @@ const VERSION = __RUMB_VERSION__;
 const STATE_LABEL = { ready: "READY", loading: "LOAD", running: "RUN", error: "ERR" };
 const timings = {};
 let locked = false,
-  ready = false;
+  ready = false,
+  tableIndex = null;
 
 function status(message, kind = "ready") {
   $("foot-status").textContent = message;
@@ -90,12 +91,34 @@ async function start() {
     fail: report,
     status,
     /** A field's label on the focus layer (or another layer). */
-    label: (field, l = app.layer()) => l?.extraFields?.[field]?.label || fieldLabel(catalog, field, l?.meta),
+    label: (field, l = app.layer()) =>
+      l?.extraFields?.[field]?.label ||
+      (l?.referenceFields && ws.tableField(field)?.label) ||
+      fieldLabel(catalog, field, l?.meta),
     /** Catalog metadata for a field of a layer: library fields, or the reference's own. */
     fieldMeta(l, field) {
       if (l?.extraFields?.[field]) return l.extraFields[field];
       if (l?.meta) return l.meta.fields?.[field];
-      return l?.referenceFields ? fieldInfo(catalog, field) : undefined;
+      return l?.referenceFields ? fieldInfo(catalog, field) || ws.tableField(field) : undefined;
+    },
+    /**
+     * A layer's fields in the measure picker's groups: its own (and point
+     * counts) under "Measure", then one group per attribute table.
+     */
+    fieldGroups(l) {
+      const own = [...(l.id === ws.ref.id ? ws.ref.measures : ws.fieldList(l)), ...(l?.countFields || [])];
+      const groups = [{ label: "Measure", fields: own }];
+      if (l.id === ws.ref.id)
+        for (const t of app.tableList()) groups.push({ label: t.group || t.name, fields: t.measures });
+      return groups.filter((g) => g.fields.length);
+    },
+    /** The reference layer's attribute tables, once their index is read. */
+    tableList: () => tableIndex?.tables || [],
+    /** Loads the tables any field in the state comes from (after a restore or a shared link). */
+    async ensureTables(state = store.state) {
+      if (!ws.ref.tables) return;
+      tableIndex = await ws.tables().catch(() => null);
+      await ws.ensureFields(stateFields(state));
     },
     /** Fields that name, group and identify a layer's features (search, inspector, study areas). */
     searchFields(l) {
@@ -251,7 +274,12 @@ async function start() {
       store.set({ selected: list[0] || null, picks: list, inspector: true });
       app.renderAll();
     },
-    setMeasure(field) {
+    /** Maps a field, first reading the table it comes from when needed. */
+    async setMeasure(field) {
+      if (ws.missingFields([field]).length) {
+        status("Reading " + ws.tableOf(field).name + "…", "loading");
+        await ws.ensureFields([field]).catch(report);
+      }
       app.analysis.clearResults();
       store.set({ measure: field });
       renderAll();
@@ -267,6 +295,9 @@ async function start() {
   function renderAll() {
     const l = app.layer(),
       fields = app.fieldList(l);
+    // A table field picked before its table was read (a layer's saved view, say).
+    if (ws.missingFields([store.state.measure]).length)
+      ws.ensureFields([store.state.measure]).then(renderAll, report);
     renderLayers(app);
     app.style.renderControls(fields);
     app.filter.render();
@@ -502,6 +533,12 @@ async function start() {
       performance.mark("rumb-first-map");
       timings.firstMap = Math.round(performance.now());
     }
+    // The table index (field names and labels, not values) follows the first map.
+    if (ws.ref.tables)
+      ws.tables().then((index) => {
+        tableIndex = index;
+        if (store.state.view === "map" && app.layer().id === ws.ref.id) app.style.renderControls(app.fieldList(app.layer()));
+      }, () => {});
   });
   wire(app);
   // A link with #state= opens its shared map once the first map is up.

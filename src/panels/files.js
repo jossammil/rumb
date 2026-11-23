@@ -72,6 +72,7 @@ export function createFiles(app) {
     staged.commit();
     app.store.replace(normalizeState(saved, app.catalog, (id) => !!app.ws.meta(id)));
     await app.loadStack();
+    await app.ensureTables();
     app.filter.drawShape();
     app.bench.reset();
     app.renderAll();

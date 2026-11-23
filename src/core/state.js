@@ -77,6 +77,19 @@ export function layerViewDefaults(catalog, measure) {
  * rename used `tracts` and `baseMeasures` for what are now `reference` and
  * `referenceFields`; the map camera travels separately.
  */
+/**
+ * The data fields a state names: each layer view's measure and second
+ * variable, and Compare's components. Restores use it to read the tables those
+ * fields come from before drawing.
+ */
+export function stateFields(state) {
+  const views = [state, ...Object.values(state?.layerViews || {})];
+  const fields = views.flatMap((v) => [v?.measure, v?.yField]);
+  for (const config of Object.values(state?.comparisons || {}))
+    for (const c of config?.components || []) fields.push(c?.field);
+  return [...new Set(fields.filter((f) => typeof f === "string" && f))];
+}
+
 export function normalizeState(saved, catalog, isLibraryLayer = () => false) {
   const { camera, mapCamera, ...rest } = saved;
   const state = { ...defaults(catalog), ...rest };

@@ -177,6 +177,21 @@ Rscript scripts/prepare-layers.R "$input_dir/layers"
 
 **County Health Rankings.** The rows come from the analytic CSV filtered to the 82 Mississippi counties, placed on the 2020 Census county geometry from the MARIS county layer, and joined on the five-digit FIPS code. Fractions become percentages, and provider ratios become rates per 100,000. Each pooled measure keeps its numerator, denominator and flag. The official file downloaded on November 22, 2026 has SHA-256 `5a129b856489fe6646013d7fcf85397dd576f6d67a65f5db72738a1df29643de` and matched map_project's copy. Cite it as: University of Wisconsin Population Health Institute, *County Health Rankings & Roadmaps 2025*.
 
+### Tract tables: ACS profile covariates, CDC PLACES and centers of population
+
+Statistics on tracts need more than poverty. [`scripts/tables.json`](scripts/tables.json) lists 15 ACS 2020–2024 covariates (each a published data-profile percentage with its margin of error, count and universe, or an estimate with its margin), all 40 CDC PLACES 2025 tract measures, and the 2020 Census centers of population for tracts and counties. [`scripts/prepare-tables.R`](scripts/prepare-tables.R) builds them into `public/data/ms/tables/`. The app reads `tables/index.json` after the first map, and a table's values only when one of its fields is mapped or a method needs it.
+
+```sh
+Rscript scripts/prepare-tables.R "$input_dir/tables"
+```
+
+- **ACS profiles.** The api.census.gov endpoint now requires a key, so the script requests the data.census.gov exports of `ACSDP5Y2024.DP02` to `DP05` for all Mississippi tracts, the same way `prepare-data.R` requests S1701. Each variable code is checked against the label it had on November 23, 2026. A changed label stops the build. "No high school diploma" is 100 minus the published "high school graduate or higher" percentage, with that percentage's margin of error; its count is the sum of the two published categories below a diploma. Every percentage is checked against count ÷ universe within 0.05 points.
+- **CDC PLACES.** The table uses the national 2025 GIS-friendly tract CSV, the same file (and SHA-256) as `places-2025.json` below. Values are model-based crude prevalence among adults with 95% intervals. 870 of the 878 tracts have estimates; the 8 without are listed in `index.json`. Measures for all adults pool over a selection as a mean weighted by adult population; the six measures for narrower groups (65 and over, women 50–74, ages 18–64, people screened or with high blood pressure) do not pool.
+- **Centers of population.** `CenPop2020_Mean_TR28.txt` and `CenPop2020_Mean_CO28.txt` give each tract's and county's population-weighted center and 2020 population. Distance-based statistics use them instead of shape centroids when they are loaded.
+- **County Health Rankings additions.** `scripts/layers.json` adds v127 (premature age-adjusted mortality) and v161 (suicides). Their published values are age-adjusted, but their numerators and denominators are crude counts and person-years, so pooled or smoothed values are crude rates and the app labels them so. Rebuilding the library on November 23, 2026 reproduced every other layer byte for byte.
+
+`tables/index.json` records each export's data-file SHA-256, the PLACES file hash, the center files' hashes, and each output's size and hash.
+
 ### Independent fixtures for the map tools
 
 Four R scripts write the fixtures the unit tests compare against. Each uses
