@@ -2,6 +2,7 @@
 // summary, the filtered or selected features, counts, sources and methods,
 // and notes, saved as PDF through the browser's print dialog. Loaded only
 // when asked for. Each section can be left out.
+import { methodOf } from "../stats/methods.js";
 import { number, plural } from "../catalog/format.js";
 import { formatValue } from "../catalog/popup.js";
 import { featureId } from "../core/features.js";
@@ -71,7 +72,7 @@ export async function buildReport(app, { sections, title, notes }) {
       state.measure && !state.category && ["Classes", state.count + " · " + state.classification + " · " + state.palette],
       filter && ["Filter", describeFilter(filter, where) + (state.filterMode === "hide" ? " (others hidden)" : " (others dimmed)")],
       selected.length && ["Selection", plural(selected.length, "feature")],
-      state.result && ["Cluster analysis", "Global Moran's I " + number(state.result.globalI, 4) + " · p " + number(state.result.globalP, 4) + " · " + state.result.studyName],
+      state.result && [methodOf(state.result).title, methodOf(state.result).reportText(state.result)],
       ["Layers shown", state.stack.filter((e) => e.visible).map((e) => app.layerById(e.id)?.name).filter(Boolean).join(", ")],
       ["Made", new Date().toLocaleString() + " · rumb " + app.version],
     ].filter(Boolean);

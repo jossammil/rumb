@@ -6,6 +6,7 @@ import { formatValue, popupRows } from "../catalog/popup.js";
 import { featureId } from "../core/features.js";
 import { aggregate, coverageLabel, neighborsOf, poolOf } from "../stats/pool.js";
 import { clusters } from "../map/classify.js";
+import { methodOf } from "../stats/methods.js";
 import { $, fill, h, icon, s } from "../ui/dom.js";
 
 const row = (key, val) => h("div", null, h("dt", { text: key }), h("dd", { text: String(val) }));
@@ -206,18 +207,13 @@ export function createInspector(app) {
         metrics.push(row(r.label, r.text));
     if (adjacent)
       metrics.push(row(state.result ? "Eligible neighbors" : "Adjacent areas", adjacent.length));
+    const method = methodOf(state.result);
     if (record) {
       if (record.reason) metrics.push(row("Analysis", record.reason));
-      else
-        metrics.push(
-          row("Local Moran’s I", number(record.localI, 4)),
-          row("Permutation p", number(record.p, 4)),
-          row("FDR q", number(record.q, 4)),
-          row("Classification", clusters[record.cluster][0]),
-        );
+      else metrics.push(...method.featureRows(record, state.result).map(([k, v]) => row(k, v)));
     }
     let reading = null;
-    if (record && record.z != null) {
+    if (method.reading && record && record.z != null) {
       const { result } = state;
       const side = (v) => (v > 0 ? "above" : v < 0 ? "below" : "at");
       const lagValue = record.lag * result.sd + result.mean;
@@ -267,7 +263,8 @@ export function createInspector(app) {
 
   function analysisBlock() {
     const { state } = app,
-      result = state.result;
+      result = state.result,
+      method = methodOf(result);
     const mode = (name, text) =>
       h("button", {
         "data-mode": name,
@@ -281,23 +278,17 @@ export function createInspector(app) {
     return h(
       "section",
       { class: "inspect-block" },
-      h("div", { class: "inspection-head" }, h("h3", { text: "Cluster analysis" })),
+      h("div", { class: "inspection-head" }, h("h3", { text: method.title })),
       h("p", { class: "subtle", text: result.studyName + " · " + (result.weights?.label || state.rule + " neighbors") }),
-      h(
-        "dl",
-        { class: "metrics" },
-        row("Global Moran’s I", number(result.globalI, 4)),
-        row("Permutation p", number(result.globalP, 4)),
-        row("Eligible areas", number(result.n, 0)),
-      ),
-      h("div", { class: "segmented" }, mode("value", "Measure"), mode("cluster", "Clusters")),
-      scatter(result, state.selected, (id) => app.selectFeature(id)),
+      h("dl", { class: "metrics" }, method.summaryRows(result).map(([k, v]) => row(k, v))),
+      h("div", { class: "segmented" }, mode("value", "Measure"), mode("cluster", method.modeLabel)),
+      method.scatter && scatter(result, state.selected, (id) => app.selectFeature(id)),
       h(
         "p",
         { class: "subtle" },
         result.permutations + " permutations · Seed " + result.seed,
         h("br"),
-        (result.fdr ? "FDR-adjusted q" : "Unadjusted local p") + " ≤ " + result.alpha,
+        method.ruleText ? method.ruleText(result) : (result.fdr ? "FDR-adjusted q" : "Unadjusted local p") + " ≤ " + result.alpha,
       ),
       h(
         "button",

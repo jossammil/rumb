@@ -328,7 +328,8 @@ export async function analyze({
     fdr,
     byId,
     weights: { ...spec, threshold, label: describeWeights(spec, threshold), summary: weightsSummary(rows) },
-    method:
+    method: "lisa",
+    methodNote:
       "GeoDa sample-standardized Local Moran I; row-standardized weights; two-sided global shuffles and local conditional permutations about the null expectation, with ties included; Benjamini-Hochberg adjusted q-values.",
   };
 }

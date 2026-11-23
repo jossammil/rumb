@@ -9,7 +9,6 @@ import {
   categoryFields,
   classify,
   classOf,
-  clusters,
   paletteKind,
   PALETTE_NAMES,
   palettes,
@@ -18,6 +17,7 @@ import {
 } from "../map/classify.js";
 import { mapColors } from "../map/basemap-style.js";
 import { classItems, renderLegend, renderOthers } from "../map/legend.js";
+import { methodOf } from "../stats/methods.js";
 import { poolOf } from "../stats/pool.js";
 import { $, h, options } from "../ui/dom.js";
 
@@ -143,14 +143,16 @@ export function createStyle(app) {
       colors = ramp(view.palette, cuts.length + 1);
     const cats = category ? categories(features.map((f) => f.properties?.[category])) : null;
     const clustered = view.mode === "cluster" && view.result;
+    const method = methodOf(view.result),
+      classes = method.classes(view.result);
     const { na, ns } = neutralColors();
-    const clusterColor = (key) => (key === "NS" ? ns : key === "NA" ? na : clusters[key][1]);
+    const clusterColor = (key) => (key === "NS" ? ns : key === "NA" ? na : classes[key]?.[1] ?? na);
     const uniform = uniformOf(l);
     const annotated = features.map((f, i) => {
       const id = featureId(f),
         v = data[i];
       const cls = clustered
-        ? view.result.byId[id]?.cluster ?? "NA"
+        ? method.classOf(view.result.byId[id])
         : cats
           ? f.properties?.[category] ?? null
           : measure && Number.isFinite(v)
@@ -163,17 +165,17 @@ export function createStyle(app) {
           : !Number.isFinite(v)
             ? na
             : colors[classOf(v, cuts)];
-      if (clustered) color = clusterColor(view.result.byId[id]?.cluster ?? "NA");
+      if (clustered) color = clusterColor(method.classOf(view.result.byId[id]));
       return { ...f, properties: { ...f.properties, __rumb_id: id, __rumb_color: color, __rumb_class: cls } };
     });
-    return { annotated, data, cuts, colors, cats, measure, clustered, clusterColor, uniform, na, suppressed };
+    return { annotated, data, cuts, colors, cats, measure, clustered, clusterColor, method, classes, uniform, na, suppressed };
   }
 
   /** A compact legend entry for a shown layer that is not the focus. */
   function otherSection(l, drawn) {
     const kind = app.kindOf(l);
     if (drawn.clustered)
-      return { name: l.name, kind, colors: ["HH", "LL", "HL", "LH"].map(drawn.clusterColor), note: "clusters" };
+      return { name: l.name, kind, colors: drawn.method.swatches.map(drawn.clusterColor), note: drawn.method.short };
     if (drawn.cats) return { name: l.name, kind, colors: drawn.cats.items.map((x) => x.color), note: "by category" };
     if (drawn.measure) return { name: l.name, kind, colors: drawn.colors, note: app.label(drawn.measure, l) };
     return { name: l.name, kind, colors: [drawn.uniform] };
@@ -207,7 +209,8 @@ export function createStyle(app) {
     const l = app.layer();
     values.clear();
     for (const f of l.collection.features) values.set(featureId(f), f);
-    const { data, cuts, colors, cats, clustered, clusterColor, uniform, na, suppressed } = focus || colorize(l, state);
+    const { data, cuts, colors, cats, clustered, clusterColor, method, classes, uniform, na, suppressed } =
+      focus || colorize(l, state);
     lastCuts = cuts;
 
     const legend = $("legend");
@@ -221,8 +224,8 @@ export function createStyle(app) {
         }
       : null;
     if (clustered) {
-      items = Object.entries(clusters).map(([key, [text]]) => ({ text, color: clusterColor(key) }));
-      renderLegend(legend, { kind: "categories", title: "Local Moran clusters", items, action });
+      items = Object.entries(classes).map(([key, [text]]) => ({ text, color: clusterColor(key) }));
+      renderLegend(legend, { kind: "categories", title: method.legendTitle, items, action });
     } else if (cats) {
       items = cats.items.map((x) => ({ color: x.color, text: x.value }));
       renderLegend(legend, { kind: "categories", title: app.label(state.category), items, action });

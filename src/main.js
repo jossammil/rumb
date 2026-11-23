@@ -25,6 +25,7 @@ import { parseBreaks } from "./map/classify.js";
 import { entryStyle, kindOf } from "./map/layer-specs.js";
 import { initMap } from "./map/map.js";
 import { createAnalysis } from "./panels/analysis.js";
+import { methodOf } from "./stats/methods.js";
 import { createCompare } from "./panels/compare.js";
 import { createFiles } from "./panels/files.js";
 import { findFeatures, openFind } from "./panels/find.js";
@@ -820,6 +821,7 @@ function wire(app) {
   const controls = [
     ["classification", "classification", String],
     ["class-count", "count", Number],
+    ["method", "method", String],
     ["rule", "rule", String],
     ["k", "k", (v) => Math.min(30, Math.max(1, Math.round(Number(v) || 6)))],
     ["band", "band", (v) => (Number(v) >= 0.1 ? Math.min(200, Number(v)) : null)],
@@ -867,11 +869,12 @@ function wire(app) {
     app.perform($("export-map"), () => {
       const { state } = app;
       if (state.view === "compare") return app.compare.image();
-      const clustered = state.result && state.mode === "cluster";
+      const clustered = state.result && state.mode === "cluster",
+        method = methodOf(state.result);
       return exportMapImage(app.atlas.map, {
         title: $("map-title").textContent,
         subtitle:
-          (state.mode === "cluster" ? "Local Moran clusters · " : "") +
+          (clustered ? method.legendTitle + " · " : "") +
           (state.category ? app.label(state.category) : state.measure ? app.label(state.measure) : app.layer().name) +
           " · " +
           $("map-subtitle").textContent,
@@ -879,7 +882,7 @@ function wire(app) {
         others: app.style.legendOthers(),
         notes:
           (clustered
-            ? state.result.studyName + " · " + (state.result.weights?.label || state.rule) + " · " + (state.fdr ? "FDR q" : "p") + " ≤ " + (state.result.alpha ?? 0.05) + " · "
+            ? state.result.studyName + " · " + (state.result.weights?.label || state.rule) + " · " + method.rule(state.result) + " · "
             : "") +
           [app.layer().meta?.credit, ...app.style.legendOthers().map((o) => o.credit), app.catalog.region.credit]
             .filter((c, i, all) => c && all.indexOf(c) === i)

@@ -7,13 +7,14 @@
 // Format: "1." + base64url(deflate-raw(JSON)), or "0." + base64url(JSON)
 // where the browser cannot compress. Pure apart from CompressionStream.
 import { normalizeFilter } from "../geo/filter.js";
+import { METHODS } from "../stats/methods.js";
 import { WEIGHT_KINDS } from "../stats/neighbors.js";
 
 /** Longest link part rumb writes (characters after #state=). */
 export const SHARE_LIMIT = 8000;
 const VIEW_KEYS = [
   "measure", "category", "palette", "classification", "count", "breaks",
-  "rule", "k", "band", "power", "symmetric", "study", "permutations", "seed", "fdr",
+  "method", "rule", "k", "band", "power", "symmetric", "study", "permutations", "seed", "fdr",
 ];
 const LOOK_KEYS = ["color", "opacity", "size", "shape", "outline", "outlineColor"];
 
@@ -134,6 +135,7 @@ export function readShare(data, { known, palettes, region }) {
         classification: ["quantile", "equal", "jenks", "sd", "manual"].includes(w.classification) ? w.classification : undefined,
         count: num(w.count, 2, 9),
         breaks: Array.isArray(w.breaks) ? w.breaks.filter(Number.isFinite).slice(0, 8) : undefined,
+        method: METHODS[w.method] ? w.method : undefined,
         rule: WEIGHT_KINDS.includes(w.rule) ? w.rule : undefined,
         k: num(w.k, 1, 30),
         band: num(w.band, 0.1, 200),

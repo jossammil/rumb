@@ -1,39 +1,23 @@
-// Spatial analysis: the Find clusters controls, running Moran's I and LISA in
-// the statistics worker, and the statistics CSV.
+// Spatial analysis: the method menu and its controls, running the chosen
+// method in the statistics worker, and the statistics CSV. What each method's
+// result means is in stats/methods.js.
 import { featureId, groups, isPolygon } from "../core/features.js";
 import { csvText } from "../data/csv.js";
 import { projectedIndex } from "../geo/filter.js";
 import { callStats } from "../stats/client.js";
+import { METHOD_LIST, methodId, methodOf } from "../stats/methods.js";
 import { centroid, DISTANCE_KINDS, summaryText } from "../stats/neighbors.js";
 import { $, icon, options, saveBlob } from "../ui/dom.js";
 
-const CSV_FIELDS = [
-  "GEOID_or_feature_ID",
-  "measure",
-  "value",
-  "z",
-  "neighbor_mean_z",
-  "local_I",
-  "permutation_p",
-  "FDR_q",
-  "cluster",
-  "eligible_neighbors",
-  "reason",
-  "study_area",
-  "neighbor_rule",
-  "global_I",
-  "global_p",
-  "permutations",
-  "seed",
-  "alpha",
-  "FDR_applied",
-  "method",
-];
+
+// Controls a method adds below the menu, each loaded the first time its
+// method is chosen: id → () => import(...), whose module exports render(app, mount).
+const PANELS = {};
 
 export function createAnalysis(app) {
   let running = null;
   const button = $("analyze");
-  const idle = () => button.replaceChildren(icon("cluster"), "Find clusters");
+  const idle = () => button.replaceChildren(icon("cluster"), "Run");
 
   function cancel() {
     running?.abort();
@@ -61,6 +45,9 @@ export function createAnalysis(app) {
         ...groups(records, groupField).map((g) => [groupField + ":" + g, g]),
       ]),
     );
+    $("method").replaceChildren(...options(METHOD_LIST.map((m) => [m.id, m.label])));
+    $("method").value = methodId(state.method);
+    renderMethodControls();
     for (const [id, value] of Object.entries({
       rule: state.rule,
       study: state.study,
@@ -83,6 +70,16 @@ export function createAnalysis(app) {
         ? "Choose a numeric measure."
         : "Choose a polygon layer with a numeric measure, or distance-based neighbors."
       : "";
+  }
+
+  /** The chosen method's own controls, loaded on first use. */
+  let panelToken = 0;
+  function renderMethodControls() {
+    const mount = $("method-controls"),
+      load = PANELS[methodId(app.state.method)];
+    if (!load) return mount.replaceChildren();
+    const token = ++panelToken;
+    load().then((panel) => token === panelToken && panel.render(app, mount), app.fail);
   }
 
   /** The weights inputs for the chosen kind, and what the last run's weights were like. */
@@ -172,7 +169,7 @@ export function createAnalysis(app) {
         : undefined;
       const res = await callStats(
         {
-          type: "analyze",
+          type: methodOf({ method: state.method }).request,
           values,
           neighbors,
           points,
@@ -207,32 +204,12 @@ export function createAnalysis(app) {
 
   function exportStats() {
     const { state } = app,
-      a = state.result;
-    const rows = Object.entries(a.byId).map(([id, r]) => [
-      id,
-      state.measure,
-      r.value,
-      r.z,
-      r.lag,
-      r.localI,
-      r.p,
-      r.q,
-      r.cluster,
-      r.neighbors.join(" "),
-      r.reason,
-      a.studyName,
-      a.weights?.label || state.rule,
-      a.globalI,
-      a.globalP,
-      a.permutations,
-      a.seed,
-      a.alpha,
-      a.fdr,
-      a.method,
-    ]);
+      a = state.result,
+      method = methodOf(a);
+    const rows = Object.entries(a.byId).map(([id, r]) => method.csvRow(id, r, a, state));
     saveBlob(
-      new Blob([csvText([CSV_FIELDS, ...rows])], { type: "text/csv;charset=utf-8" }),
-      "spatial-clusters.csv",
+      new Blob([csvText([method.csvFields, ...rows])], { type: "text/csv;charset=utf-8" }),
+      method.file,
     );
   }
 

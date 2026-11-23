@@ -11,6 +11,7 @@ export const LAYER_VIEW_KEYS = [
   "classification",
   "count",
   "breaks",
+  "method",
   "rule",
   "k",
   "band",
@@ -44,6 +45,8 @@ export function defaults(catalog) {
     // Spatial weights: queen or rook contiguity, or k nearest (k), a distance
     // band (band, in miles; null finds the smallest that leaves no area alone)
     // or inverse distance within that band (power 1 or 2). See stats/neighbors.js.
+    // The analysis to run (stats/methods.js).
+    method: "lisa",
     rule: "queen",
     k: 6,
     band: null,

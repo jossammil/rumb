@@ -147,6 +147,8 @@
         </section>
         <section class="side-section analysis-section" id="sec-analyze">
           <h2><i data-icon="cluster"></i>Spatial analysis<kbd>A</kbd></h2>
+          <label for="method">Method</label><select id="method"></select>
+          <div id="method-controls"></div>
           <label for="rule">Neighbors</label
           ><select id="rule">
             <option value="queen">Shared edge or corner (queen)</option>
@@ -191,7 +193,7 @@
             </div>
             <label class="checkbox"><input type="checkbox" id="fdr" />Adjust for multiple tests (FDR)</label>
           </details>
-          <button class="primary full" id="analyze"><i data-icon="cluster"></i>Find clusters</button>
+          <button class="primary full" id="analyze"><i data-icon="cluster"></i>Run</button>
         </section>
       </aside>
       <section id="canvas-area" aria-label="Interactive map">
