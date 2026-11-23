@@ -209,7 +209,8 @@ test("map layers for a stacked layer, by kind and band", async () => {
   assert.ok(layerSpecs("x", "mixed", colors).every((s) => s.spec.filter && s.spec.source === sourceId("x")));
   assert.ok(layerSpecs("x", "polygon", colors).every((s) => !s.spec.filter));
   const fill = layerSpecs("x", "polygon", colors, { fillOpacity: 0.5 })[0].spec.paint;
-  assert.equal(fill["fill-opacity"], 0.5);
+  // Opacity fades for features a filter leaves out; the last value is the normal one.
+  assert.equal(fill["fill-opacity"].at(-1), 0.5);
   assert.equal(layerSpecs("x", "point", colors)[0].spec.paint["circle-stroke-color"], "#fff");
   const g = (type) => ({ geometry: { type } });
   assert.equal(kindOf([g("Polygon"), g("MultiPolygon")]), "polygon");
@@ -298,10 +299,10 @@ test("a layer's look becomes MapLibre paint, shapes and labels", async () => {
   const points = layerSpecs("x", "point", colors, entryStyle(entry, "point"));
   assert.deepEqual(points.map((s) => s.id + ":" + s.spec.type), ["lyr-x-shape:symbol", "lyr-x-label:symbol"]);
   assert.equal(points[0].spec.layout["icon-size"], 9 / 8);
-  assert.equal(points[0].spec.paint["icon-opacity"], 0.5);
+  assert.equal(points[0].spec.paint["icon-opacity"].at(-1), 0.5);
   assert.equal(points[1].band, "label");
   const areas = layerSpecs("x", "polygon", colors, entryStyle(entry, "polygon"));
-  assert.equal(areas[0].spec.paint["fill-opacity"], 0.5);
+  assert.equal(areas[0].spec.paint["fill-opacity"].at(-1), 0.5);
   assert.equal(areas[1].spec.paint["line-width"], 2);
   // Changing only a number keeps the layers; a shape or label rebuilds them.
   const plain = layerSpecs("x", "point", colors, entryStyle({ style: { size: 4 } }, "point"));

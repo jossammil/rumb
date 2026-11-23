@@ -53,6 +53,8 @@ export function entryStyle(entry, kind) {
 }
 
 const zoomed = (stops) => ["interpolate", ["linear"], ["zoom"], ...stops];
+/** An opacity that fades for features a filter leaves out (properties.__rumb_out). */
+const fade = (value, by = 0.16) => ["case", ["==", ["get", "__rumb_out"], true], value * by, value];
 const is = (type) => ["==", ["geometry-type"], type];
 /** Shape images are 24 px with a half-size of 8 (map/shapes.js). */
 const SHAPE_HALF = 8;
@@ -73,14 +75,14 @@ export function layerSpecs(id, kind, colors, style = {}) {
     add("fill", "area", true, {
       type: "fill",
       ...(mixed && { filter: is("Polygon") }),
-      paint: { "fill-color": color, "fill-opacity": st.fillOpacity },
+      paint: { "fill-color": color, "fill-opacity": fade(st.fillOpacity) },
     });
     add("outline", "area", false, {
       type: "line",
       ...(mixed && { filter: is("Polygon") }),
       paint: {
         "line-color": st.outlineColor || colors.outline,
-        "line-opacity": st.outlineWidth == null ? st.outlineOpacity : 0.9,
+        "line-opacity": fade(st.outlineWidth == null ? st.outlineOpacity : 0.9, 0.3),
         "line-width": st.outlineWidth == null ? zoomed([4, 0.35, 7, 0.75, 11, 1.4]) : st.outlineWidth,
       },
     });
@@ -90,7 +92,7 @@ export function layerSpecs(id, kind, colors, style = {}) {
       type: "line",
       ...(mixed && { filter: is("LineString") }),
       layout: { "line-join": "round", "line-cap": "round" },
-      paint: { "line-color": color, "line-width": st.lineWidth, "line-opacity": st.pointOpacity },
+      paint: { "line-color": color, "line-width": st.lineWidth, "line-opacity": fade(st.pointOpacity) },
     });
   if (kind === "point" || mixed) {
     const filter = mixed ? { filter: is("Point") } : {};
@@ -101,10 +103,10 @@ export function layerSpecs(id, kind, colors, style = {}) {
         paint: {
           "circle-radius": st.pointRadius,
           "circle-color": color,
-          "circle-opacity": st.pointOpacity,
+          "circle-opacity": fade(st.pointOpacity),
           "circle-stroke-color": colors.pointStroke,
           "circle-stroke-width": st.pointStrokeWidth,
-          "circle-stroke-opacity": st.pointOpacity,
+          "circle-stroke-opacity": fade(st.pointOpacity),
         },
       });
     else
@@ -121,7 +123,7 @@ export function layerSpecs(id, kind, colors, style = {}) {
         },
         paint: {
           "icon-color": color,
-          "icon-opacity": st.pointOpacity,
+          "icon-opacity": fade(st.pointOpacity),
           "icon-halo-color": colors.pointStroke,
           "icon-halo-width": st.pointStrokeWidth,
         },
@@ -141,7 +143,12 @@ export function layerSpecs(id, kind, colors, style = {}) {
         "text-optional": true,
         ...(points && { "text-offset": [0, 0.9], "text-anchor": "top" }),
       },
-      paint: { "text-color": colors.label, "text-halo-color": colors.halo, "text-halo-width": 1.3 },
+      paint: {
+        "text-color": colors.label,
+        "text-halo-color": colors.halo,
+        "text-halo-width": 1.3,
+        "text-opacity": fade(1, 0.3),
+      },
     });
   }
   return out;

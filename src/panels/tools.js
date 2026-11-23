@@ -1,6 +1,7 @@
 // Field tools on the map: measuring distances and areas (M), showing your own
 // position (G) and going to a typed coordinate (the palette). Your position is
 // never saved in a project or a share link.
+import { plural } from "../catalog/format.js";
 import { formatPosition } from "../core/settings.js";
 import { formatMiles, measurePath } from "../geo/measure.js";
 import { regionProjection } from "../geo/project.js";
@@ -28,9 +29,42 @@ export function createTools(app) {
     );
   }
   function stop() {
-    sketch.stop();
+    sketch.clear();
+    if (tool === "pick") app.atlas.capture(null);
     tool = null;
     card.hidden = true;
+  }
+
+  /** Waits for one click on the map and hands its [lon, lat] to onPick. */
+  function pick(title, note, onPick) {
+    stop();
+    tool = "pick";
+    show(title, [], note);
+    app.atlas.capture({
+      click: (lonlat) => {
+        stop();
+        onPick(lonlat);
+      },
+    });
+  }
+
+  /** Draws a closed area by clicking its corners, then hands the ring to onDone. */
+  function drawArea(onDone) {
+    stop();
+    tool = "area";
+    const card = (points) =>
+      show("Draw an area", [], plural(points.length, "point") + " · Enter or the first point to finish · Backspace to undo · Esc to stop", [
+        h("button", { class: "small-btn", id: "area-finish", text: "Finish", onclick: () => sketch.finish() }),
+      ]);
+    sketch.start({
+      closed: true,
+      onChange: card,
+      onDone: (points) => {
+        stop();
+        onDone(points);
+      },
+      onCancel: stop,
+    });
   }
 
   function renderMeasure(path, done) {
@@ -125,8 +159,16 @@ export function createTools(app) {
     stop,
     sketch,
     projection,
-    /** Enter, Backspace and Esc while drawing; true when used. */
-    key: (e) => sketch.key(e),
+    pick,
+    drawArea,
+    /** Enter, Backspace and Esc while drawing (Esc also stops picking); true when used. */
+    key(e) {
+      if (tool === "pick" && e.key === "Escape") {
+        stop();
+        return true;
+      }
+      return sketch.key(e);
+    },
     /** Your last position { lonlat, accuracy }, or null. */
     get located() {
       return me;

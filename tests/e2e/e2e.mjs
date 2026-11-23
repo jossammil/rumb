@@ -582,6 +582,63 @@ await check("goto", async () => {
   await p.context().close();
 });
 
+await check("filters", async () => {
+  const ref = JSON.parse(await readFile("tests/filter-reference.json", "utf8"));
+  const p = await openPage();
+  const add = async (id, name) => {
+    await p.keyboard.press("n");
+    await p.click(`[data-library="${id}"]`);
+    await waitText("#toast", "Added " + name, p);
+  };
+  await add("fire_stations_2020", "Fire stations");
+  const count = (id) => p.textContent(`[data-count="${id}"] dd`);
+  // C arms a click for the center; the panel then counts what is kept.
+  await p.keyboard.press("c");
+  await waitText("#tool-card", "Radius filter", p);
+  const box = await p.locator("#map").boundingBox();
+  const xy = await p.evaluate(() => window.rumb.map.project([-90.18, 32.3]));
+  await p.mouse.click(box.x + xy.x, box.y + xy.y);
+  await p.waitForFunction(() => window.rumb.state.filter?.kind === "radius");
+  await p.waitForFunction(() => window.rumb.map.querySourceFeatures("filter").length > 0);
+  // Exactly at Jackson, the counts match GEOS.
+  await p.evaluate((c) => window.rumb.app.filter.set({ kind: "radius", center: c, miles: 25 }), ref.center);
+  expect((await count("fire_stations_2020")) === ref.stations25.length + " of 1,043", "25 mi: " + (await count("fire_stations_2020")));
+  await p.locator("#filter-miles").fill("50");
+  await p.locator("#filter-miles").dispatchEvent("input");
+  await waitText('[data-count="fire_stations_2020"]', ref.stations50.length + " of", p);
+  await p.check("#filter-hide");
+  await p.waitForFunction(
+    (n) => new Set(window.rumb.map.querySourceFeatures("lyr-fire_stations_2020").map((f) => f.properties.__rumb_id)).size <= n,
+    ref.stations50.length,
+  );
+  await p.uncheck("#filter-hide");
+  // B buffers the selection: stations within 5 miles of Hinds County.
+  await add("chr_counties_2025", "County Health Rankings");
+  await p.evaluate(() => window.rumb.app.selectFeature("28049"));
+  await p.keyboard.press("b");
+  await p.waitForFunction(() => window.rumb.state.filter?.kind === "buffer");
+  await waitText('[data-count="fire_stations_2020"]', ref.stationsNearHinds.length + " of", p);
+  await p.waitForFunction(() => window.rumb.map.querySourceFeatures("filter").length > 0);
+  // D draws an area by clicking its corners; the drawn area matches GEOS too.
+  await p.keyboard.press("d");
+  for (const pt of ref.ring.slice(0, 3)) {
+    const q = await p.evaluate((c) => window.rumb.map.project(c), pt);
+    await p.mouse.click(box.x + q.x, box.y + q.y);
+  }
+  await p.keyboard.press("Enter");
+  await p.waitForFunction(() => window.rumb.state.filter?.kind === "polygon");
+  await p.evaluate((ring) => window.rumb.app.filter.set({ kind: "polygon", ring }), ref.ring);
+  await waitText('[data-count="fire_stations_2020"]', ref.stationsInArea.length + " of", p);
+  await waitText('[data-count="chr_counties_2025"]', ref.countiesInArea.length + " of", p);
+  await p.waitForFunction(() => window.rumb.map.querySourceFeatures("filter").some((f) => f.geometry.type === "Polygon"));
+  await p.waitForTimeout(700);
+  await shot("filters", p);
+  await p.keyboard.press("x");
+  await p.waitForFunction(() => window.rumb.state.filter === null);
+  expect(!(await p.locator("[data-count]").count()), "counts after clearing");
+  await p.context().close();
+});
+
 // ---- compare -----------------------------------------------------------------
 await check("compare", async () => {
   const p = await openPage();

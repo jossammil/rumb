@@ -155,6 +155,10 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
       if (handlers) map.doubleClickZoom.disable();
       else map.doubleClickZoom.enable();
     },
+    /** Draws the spatial filter's outline: GeoJSON features. */
+    setFilterShape(features) {
+      map.getSource("filter").setData(collection(features || []));
+    },
     /** Draws a tool's shape: GeoJSON features (points, a line, a polygon). */
     setSketch(features) {
       map.getSource("sketch").setData(collection(features || []));

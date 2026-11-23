@@ -3,7 +3,7 @@
 // the first point) finishes, Backspace takes the last point back, Esc cancels.
 // It draws through the map's sketch source and reads clicks by capturing them.
 
-/** createSketch(atlas) → { start(options), stop(), undo(), finish(), key(event), active, points } */
+/** createSketch(atlas) → { start(options), stop(), clear(), undo(), finish(), key(event), active, points } */
 export function createSketch(atlas) {
   let points = [],
     hover = null,
@@ -64,6 +64,12 @@ export function createSketch(atlas) {
         points = [];
         atlas.setSketch([]);
       }
+    },
+    /** Removes the drawing, finished or not. */
+    clear() {
+      api.stop();
+      points = [];
+      atlas.setSketch([]);
     },
     undo() {
       points.pop();

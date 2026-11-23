@@ -31,6 +31,7 @@ import { createInspector } from "./panels/inspector.js";
 import { describeLayer, openLibrary, renderLayers } from "./panels/layers.js";
 import { createStyle } from "./panels/style.js";
 import { createTools } from "./panels/tools.js";
+import { createFilter } from "./panels/filter.js";
 import { parseCoordinate } from "./geo/coords.js";
 import { formatPosition } from "./core/settings.js";
 import { createWorkbench } from "./panels/workbench.js";
@@ -249,6 +250,7 @@ async function start() {
       fields = app.fieldList(l);
     renderLayers(app);
     app.style.renderControls(fields);
+    app.filter.render();
     app.analysis.renderControls(fields);
     const ref = ws.ref;
     app.syncMap();
@@ -388,6 +390,7 @@ async function start() {
   app.files = createFiles(app);
   app.statusbar = createStatusbar(app);
   app.tools = createTools(app);
+  app.filter = createFilter(app);
   const offline = createOffline({
     status,
     notify: app.notify,
@@ -510,6 +513,19 @@ function wire(app) {
       if (app.state.view !== "map") app.setView("map");
       return app.tools.locate();
     },
+    "filter-radius": () => {
+      focusSection(app, "filter");
+      app.filter.pickCenter();
+    },
+    "filter-buffer": () => {
+      focusSection(app, "filter");
+      return app.perform(null, async () => app.filter.bufferSelection());
+    },
+    "filter-draw": () => {
+      focusSection(app, "filter");
+      app.filter.drawArea();
+    },
+    "filter-clear": () => app.filter.clear(),
     "layer-down": () => stepFocus(app, -1),
     "layer-up": () => stepFocus(app, 1),
   });
@@ -519,6 +535,8 @@ function wire(app) {
   // matching the query come last.
   const keyOf = Object.fromEntries(SHORTCUTS.map(([id, keys]) => [id, keys.split("  or  ")[0]]));
   const available = {
+    "filter-clear": () => !!app.state.filter,
+    "filter-buffer": () => !!app.state.selected,
     "export-stats": () => !!app.state.result,
     "clear-selection": () => !!app.state.selected,
     offline: () => !!app.offline,
@@ -634,6 +652,11 @@ function wire(app) {
   look("look-outline", "outline", Number);
   look("look-outline-color", "outlineColor");
   on("look-label", "change", (ev) => app.setLook({ label: ev.target.value || null }));
+  on("filter-hide", "change", (ev) => {
+    store.set({ filterMode: ev.target.checked ? "hide" : "dim" });
+    app.renderAll();
+  });
+  on("filter-clear", "click", () => app.filter.clear());
   on("look-reset", "click", () => {
     const { stack, active } = store.state;
     store.set({ stack: stack.map((e) => (e.id === active ? { id: e.id, visible: e.visible } : e)) });

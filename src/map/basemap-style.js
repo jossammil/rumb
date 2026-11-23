@@ -66,6 +66,9 @@ export function themedPaint(c) {
     "roads-primary": { "line-color": c.road },
     "road-labels": { "text-color": c.label, "text-halo-color": c.halo },
     graticule: { "line-color": c.boundary },
+    "filter-fill": { "fill-color": c.accent },
+    "filter-line": { "line-color": c.accent },
+    "filter-center": { "circle-color": c.accent, "circle-stroke-color": c.halo },
     "sketch-fill": { "fill-color": c.accent },
     "sketch-line": { "line-color": c.accent },
     "sketch-points": { "circle-color": c.accent, "circle-stroke-color": c.halo },
@@ -100,6 +103,7 @@ export function buildStyle(region, regionPath, c = mapColors()) {
       cmp: src(empty),
       selection: src(empty),
       sketch: src(empty),
+      filter: src(empty),
       locate: src(empty),
     },
     layers: [
@@ -185,6 +189,28 @@ export function buildStyle(region, regionPath, c = mapColors()) {
         source: "selection",
         filter: ["all", ["==", ["get", "role"], "selected"], ["==", ["geometry-type"], "Point"]],
         paint: { ...paint["sel-point"], "circle-radius": 6, "circle-stroke-width": 3 },
+      },
+      // The spatial filter's outline (a circle, a buffer or a drawn area).
+      {
+        id: "filter-fill",
+        type: "fill",
+        source: "filter",
+        filter: ["==", ["geometry-type"], "Polygon"],
+        paint: { ...paint["filter-fill"], "fill-opacity": 0.05 },
+      },
+      {
+        id: "filter-line",
+        type: "line",
+        source: "filter",
+        filter: ["==", ["geometry-type"], "Polygon"],
+        paint: { ...paint["filter-line"], "line-width": 1.6, "line-dasharray": [4, 2] },
+      },
+      {
+        id: "filter-center",
+        type: "circle",
+        source: "filter",
+        filter: ["==", ["geometry-type"], "Point"],
+        paint: { ...paint["filter-center"], "circle-radius": 4, "circle-stroke-width": 1.5 },
       },
       // Field tools: a measured or drawn shape, and a position (yours or one typed).
       {

@@ -136,6 +136,14 @@
             <button class="plain-btn" id="look-reset">Reset look</button>
           </details>
         </section>
+        <section class="side-section" id="sec-filter">
+          <h2><i data-icon="filter"></i>Filter<kbd>C</kbd></h2>
+          <div class="segmented" id="filter-kind" role="group" aria-label="Filter by"></div>
+          <div id="filter-body"></div>
+          <label class="checkbox"><input type="checkbox" id="filter-hide" />Hide what is outside (instead of dimming)</label>
+          <div id="filter-summary" aria-live="polite"></div>
+          <button class="plain-btn" id="filter-clear" disabled>Clear the filter</button>
+        </section>
         <section class="side-section analysis-section" id="sec-analyze">
           <h2><i data-icon="cluster"></i>Spatial analysis<kbd>A</kbd></h2>
           <label for="rule">Neighbors</label

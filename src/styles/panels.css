@@ -644,3 +644,69 @@
 .look-grid [hidden] {
   display: none;
 }
+
+/* The spatial filter panel. */
+#filter-kind {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-bottom: 8px;
+}
+.filter-slider {
+  display: grid;
+  grid-template-columns: auto 1fr 52px;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 6px;
+}
+.filter-slider label {
+  margin: 0;
+}
+.filter-slider input {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.filter-slider output {
+  text-align: right;
+  font-family: var(--mono-font);
+  font-variant-numeric: tabular-nums;
+}
+.filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+}
+#filter-summary .metrics {
+  margin: 6px 0;
+}
+.filter-what {
+  margin-top: 8px;
+  color: var(--accent);
+  font-size: 0.8rem;
+}
+.nearest {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  color: var(--text1);
+  text-align: left;
+  font-size: 0.8rem;
+}
+.nearest:hover {
+  background: var(--hover);
+}
+.nearest span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nearest small {
+  color: var(--text2);
+  font-family: var(--mono-font);
+  white-space: nowrap;
+}

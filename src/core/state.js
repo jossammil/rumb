@@ -55,6 +55,9 @@ export function defaults(catalog) {
     stack: [stackEntry(ref.id)],
     // Census roads draw above area fills, or below them.
     roads: "above",
+    // The spatial filter (geo/filter.js) and whether features outside it are dimmed or hidden.
+    filter: null,
+    filterMode: "dim",
   };
 }
 

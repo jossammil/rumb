@@ -164,11 +164,21 @@ export function createStyle(app) {
     if (state.view === "compare") return;
     let focus = null;
     others = [];
+    const hide = state.filterMode === "hide";
     for (const e of state.stack) {
       const l = app.layerById(e.id);
       if (!l || !app.atlas.has(e.id)) continue;
       const drawn = colorize(l, viewOf(l));
-      app.atlas.setData(e.id, drawn.annotated);
+      // The spatial filter dims (or hides) what it leaves out.
+      const kept = app.filter?.keptFor(l);
+      let features = drawn.annotated;
+      if (kept)
+        features = hide
+          ? features.filter((f) => kept.has(f.properties.__rumb_id))
+          : features.map((f) =>
+              kept.has(f.properties.__rumb_id) ? f : { ...f, properties: { ...f.properties, __rumb_out: true } },
+            );
+      app.atlas.setData(e.id, features);
       if (e.id === state.active) focus = drawn;
       else if (e.visible) others.unshift({ ...otherSection(l, drawn), credit: l.meta?.credit });
     }
@@ -215,6 +225,7 @@ export function createStyle(app) {
       });
     }
     renderOthers(legend, others);
+    app.filter?.renderSummary();
     app.renderInspector();
   }
 
