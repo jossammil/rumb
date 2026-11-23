@@ -24,10 +24,16 @@ shapes <- st_read(paste0("/vsizip/", tiger_zip), quiet = TRUE)
 pin(ctx, "tiger_tracts", tiger_url, tiger_zip,
     list(tracts = nrow(shapes), counties = length(unique(shapes$COUNTYFP))))
 pin(ctx, "acs_s1701", table_url, acs_csv, list(rows = nrow(acs)))
-stopifnot(!anyDuplicated(acs$GEOID), !anyDuplicated(shapes$GEOID),
-          setequal(acs$GEOID, shapes$GEOID))
+stopifnot(!anyDuplicated(acs$GEOID), !anyDuplicated(shapes$GEOID), all(acs$GEOID %in% shapes$GEOID))
+# TIGER 2024 can list a few tracts the ACS table does not (New York has 14 new
+# Suffolk County tracts); they stay on the map with missing estimates.
+without_acs <- sort(setdiff(shapes$GEOID, acs$GEOID))
+if (length(without_acs) > max(5, 0.01 * nrow(shapes)))
+  stop(length(without_acs), " TIGER tracts have no ACS row: ", paste(head(without_acs), collapse = ", "))
 shapes <- shapes[order(shapes$GEOID), ]
+county_names <- tapply(sub(paste0("^.*; (.*); ", ctx$name, "$"), "\\1", acs$NAME), substr(acs$GEOID, 3, 5), `[`, 1)
 acs <- acs[match(shapes$GEOID, acs$GEOID), ]
+acs$NAME[is.na(acs$NAME)] <- paste0("x; ", county_names[shapes$COUNTYFP[is.na(acs$NAME)]], "; ", ctx$name)
 acs_num <- function(field) {
   vals <- acs[[field]]
   vals[vals %in% c("", "-", "**", "***", "*****", "(X)", "N")] <- NA_character_
@@ -49,6 +55,8 @@ measures <- data.frame(
   child_poverty_universe = acs_num("S1701_C01_002E")
 )
 check_measure <- function(rate, count, universe) {
+  have <- !shapes$GEOID %in% without_acs
+  rate <- rate[have]; count <- count[have]; universe <- universe[have]
   stopifnot(all(count <= universe), all(is.na(rate) == (universe == 0)))
   eligible <- universe > 0
   stopifnot(all(abs(rate[eligible] - 100 * count[eligible] / universe[eligible]) < 0.051))
@@ -70,7 +78,7 @@ stopifnot(identical(display$GEOID, ids), all(!st_is_empty(display)))
 display$feature_id <- display$GEOID
 st_write(display, file.path(stage, "tracts.geojson"), driver = "GeoJSON", quiet = TRUE,
          layer_options = c("ID_FIELD=feature_id", "ID_TYPE=String",
-                           "RFC7946=YES", "COORDINATE_PRECISION=5"))
+                           rfc7946(ctx), "COORDINATE_PRECISION=5"))
 
 # The analytical copy for spatial SQL. Mississippi keeps full TIGER resolution
 # (10.7 MB); other states simplify with shared arcs to a 10 m interval, which
@@ -112,7 +120,8 @@ write_json(lapply(graphs, reference), "reference.json")
 products <- c("neighbors.json", "tracts.geojson", "tracts.parquet", "reference.json")
 source_info <- list(
   version = paste0(ctx$id, "-tracts-acs2024-v1"), period = "2020–2024", state = ctx$name,
-  tract_count = length(ids), valid_poverty_rates = sum(is.finite(measures$poverty_pct)),
+  tract_count = length(ids), tracts_without_acs = if (length(without_acs)) I(without_acs),
+  valid_poverty_rates = sum(is.finite(measures$poverty_pct)),
   valid_child_poverty_rates = sum(is.finite(measures$child_poverty_pct)),
   geography = list(title = paste("2024 TIGER/Line", ctx$name, "census tracts"), url = tiger_url,
                    archive_sha256 = sha256(tiger_zip)),
@@ -132,6 +141,8 @@ source_info <- list(
   assets = setNames(lapply(products, function(p) list(bytes = file.size(file.path(stage, p)),
                                       sha256 = sha256(file.path(stage, p)))), products)
 )
-write_json(source_info, "sources.json")
+# Leave out what does not apply (NULL), so Mississippi's manifest is unchanged.
+source_info$methods <- Filter(Negate(is.null), source_info$methods)
+write_json(Filter(Negate(is.null), source_info), "sources.json")
 stopifnot(all(file.copy(file.path(stage, c(products, "sources.json")), output, overwrite = TRUE)))
 message("Wrote ", length(ids), " ", ctx$name, " census tracts to ", output)

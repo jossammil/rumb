@@ -122,7 +122,7 @@ write_layer <- function(x, id, geometry, keep) {
   }
   path <- file.path(stage, paste0(id, ".geojson"))
   st_write(x, path, driver = "GeoJSON", quiet = TRUE, delete_dsn = TRUE,
-           layer_options = c("ID_FIELD=feature_id", "ID_TYPE=String", "RFC7946=YES",
+           layer_options = c("ID_FIELD=feature_id", "ID_TYPE=String", rfc7946(ctx),
                              "COORDINATE_PRECISION=5", "WRITE_NAME=NO"))
   list(path = path, bbox = round(unname(as.numeric(st_bbox(x))), 4))
 }
@@ -170,6 +170,15 @@ build_chr <- function(l, built) {
   names(labels) <- names(d)
   d <- d[d$statecode == ctx$fips & d$countycode != "000", ]
   geo <- built[[l$geometryFrom]]$sf
+  # County Health Rankings 2025 lists Connecticut twice: its eight former
+  # counties carry the health measures, its nine planning regions only
+  # population and a few newer ones. The former counties are kept.
+  dropped_rows <- character()
+  if (!is.null(l[["outsideGeometryFor"]][[ctx$fips]])) {
+    dropped_rows <- setdiff(d$fipscode, geo$feature_id)
+    d <- d[d$fipscode %in% geo$feature_id, ]
+    message(l$id, ": left out ", length(dropped_rows), " rows the ", l$geometryFrom, " geometry does not have")
+  }
   if (!setequal(d$fipscode, geo$feature_id))
     stop("County Health Rankings and the county geometry disagree for ", ctx$name, ": ",
          paste(head(c(setdiff(d$fipscode, geo$feature_id), setdiff(geo$feature_id, d$fipscode))), collapse = ", "))
@@ -228,8 +237,9 @@ build_chr <- function(l, built) {
   shaped <- st_sf(feature_id = geo$feature_id, as.data.frame(data, stringsAsFactors = FALSE),
                   geometry = st_geometry(geo))
   list(sf = shaped, graphs = built[[l$geometryFrom]]$graphs, fields = fields, measures = measures,
-       source = list(url = l$url, sha256 = sha256(csv), terms = spec$terms[[l$terms]],
-                     geometry = built[[l$geometryFrom]]$source$url))
+       source = Filter(Negate(is.null), list(url = l$url, sha256 = sha256(csv), terms = spec$terms[[l$terms]],
+                     geometry = built[[l$geometryFrom]]$source$url,
+                     rowsLeftOut = if (length(dropped_rows)) I(dropped_rows))))
 }
 
 # Outside Mississippi, counties come from the national cartographic boundary
@@ -254,8 +264,10 @@ build_counties <- function(l) {
     }
     lapply(out, function(n) I(sort(n)))
   }
-  graphs <- lapply(tracts[c("queen", "rook")], county_graph)
-  stopifnot(setequal(unique(substr(names(tracts$queen), 1, 5)), ids))
+  # Counties that tracts no longer nest in (Connecticut's former counties) get
+  # contiguity from the boundary file itself, whose shared edges coincide.
+  graphs <- if (setequal(unique(substr(names(tracts$queen), 1, 5)), ids)) lapply(tracts[c("queen", "rook")], county_graph)
+    else lapply(contiguity(st_geometry(x)), function(g) setNames(lapply(g, function(k) I(ids[k])), ids))
   list(sf = st_sf(feature_id = ids, name = x$NAMELSAD, geometry = st_geometry(x)), graphs = graphs,
        source = list(url = l$url, sha256 = sha256(zip), terms = spec$terms[[l$terms]]))
 }
@@ -264,9 +276,10 @@ build_counties <- function(l) {
 mississippi <- ctx$fips == "28"
 # [[ ]] throughout: `$` on a list matches partial names ("keep" would find "outsideKeep").
 layers <- Filter(function(l) if (mississippi) !isTRUE(l[["outside"]]) else !identical(l[["source"]] %||% "maris", "maris"), spec$layers)
+layers <- Filter(function(l) is.null(l[["states"]]) || ctx$fips %in% unlist(l[["states"]]), layers)
 if (!mississippi) layers <- lapply(layers, function(l) {
   if (!is.null(l[["outsideGeometry"]])) {
-    l[["geometryFrom"]] <- l[["outsideGeometry"]]
+    l[["geometryFrom"]] <- l[["outsideGeometryFor"]][[ctx$fips]] %||% l[["outsideGeometry"]]
     l[["keep"]] <- l[["outsideKeep"]] %||% l[["keep"]]
   }
   l

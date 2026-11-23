@@ -104,6 +104,15 @@ node scripts/check-region.mjs public/data/ms public/data/de
 
 A new state's catalog copies Mississippi's reference-layer fields, takes its bounds from the tracts (padded by 1% and rounded outward to 0.01°) and its backdrop from `prepare-basemap.R`. Its projection is a transverse Mercator centred on the state, with the scale factor chosen so the scale error is split evenly between the centre and the east and west edges (at most ±0.26%, in Texas). Alaska uses the Alaska Albers system (EPSG:3338). The GeoParquet copy outside Mississippi is simplified with shared arcs at a 10 m interval: Delaware's falls from 1.1 MB to 366 KB. Mississippi keeps its full-resolution file and its hand-edited catalog.
 
+Building every state on November 23, 2026 (419 MB in all; California is the largest at 34 MB, and no file exceeds 25 MB) needed these allowances, each recorded in the state's manifests:
+
+- **Tracts without ACS rows.** New York's 2024 TIGER file has 14 Suffolk County tracts the ACS table does not. They stay on the map with missing estimates and are listed in `sources.json` as `tracts_without_acs`. More than 5 tracts, or 1% of the state, stops the build.
+- **Tracts without 2020 centers.** A tract added since 2020 has no published center of population. A point inside it, with no population, takes its place, listed in `tables/index.json` under `tracts_without_centers`.
+- **PLACES coverage.** A few populated special-use tracts (bases, parks, airports) have no PLACES row, such as two in Arizona and three in California. They are listed as `populated_tracts_without_estimates`. Beyond 5 tracts, or 1%, the build stops.
+- **Connecticut.** In 2022 Connecticut replaced its eight counties with nine planning regions. Tract codes stayed, but county codes changed, so 2020-based files (centers, PLACES) whose ids do not match are matched by their tract code when that code is unique. County Health Rankings 2025 lists both: the former counties carry the health measures, the planning regions only population and a few newer measures. Connecticut's County Health Rankings layer therefore uses the former counties, on the 2020 cartographic boundary file (`cb_2020_us_county_500k.zip`), with contiguity from that file and the 2020 county centers. The planning-region rows are listed in the library as `rowsLeftOut`, and that layer has no population figure.
+- **Alaska.** The Aleutians cross 180°, so every longitude east of it moves west by 360°. Alaska's files are written without GDAL's RFC 7946 mode, which would wrap them back. Its bounds run from 188.2°W to 129.4°W.
+- **Hawaii and Alaska backdrops** have no other state in view, so they are labelled with their seas only.
+
 `public/data/de/` (Delaware: 262 tracts, 3 counties, 1.3 MB) is committed as the second, small region, built by this pipeline. CI rebuilds both committed regions and compares them by meaning.
 
 ### Census geography, poverty and spatial weights

@@ -185,6 +185,10 @@ region_lonlat <- function(x, ctx) {
   sf::st_set_geometry(x, sf::st_set_crs(g, crs))
 }
 
+# GDAL's RFC 7946 mode wraps longitudes into [-180°, 180°] and splits shapes at
+# 180°, which would undo Alaska's shift; Alaska's files are written without it.
+rfc7946 <- function(ctx) if (ctx$fips == "02") "RFC7946=NO" else "RFC7946=YES"
+
 write_json_file <- function(x, path, digits = 15) {
   jsonlite::write_json(x, path, auto_unbox = TRUE, null = "null", na = "null", digits = digits)
   invisible(path)

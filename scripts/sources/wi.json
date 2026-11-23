@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "region": "wi",
+  "acs_dp02": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP02?g=040XX00US55$1400000",
+    "sha256": "c46c285e98db2bb06c1a63ba49a877d6cfb4205b391e6769c7a1a7fc5a4c06e1",
+    "rows": 1542
+  },
+  "acs_dp03": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP03?g=040XX00US55$1400000",
+    "sha256": "80270d2fc36dcbf26a88f43adf642dba50098bee17089af5b2443aa43de55a5a",
+    "rows": 1542
+  },
+  "acs_dp04": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP04?g=040XX00US55$1400000",
+    "sha256": "a56e21422c8392c5641d7f1585300bfbe55136d4c131ee3056ba3dff5b386c20",
+    "rows": 1542
+  },
+  "acs_dp05": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP05?g=040XX00US55$1400000",
+    "sha256": "000e325fc816026ebf48f63cc509bda8ecb3780ff64bcd880cce3d82aef68cb6",
+    "rows": 1542
+  },
+  "acs_s1701": {
+    "url": "https://data.census.gov/table/ACSST5Y2024.S1701?g=040XX00US55$1400000",
+    "sha256": "b27900e27e307bae0e447677d3804f992fbd98539e5e92c04518bf61024ae43d",
+    "rows": 1542
+  },
+  "centers_counties": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/county/CenPop2020_Mean_CO55.txt",
+    "sha256": "8263987cb6aba50391b306aa93372908fee72c745f78f79eef5d64e9ab1308c5",
+    "rows": 72
+  },
+  "centers_tracts": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/tract/CenPop2020_Mean_TR55.txt",
+    "sha256": "59d8e6e0d6c84267cd845da984e3623e68eae61f3418cc94488865c5f37d3e2c",
+    "rows": 1542
+  },
+  "tiger_roads": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/PRISECROADS/tl_2024_55_prisecroads.zip",
+    "sha256": "21ca3c63ba8219a3e3a2f50e865e04198e53ce2b0fff953d0d05413d8fff6d0e"
+  },
+  "tiger_tracts": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/TRACT/tl_2024_55_tract.zip",
+    "sha256": "313c378d7fa173bf653381d644d8ded7b4f6241b2065d2b890e1fccccaab5de5",
+    "tracts": 1542,
+    "counties": 72
+  }
+}

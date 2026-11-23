@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "region": "va",
+  "acs_dp02": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP02?g=040XX00US51$1400000",
+    "sha256": "abb60a15ff34dc997f85b30acc95f1ef255a0b03b2087b8a51ecce014251cc69",
+    "rows": 2198
+  },
+  "acs_dp03": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP03?g=040XX00US51$1400000",
+    "sha256": "b67570781c455a46ba90c83c897e3896a0fa80a88274ef10ecfc5b45cda19a61",
+    "rows": 2198
+  },
+  "acs_dp04": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP04?g=040XX00US51$1400000",
+    "sha256": "6be6f7755955aadf4d6cd2fbe428aae8307fe0765b9e48ea84e77e0948f2bb56",
+    "rows": 2198
+  },
+  "acs_dp05": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP05?g=040XX00US51$1400000",
+    "sha256": "05f449e270ff25b77ff0054a51ea01c6ae60164185a4b2759d3ef11d19db0a9e",
+    "rows": 2198
+  },
+  "acs_s1701": {
+    "url": "https://data.census.gov/table/ACSST5Y2024.S1701?g=040XX00US51$1400000",
+    "sha256": "3a30fc7882de4c21d43c7c3b55e5178d91cb8ac80bf0bb18f58cc926f5478cb2",
+    "rows": 2198
+  },
+  "centers_counties": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/county/CenPop2020_Mean_CO51.txt",
+    "sha256": "5848029d5ec130b9c5199a3779860571c801d31a01b8416a898f40dbcd87a680",
+    "rows": 133
+  },
+  "centers_tracts": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/tract/CenPop2020_Mean_TR51.txt",
+    "sha256": "c5036de9250e8bf64a64786d9349b05011821e8d263f0ca26e81bc16806e4766",
+    "rows": 2198
+  },
+  "tiger_roads": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/PRISECROADS/tl_2024_51_prisecroads.zip",
+    "sha256": "046e9112579ec5c8344f17ebf0dd449fb317a91c68696238ee92843c3d1489c7"
+  },
+  "tiger_tracts": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/TRACT/tl_2024_51_tract.zip",
+    "sha256": "6f84381624560fd97fff27c728ed042164ca1d28aebbeef1abdf923d9680599e",
+    "tracts": 2198,
+    "counties": 133
+  }
+}

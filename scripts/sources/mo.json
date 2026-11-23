@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "region": "mo",
+  "acs_dp02": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP02?g=040XX00US29$1400000",
+    "sha256": "8cc074c1449b050463ba44de574da8c3916d3c46dec326a76703398c3fb41109",
+    "rows": 1654
+  },
+  "acs_dp03": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP03?g=040XX00US29$1400000",
+    "sha256": "814012cd96b5510d093bf5ef679150ef595ada538a766f87e8be8eccd30242f6",
+    "rows": 1654
+  },
+  "acs_dp04": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP04?g=040XX00US29$1400000",
+    "sha256": "f67d5707a18dcb7a1aea61fcacddd4121a11707c0eaa25ceb2e22f1c4dfe3991",
+    "rows": 1654
+  },
+  "acs_dp05": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP05?g=040XX00US29$1400000",
+    "sha256": "8180fd3a32608ab75f5eb2fbf6008a50dfdb38f9a088581d1d81d897f938300c",
+    "rows": 1654
+  },
+  "acs_s1701": {
+    "url": "https://data.census.gov/table/ACSST5Y2024.S1701?g=040XX00US29$1400000",
+    "sha256": "25d188a47443c12eabaa7602ae729a0c48641f5d73328afc0ccd8498f069dcb3",
+    "rows": 1654
+  },
+  "centers_counties": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/county/CenPop2020_Mean_CO29.txt",
+    "sha256": "34f5390ecfb1541bdfe2e9af814cbcd44458cef314d7c0379e21698231a1ee50",
+    "rows": 115
+  },
+  "centers_tracts": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/tract/CenPop2020_Mean_TR29.txt",
+    "sha256": "b4fa9bf98c3ada4db188a147571df65055504622484671f3bff4d53585e9631b",
+    "rows": 1654
+  },
+  "tiger_roads": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/PRISECROADS/tl_2024_29_prisecroads.zip",
+    "sha256": "8730f186f66eaf9283171d6864fc99a81265420b370a4b5201a4b484ee409e40"
+  },
+  "tiger_tracts": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/TRACT/tl_2024_29_tract.zip",
+    "sha256": "a54502eb6a8bc1ce90e19db016796f40d89780701f357d7334783760359d3862",
+    "tracts": 1654,
+    "counties": 115
+  }
+}

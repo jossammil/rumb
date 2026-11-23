@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "region": "ne",
+  "acs_dp02": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP02?g=040XX00US31$1400000",
+    "sha256": "afc2e13f8d0f525f91847a79b94fb40c9a01012a5daba6ca1249e59f898eca90",
+    "rows": 553
+  },
+  "acs_dp03": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP03?g=040XX00US31$1400000",
+    "sha256": "920005a484005947633536f5f95602f352f63633a2ae1c629f98b3503112a260",
+    "rows": 553
+  },
+  "acs_dp04": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP04?g=040XX00US31$1400000",
+    "sha256": "045b352f3e2ecd2cc6cb3d3f7c6ba0209c028609ade6e5ec4ea9d7e306c6c42a",
+    "rows": 553
+  },
+  "acs_dp05": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP05?g=040XX00US31$1400000",
+    "sha256": "4abcbe3bb14d2194e3e01d3d56708da91d7228aa0001005071593b3aff541c93",
+    "rows": 553
+  },
+  "acs_s1701": {
+    "url": "https://data.census.gov/table/ACSST5Y2024.S1701?g=040XX00US31$1400000",
+    "sha256": "cdd2ca9abfcd1b9eae0952c2c5951d71697d4d6739b1e24dcac94d3a3b336063",
+    "rows": 553
+  },
+  "centers_counties": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/county/CenPop2020_Mean_CO31.txt",
+    "sha256": "ddd8e1f9d950eecf0323d370238ba2a67f9b380c3ca0f5d6bba6ec6b5b833e77",
+    "rows": 93
+  },
+  "centers_tracts": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/tract/CenPop2020_Mean_TR31.txt",
+    "sha256": "9d065368b19abb43bfe8df0a809e45ae39605235b28d889c328f862c94ca5546",
+    "rows": 553
+  },
+  "tiger_roads": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/PRISECROADS/tl_2024_31_prisecroads.zip",
+    "sha256": "7b1e03739136e40ee8c2d8a36b7c98485fee6d69d82be64172b9ec711e3919f1"
+  },
+  "tiger_tracts": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/TRACT/tl_2024_31_tract.zip",
+    "sha256": "fa908d438eadf7bb1492313c0178204547d207a7d57e37a4bde1a62f104565db",
+    "tracts": 553,
+    "counties": 93
+  }
+}

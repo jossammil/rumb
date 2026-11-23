@@ -20,7 +20,7 @@ state <- region_lonlat(st_transform(state, "OGC:CRS84"), ctx)
 outline <- rmapshaper::ms_simplify(state, keep = 0.08, keep_shapes = TRUE)
 out <- file.path(ctx$out, "outline.geojson")
 st_write(outline, out, driver = "GeoJSON", delete_dsn = TRUE, quiet = TRUE,
-         layer_options = c("RFC7946=YES", "COORDINATE_PRECISION=5"))
+         layer_options = c(rfc7946(ctx), "COORDINATE_PRECISION=5"))
 crs <- metric_crs(ctx)
 area <- as.numeric(st_area(st_transform(st_read(out, quiet = TRUE), crs)))
 message("source sha256 ", digest::digest(zip, algo = "sha256", file = TRUE))

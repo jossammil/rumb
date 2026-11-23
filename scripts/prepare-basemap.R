@@ -51,7 +51,7 @@ parts <- lapply(names(inputs), function(kind) {
   geo <- crop_extent(geo)
   if (kind != "places") geo <- suppressWarnings(st_simplify(geo, dTolerance=.002))
   label <- if ("name" %in% names(geo)) as.character(geo$name) else rep("", nrow(geo))
-  st_sf(kind=kind, name=label, geometry=st_geometry(geo))
+  st_sf(kind=rep(kind, nrow(geo)), name=label, geometry=st_geometry(geo))
 })
 context <- do.call(rbind, parts)
 st_write(context, file.path(ctx$out, "context.geojson"), quiet=TRUE, delete_dsn=TRUE, layer_options="COORDINATE_PRECISION=4")
@@ -65,13 +65,18 @@ st_write(world, file.path(ctx$out, "world-land.geojson"), quiet=TRUE, delete_dsn
 # for the catalog; Mississippi's committed catalog keeps its hand-placed labels.
 view <- st_as_sfc(box(extent))
 others <- suppressWarnings(st_intersection(states[states$STATEFP != ctx$fips, ], view))
-# Only states with at least 10,000 km² in view, the 8 nearest to the state.
+# Only states with at least 10,000 km² in view, the 8 nearest to the state
+# (Hawaii and Alaska have none).
+others <- others[!st_is_empty(others), ]
 others <- others[as.numeric(st_area(st_transform(others, metric_crs(ctx)))) > 1e10, ]
-surface <- suppressWarnings(st_point_on_surface(st_geometry(others)))
-near <- order(as.numeric(st_distance(st_transform(surface, metric_crs(ctx)), st_transform(st_geometry(state), metric_crs(ctx)))))
-others <- others[head(near, 8), ]
-spots <- st_coordinates(surface[head(near, 8)])
-labels <- lapply(seq_len(nrow(others)), function(k) list(toupper(others$NAME[k]), round(spots[k, 1], 2), round(spots[k, 2], 2)))
+labels <- list()
+if (nrow(others)) {
+  surface <- suppressWarnings(st_point_on_surface(st_geometry(others)))
+  near <- order(as.numeric(st_distance(st_transform(surface, metric_crs(ctx)), st_transform(st_geometry(state), metric_crs(ctx)))))
+  others <- others[head(near, 8), ]
+  spots <- st_coordinates(surface[head(near, 8)])
+  labels <- lapply(seq_len(nrow(others)), function(k) list(toupper(others$NAME[k]), round(spots[k, 1], 2), round(spots[k, 2], 2)))
+}
 waters <- jsonlite::read_json("scripts/waters.json")$waters
 land <- st_union(st_make_valid(parts[[1]]))
 for (w in waters) {
@@ -114,6 +119,6 @@ merged <- region_lonlat(st_transform(st_simplify(merged, dTolerance = 40, preser
 merged <- merged[!st_is_empty(merged), ]
 merged <- merged[order(merged$class == "primary", merged$ref), ]
 st_write(merged, file.path(ctx$out, "roads.geojson"), quiet = TRUE, delete_dsn = TRUE,
-         layer_options = c("COORDINATE_PRECISION=4", "RFC7946=YES", "WRITE_NAME=NO"))
+         layer_options = c("COORDINATE_PRECISION=4", rfc7946(ctx), "WRITE_NAME=NO"))
 message("Wrote ", nrow(merged), " road routes; TIGER ZIP SHA-256 ",
         digest::digest(roads_zip, algo = "sha256", file = TRUE))

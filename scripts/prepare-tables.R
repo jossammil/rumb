@@ -26,6 +26,23 @@ tracts <- jsonlite::read_json(file.path(ctx$out, "tracts.geojson"))
 ids <- vapply(tracts$features, function(f) f$properties$GEOID, character(1))
 stopifnot(length(ids) > 0, !anyDuplicated(ids))
 
+# A source's tract GEOIDs in terms of ours. In 2022 Connecticut replaced its
+# eight counties with nine planning regions: tract codes stayed, county codes
+# changed, so 2020-based files (centers, PLACES) name tracts by the old
+# county. An id that does not match is matched by its tract code when that
+# code is unique on both sides. Returns our id for each source id (NA if none).
+align <- function(source_ids) {
+  out <- ifelse(source_ids %in% ids, source_ids, NA_character_)
+  tract <- function(x) substr(x, 6, 11)
+  free <- setdiff(ids, out)
+  loose <- is.na(out)
+  unique_code <- function(x) !duplicated(x) & !duplicated(x, fromLast = TRUE)
+  ours <- free[unique_code(tract(free))]
+  theirs <- unique_code(tract(source_ids)) & loose
+  out[theirs] <- ours[match(tract(source_ids[theirs]), tract(ours))]
+  out
+}
+
 # ---- ACS data profiles -------------------------------------------------------
 acs <- spec$acs
 columns <- list()
@@ -38,7 +55,8 @@ for (t in unlist(acs$tables)) {
   d <- export$data
   csv <- export$csv
   labels <- c(labels, export$labels)
-  stopifnot(!anyDuplicated(d$GEOID), setequal(d$GEOID, ids))
+  # As in prepare-data.R, a few new TIGER tracts may have no ACS row.
+  stopifnot(!anyDuplicated(d$GEOID), all(d$GEOID %in% ids), length(ids) - nrow(d) <= max(5, 0.01 * length(ids)))
   pin(ctx, paste0("acs_", tolower(t)), fill(sub("{table}", t, acs$url, fixed = TRUE)), csv, list(rows = nrow(d)))
   d <- d[match(ids, d$GEOID), ]
   for (name in setdiff(names(d), c("GEO_ID", "NAME", "GEOID"))) columns[[name]] <- d[[name]]
@@ -115,14 +133,21 @@ if (!identical(sha256(places_csv), places$sha256))
 p <- read.csv(places_csv, colClasses = "character", fileEncoding = "UTF-8-BOM", check.names = FALSE)
 names(p) <- trimws(names(p))  # one 2025 heading ends in a tab
 p <- p[p$StateAbbr == ctx$abbr, ]
-stopifnot(nrow(p) > 0, !anyDuplicated(p$TractFIPS), all(p$TractFIPS %in% ids))
+stopifnot(nrow(p) > 0, !anyDuplicated(p$TractFIPS))
+p$TractFIPS <- align(p$TractFIPS)
+unmatched_places <- sum(is.na(p$TractFIPS))
+if (unmatched_places) stop(unmatched_places, " PLACES tracts match no tract here")
 missing_places <- setdiff(ids, p$TractFIPS)
 row <- match(ids, p$TractFIPS)
 # CDC publishes no estimate for tracts with almost no adults. Any other gap
 # means the tract IDs no longer line up.
+# CDC publishes no estimate for tracts with almost no adults, and a handful of
+# special-use tracts (bases, parks, airports) lack rows too. More than that
+# means the tract ids no longer line up.
 populated <- ids[is.finite(acs_cols$acs_population) & acs_cols$acs_population >= 50]
-if (length(intersect(missing_places, populated)))
-  stop("PLACES has no row for populated tracts: ", paste(head(intersect(missing_places, populated)), collapse = ", "))
+gaps <- intersect(missing_places, populated)
+if (length(gaps) > max(5, 0.01 * length(ids)))
+  stop(length(gaps), " populated tracts have no PLACES row: ", paste(head(gaps), collapse = ", "))
 places_cols <- list(places_pop18 = as.numeric(gsub(",", "", p$TotalPop18plus))[row])
 places_fields <- list(places_pop18 = list(label = "Adults 18 and over (2020 Census)", format = "integer", role = "meta"))
 places_measures <- character()
@@ -166,8 +191,20 @@ read_centers <- function(template, key) {
   list(path = path, url = url, d = d)
 }
 tc <- read_centers(spec$centers$tracts, "centers_tracts")
-tc$d$GEOID <- paste0(tc$d$STATEFP, tc$d$COUNTYFP, tc$d$TRACTCE)
-stopifnot(setequal(tc$d$GEOID, ids))
+tc$d$GEOID <- align(paste0(tc$d$STATEFP, tc$d$COUNTYFP, tc$d$TRACTCE))
+tc$d <- tc$d[!is.na(tc$d$GEOID), ]
+# A tract added since 2020 has no published center: use a point inside it,
+# with no population, and list it.
+new_tracts <- setdiff(ids, tc$d$GEOID)
+if (length(new_tracts) > max(5, 0.01 * length(ids)))
+  stop(length(new_tracts), " tracts have no 2020 center of population: ", paste(head(new_tracts), collapse = ", "))
+if (length(new_tracts)) {
+  shapes <- sf::st_read(file.path(ctx$out, "tracts.geojson"), quiet = TRUE)
+  inside <- suppressWarnings(sf::st_coordinates(sf::st_point_on_surface(sf::st_geometry(shapes[match(new_tracts, shapes$GEOID), ]))))
+  tc$d <- rbind(tc$d[c("GEOID", "LATITUDE", "LONGITUDE", "POPULATION")],
+                data.frame(GEOID = new_tracts, LATITUDE = as.character(round(inside[, 2], 6)),
+                           LONGITUDE = as.character(round(inside[, 1], 6)), POPULATION = "0"))
+}
 tc$d <- tc$d[match(ids, tc$d$GEOID), ]
 cc <- read_centers(spec$centers$counties, "centers_counties")
 cc$d$GEOID <- paste0(cc$d$STATEFP, cc$d$COUNTYFP)
@@ -175,8 +212,9 @@ counties <- jsonlite::read_json(file.path(ctx$out, "layers", paste0(spec$centers
 county_ids <- vapply(counties$features, function(f) as.character(f$id), character(1))
 stopifnot(length(county_ids) > 0, setequal(cc$d$GEOID, county_ids))
 cc$d <- cc$d[match(county_ids, cc$d$GEOID), ]
-centers <- function(d, id) list(version = 1, ids = I(id), lon = as.numeric(d$LONGITUDE), lat = as.numeric(d$LATITUDE),
-                                population = as.integer(d$POPULATION))
+# I() keeps one-county states' columns as arrays.
+centers <- function(d, id) list(version = 1, ids = I(id), lon = I(as.numeric(d$LONGITUDE)), lat = I(as.numeric(d$LATITUDE)),
+                                population = I(as.integer(d$POPULATION)))
 
 # ---- Write -------------------------------------------------------------------------
 write <- function(x, name) {
@@ -212,9 +250,11 @@ index <- list(
     places = Filter(Negate(is.null), list(title = places$title, url = places$url, download = places$download,
                   sha256 = sha256(places_csv), dictionary = places$dictionary,
                   tracts_without_estimates = I(missing_places),
+                  populated_tracts_without_estimates = if (length(gaps)) I(gaps),
                   measures_not_published = if (length(not_published)) I(not_published))),
-    centers = list(title = spec$centers$title, tracts = list(url = tc$url, sha256 = sha256(tc$path)),
-                   counties = list(url = cc$url, sha256 = sha256(cc$path)))
+    centers = Filter(Negate(is.null), list(title = spec$centers$title, tracts = list(url = tc$url, sha256 = sha256(tc$path)),
+                   counties = list(url = cc$url, sha256 = sha256(cc$path)),
+                   tracts_without_centers = if (length(new_tracts)) I(new_tracts)))
   ),
   assets = setNames(lapply(files, asset), files),
   packages = list(jsonlite = as.character(packageVersion("jsonlite")))

@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "region": "ny",
+  "acs_dp02": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP02?g=040XX00US36$1400000",
+    "sha256": "1c87766a426393a878f7b84832245a666ef3a2158370f582bdce4dc71c006987",
+    "rows": 5397
+  },
+  "acs_dp03": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP03?g=040XX00US36$1400000",
+    "sha256": "6699c8f3842ae5ebdb234fe2450cb2c645b0fd8a55f47dcfd23a944fef392f42",
+    "rows": 5397
+  },
+  "acs_dp04": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP04?g=040XX00US36$1400000",
+    "sha256": "6df34964d47f3350e02a06b93edfe72ce27c929745019911aa13ea7f2a3e8d16",
+    "rows": 5397
+  },
+  "acs_dp05": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP05?g=040XX00US36$1400000",
+    "sha256": "4d8f5b3ba89662f8d838074078c83bf7909f457d21869fe83cd2827c7f43a80a",
+    "rows": 5397
+  },
+  "acs_s1701": {
+    "url": "https://data.census.gov/table/ACSST5Y2024.S1701?g=040XX00US36$1400000",
+    "sha256": "2db98e33c9ecc76763213743e4b601cc1fbcadc1bdfea00a5b318705b9a97466",
+    "rows": 5397
+  },
+  "centers_counties": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/county/CenPop2020_Mean_CO36.txt",
+    "sha256": "f74a504aa1d84a1a3128e688c60ec8c7894521e60c2137e1c9e1b8116d408de8",
+    "rows": 62
+  },
+  "centers_tracts": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/tract/CenPop2020_Mean_TR36.txt",
+    "sha256": "e54daaf7abfa086bff3cf2160a0804509bfbf8ca10057a85c3a324b7ac58e74f",
+    "rows": 5411
+  },
+  "tiger_roads": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/PRISECROADS/tl_2024_36_prisecroads.zip",
+    "sha256": "266716cc1b845124fca72da63bce1fca7282d7b8db373d8b3b70cc2497de140d"
+  },
+  "tiger_tracts": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/TRACT/tl_2024_36_tract.zip",
+    "sha256": "80010cc0b3e1ef6d8c27072ec7f679f328d0e1d82b3b96cb744e8811df8221c7",
+    "tracts": 5411,
+    "counties": 62
+  }
+}

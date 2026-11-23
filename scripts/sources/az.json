@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "region": "az",
+  "acs_dp02": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP02?g=040XX00US04$1400000",
+    "sha256": "3f0fba5caa885df2bac8d22f840f2f321f742ed2478316baf0e5b72dc33daef2",
+    "rows": 1765
+  },
+  "acs_dp03": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP03?g=040XX00US04$1400000",
+    "sha256": "89c0c2852b56ece0e27295161b1ec66605a6fab574e606aedfb110657a1e7d0f",
+    "rows": 1765
+  },
+  "acs_dp04": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP04?g=040XX00US04$1400000",
+    "sha256": "8e67188d01fe684a4611307c4d515d8aa223665e47097e55f8f1e871af28ef3c",
+    "rows": 1765
+  },
+  "acs_dp05": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP05?g=040XX00US04$1400000",
+    "sha256": "19bd6b414fdee703286974276878a45d6901002b002f53c1d6aa1a5f3278edd7",
+    "rows": 1765
+  },
+  "acs_s1701": {
+    "url": "https://data.census.gov/table/ACSST5Y2024.S1701?g=040XX00US04$1400000",
+    "sha256": "dc4b9c7d88de9a152e171a024b8bd2e125c57db63a06f6302e7e8322c07560d3",
+    "rows": 1765
+  },
+  "centers_counties": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/county/CenPop2020_Mean_CO04.txt",
+    "sha256": "070402d68121f7def6bc7b62c19ae2ec2bbb08963d9e9f17989e8427108fe1ba",
+    "rows": 15
+  },
+  "centers_tracts": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/tract/CenPop2020_Mean_TR04.txt",
+    "sha256": "97e50944d18bb84ee7bbc99a28e7e4c6961b37a4435fb28b27c4122164c6b1a0",
+    "rows": 1765
+  },
+  "tiger_roads": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/PRISECROADS/tl_2024_04_prisecroads.zip",
+    "sha256": "8215c89b3ee0f247e13f1f8fceb77360b19710c5af902fa7d94dd11ccf071bc1"
+  },
+  "tiger_tracts": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/TRACT/tl_2024_04_tract.zip",
+    "sha256": "5405732b0167843f07e0575c9a42dca99de2a83710cb5dafbe30db65ee9414ba",
+    "tracts": 1765,
+    "counties": 15
+  }
+}
