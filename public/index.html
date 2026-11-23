@@ -85,6 +85,9 @@
               ><select id="classification">
                 <option value="quantile">Quantile</option>
                 <option value="equal">Equal interval</option>
+                <option value="jenks">Natural breaks (Jenks)</option>
+                <option value="sd">Standard deviation</option>
+                <option value="manual">Manual breaks</option>
               </select>
             </div>
             <div>
@@ -95,8 +98,14 @@
                 <option selected>5</option>
                 <option>6</option>
                 <option>7</option>
+                <option>8</option>
+                <option>9</option>
               </select>
             </div>
+          </div>
+          <div id="manual-row" hidden>
+            <label for="manual-breaks">Breaks</label
+            ><input id="manual-breaks" type="text" inputmode="decimal" autocomplete="off" placeholder="10, 20, 30" />
           </div>
           <div id="palette-row">
             <label>Color palette</label>

@@ -10,6 +10,7 @@ export const LAYER_VIEW_KEYS = [
   "palette",
   "classification",
   "count",
+  "breaks",
   "rule",
   "study",
   "permutations",
@@ -33,6 +34,8 @@ export function defaults(catalog) {
     palette: "Lagoon",
     classification: "quantile",
     count: 5,
+    // Manual class breaks, used when classification is "manual".
+    breaks: null,
     rule: "queen",
     study: "all",
     permutations: 999,

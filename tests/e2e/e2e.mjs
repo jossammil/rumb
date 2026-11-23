@@ -498,6 +498,29 @@ await check("symbology", async () => {
   await p.context().close();
 });
 
+await check("classes", async () => {
+  const p = await openPage();
+  const bar = () => p.$$eval("#legend .legend-bar i", (els) => els.map((e) => getComputedStyle(e).backgroundColor));
+  await p.selectOption("#classification", "jenks");
+  await p.selectOption("#class-count", "9");
+  await p.waitForFunction(() => document.querySelectorAll("#legend .legend-bar i").length === 9);
+  // Standard deviations on a diverging palette: the middle class is the neutral color.
+  await p.selectOption("#class-count", "5");
+  await p.selectOption("#classification", "sd");
+  await p.click('[data-palette="RdBu"]');
+  await p.waitForFunction(() => document.querySelectorAll("#legend .legend-bar i").length === 5);
+  expect((await bar())[2] === "rgb(247, 247, 247)", "diverging middle " + (await bar())[2]);
+  // Manual breaks start from the map's breaks and accept typed ones.
+  await p.selectOption("#classification", "manual");
+  expect((await p.inputValue("#manual-breaks")).split(",").length === 4, "manual breaks seeded");
+  await p.fill("#manual-breaks", "10, 20, 40");
+  await p.locator("#manual-breaks").dispatchEvent("change");
+  await waitText("#legend .breaks", "20–<40", p);
+  await waitText("#legend .breaks", "≥ 40", p);
+  expect((await p.evaluate(() => window.rumb.state.breaks.join())) === "10,20,40", "breaks kept");
+  await p.context().close();
+});
+
 // ---- compare -----------------------------------------------------------------
 await check("compare", async () => {
   const p = await openPage();

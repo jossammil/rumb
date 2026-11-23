@@ -20,6 +20,7 @@ import { createStore } from "./core/store.js";
 import { createWorkspace } from "./core/workspace.js";
 import { createOffline } from "./data/offline.js";
 import { exportMapImage } from "./map/export-png.js";
+import { parseBreaks } from "./map/classify.js";
 import { entryStyle, kindOf } from "./map/layer-specs.js";
 import { initMap } from "./map/map.js";
 import { createAnalysis } from "./panels/analysis.js";
@@ -627,9 +628,18 @@ function wire(app) {
     on(id, "change", (ev) => {
       // Classes only restyle the map; analysis settings invalidate a result.
       if (key !== "classification" && key !== "count") app.analysis.clearResults();
+      // Manual breaks start from the breaks on the map, rounded.
+      if (key === "classification" && ev.target.value === "manual" && !app.state.breaks?.length)
+        store.set({ breaks: app.style.cuts().map((c) => Number(c.toPrecision(3))) });
       store.set({ [key]: cast(ev.target.value) });
       app.renderAll();
     });
+  on("manual-breaks", "change", (ev) => {
+    const breaks = parseBreaks(ev.target.value);
+    if (!breaks) throw new Error("Type the class breaks as numbers separated by commas, such as 10, 20, 30.");
+    store.set({ breaks });
+    app.renderAll();
+  });
   on("fdr", "change", (ev) => {
     app.analysis.clearResults();
     store.set({ fdr: ev.target.checked });

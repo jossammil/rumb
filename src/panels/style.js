@@ -4,14 +4,26 @@
 import { featureId } from "../core/features.js";
 import { layerViewDefaults } from "../core/state.js";
 import { neutralColors } from "../map/basemap-style.js";
-import { categories, categoryFields, classify, classOf, clusters, palettes, ramp, UNIFORM_COLOR } from "../map/classify.js";
+import {
+  categories,
+  categoryFields,
+  classify,
+  classOf,
+  clusters,
+  paletteKind,
+  PALETTE_NAMES,
+  palettes,
+  ramp,
+  UNIFORM_COLOR,
+} from "../map/classify.js";
 import { mapColors } from "../map/basemap-style.js";
 import { classItems, renderLegend, renderOthers } from "../map/legend.js";
 import { $, h, options } from "../ui/dom.js";
 
 export function createStyle(app) {
   let items = [],
-    others = [];
+    others = [],
+    lastCuts = [];
   /** Features of the active layer by ID, as last drawn. */
   const values = new Map();
 
@@ -48,13 +60,17 @@ export function createStyle(app) {
     renderLook(l, kind);
     $("classification").value = state.classification;
     $("class-count").value = String(state.count);
+    $("class-count").disabled = state.classification === "manual";
+    $("manual-row").hidden = !classed || state.classification !== "manual";
+    if (document.activeElement !== $("manual-breaks")) $("manual-breaks").value = (state.breaks || []).join(", ");
     $("palettes").replaceChildren(
       ...Object.entries(palettes).map(([name, stops]) =>
         h(
           "button",
           {
-            "aria-label": name + " palette",
-            title: name,
+            "aria-label": (PALETTE_NAMES[name] || name) + " palette",
+            title: (PALETTE_NAMES[name] || name) + (paletteKind(name) === "diverging" ? " (diverging)" : ""),
+            class: paletteKind(name),
             "aria-pressed": String(state.palette === name),
             "data-palette": name,
             onclick: () => {
@@ -109,7 +125,7 @@ export function createStyle(app) {
       category = view.category,
       measure = category ? "" : view.measure,
       data = features.map((f) => f.properties?.[measure]);
-    const cuts = measure ? classify(data, view.count, view.classification) : [],
+    const cuts = measure ? classify(data, view.count, view.classification, { breaks: view.breaks }) : [],
       colors = ramp(view.palette, cuts.length + 1);
     const cats = category ? categories(features.map((f) => f.properties?.[category])) : null;
     const clustered = view.mode === "cluster" && view.result;
@@ -160,6 +176,7 @@ export function createStyle(app) {
     values.clear();
     for (const f of l.collection.features) values.set(featureId(f), f);
     const { data, cuts, colors, cats, clustered, clusterColor, uniform, na } = focus || colorize(l, state);
+    lastCuts = cuts;
 
     const legend = $("legend");
     const action = state.result
@@ -209,5 +226,7 @@ export function createStyle(app) {
     legendItems: () => items,
     /** The other shown layers' legend entries, top first: { name, kind, colors, note, credit }. */
     legendOthers: () => others,
+    /** The focus layer's class breaks as last drawn. */
+    cuts: () => lastCuts,
   };
 }
