@@ -17,6 +17,9 @@ import { drawnIds, moveLayer, setVisible, stackEntry, withLayer, withoutLayer } 
 import { isTyping, SHORTCUTS, shortcutFor } from "./core/keys.js";
 import { THEMES } from "./core/settings.js";
 import { defaults, LAYER_VIEW_KEYS, layerViewDefaults, stateFields } from "./core/state.js";
+import { callStats } from "./stats/client.js";
+import { poolOf } from "./stats/pool.js";
+import { RATE_METHODS, rateFields, rateSpec } from "./stats/rates.js";
 import { createStore } from "./core/store.js";
 import { createWorkspace } from "./core/workspace.js";
 import { createOffline } from "./data/offline.js";
@@ -111,6 +114,7 @@ async function start() {
       const groups = [{ label: "Measure", fields: own }];
       if (l.id === ws.ref.id)
         for (const t of app.tableList()) groups.push({ label: t.group || t.name, fields: t.measures });
+      groups.push({ label: "Derived", fields: l?.derivedFields || [] });
       return groups.filter((g) => g.fields.length);
     },
     /** The reference layer's attribute tables, once their index is read. */
@@ -126,16 +130,46 @@ async function start() {
       if (l?.meta) return { labelField: l.meta.labelField, groupField: l.meta.placeField, idField: null };
       return { labelField: ws.ref.labelField, groupField: ws.ref.groupField, idField: ws.ref.idField };
     },
-    fieldList: (l) => [...ws.fieldList(l), ...(l?.countFields || [])],
+    fieldList: (l) => [...ws.fieldList(l), ...(l?.countFields || []), ...(l?.derivedFields || [])],
     allLayers: () => [ws.referenceView(), ...store.state.layers],
     /**
      * A layer by id: the reference layer, a query layer or a loaded library
      * layer, with point counts added when its stack entry asks for them.
      */
     layerById(id) {
-      const base = baseLayer(id),
-        counts = store.state.stack.find((e) => e.id === id)?.counts;
-      return base && counts?.length ? withCounts(base, counts) : base;
+      const counted = countedLayer(id),
+        derived = store.state.stack.find((e) => e.id === id)?.derived;
+      return counted && derived?.length ? withDerived(counted, derived) : counted;
+    },
+    /**
+     * Computes the derived rate fields the stack asks for that are not ready
+     * yet (they may need a table or the neighbor graph), then redraws.
+     */
+    async ensureDerived() {
+      let changed = false;
+      for (const e of store.state.stack)
+        for (const raw of e.derived || []) {
+          const spec = rateSpec(raw);
+          if (!spec) continue;
+          await ws.ensureFields([spec.measure]);
+          const view = countedLayer(e.id);
+          if (!view || derivedOf(view, spec)) continue;
+          const info = app.fieldMeta(view, spec.measure),
+            pool = poolOf(info);
+          if (!pool?.denominator) continue;
+          await ws.ensureFields([pool.numerator, pool.denominator]);
+          const fresh = countedLayer(e.id);
+          const spatial = spec.methods.some((m) => RATE_METHODS[m].spatial) && app.kindOf(fresh) !== "point";
+          const rows = spatial ? await contiguityRows(fresh) : null;
+          derivedStore(fresh.collection).set(JSON.stringify(spec), rateFields(fresh.collection.features, spec, {
+            info,
+            pool,
+            label: app.label(spec.measure, fresh),
+            rows,
+          }));
+          changed = true;
+        }
+      if (changed && ready) renderAll();
     },
     /** The focus layer: the one the style panel, inspector and analysis act on. */
     layer: () => app.layerById(store.state.active),
@@ -299,6 +333,9 @@ async function start() {
     // A table field picked before its table was read (a layer's saved view, say).
     if (ws.missingFields([store.state.measure]).length)
       ws.ensureFields([store.state.measure]).then(renderAll, report);
+    // Derived rates the stack names that are not computed yet.
+    if (store.state.stack.some((e) => (e.derived || []).some((d) => !derivedOf(countedLayer(e.id) || {}, rateSpec(d) || {}))))
+      app.ensureDerived().catch(report);
     renderLayers(app);
     app.style.renderControls(fields);
     app.filter.render();
@@ -380,6 +417,57 @@ async function start() {
     if (fit) app.atlas.fit(l.collection);
   }
   const libraryViews = new Map();
+  /** A layer with its point counts, without derived rates. */
+  function countedLayer(id) {
+    const base = baseLayer(id),
+      counts = store.state.stack.find((e) => e.id === id)?.counts;
+    return base && counts?.length ? withCounts(base, counts) : base;
+  }
+  // Derived rate fields (stats/rates.js) by collection and spec; computed by
+  // ensureDerived, read here synchronously.
+  const derivedValues = new WeakMap(),
+    derivedViews = new Map();
+  const derivedStore = (collection) => {
+    if (!derivedValues.has(collection)) derivedValues.set(collection, new Map());
+    return derivedValues.get(collection);
+  };
+  const derivedOf = (view, spec) => derivedValues.get(view.collection)?.get(JSON.stringify(spec));
+  /** A layer with the derived rate fields its stack entry asks for, once computed. */
+  function withDerived(view, specs) {
+    const parts = specs.map(rateSpec).filter(Boolean).map((s) => derivedOf(view, s)).filter(Boolean);
+    if (!parts.length) return view;
+    const key = JSON.stringify(specs),
+      hit = derivedViews.get(view.id);
+    if (hit && hit.base === view.collection && hit.key === key && hit.parts.every((p, i) => p === parts[i])) return hit.view;
+    const fields = parts.flatMap((p) => p.fields);
+    const collection = {
+      type: "FeatureCollection",
+      features: view.collection.features.map((f, i) => ({
+        ...f,
+        properties: { ...f.properties, ...Object.fromEntries(parts.flatMap((p) => p.fields.map((n) => [n, p.values[n][i]]))) },
+      })),
+    };
+    const extraFields = Object.assign({}, view.extraFields, ...parts.map((p) => p.extraFields));
+    const derived = { ...view, collection, extraFields, derivedFields: fields };
+    derivedViews.set(view.id, { base: view.collection, key, parts, view: derived });
+    return derived;
+  }
+  /** Queen contiguity as neighbor indices by feature, for spatial smoothing. */
+  async function contiguityRows(view) {
+    const graph = view.reference
+      ? (await ws.neighbors()).queen
+      : view.library && view.meta?.neighbors
+        ? (await ws.loadLayerNeighbors(view.id)).queen
+        : ws.graphs.get(view.id + "-queen") ||
+          (await callStats({ type: "weights", features: view.collection.features, rule: "queen" }).then((g) => {
+            ws.graphs.set(view.id + "-queen", g);
+            return g;
+          }));
+    const index = new Map(view.collection.features.map((f, i) => [featureId(f), i]));
+    return view.collection.features.map((f) =>
+      (graph[featureId(f)] || []).filter((id) => index.has(id)).map((id) => index.get(id)),
+    );
+  }
   /** A layer without point counts. */
   function baseLayer(id) {
     if (id === ws.ref.id) return ws.referenceView();
@@ -631,6 +719,10 @@ function wire(app) {
       if (app.state.view !== "map") app.setView("map");
       if (!$("analyze").disabled) app.analysis.run();
     },
+    "smooth-rate": () => {
+      if (app.state.view !== "map") app.setView("map");
+      import("./panels/smooth.js").then((m) => m.openSmooth(app), report);
+    },
     "hot-spots": () => {
       if (app.state.view !== "map") app.setView("map");
       if (app.state.method !== "gistar") {
@@ -821,6 +913,8 @@ function wire(app) {
   });
   on("filter-clear", "click", () => app.filter.clear());
   on("count-points", "click", () => runCommand("count-points"));
+  on("smooth-rate", "click", () => runCommand("smooth-rate"));
+  on("look-hatch", "change", (ev) => app.setLook({ style: { hatch: ev.target.checked || undefined } }));
   on("share-map", "click", () => runCommand("share"));
   on("look-reset", "click", () => {
     const { stack, active } = store.state;

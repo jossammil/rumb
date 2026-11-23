@@ -385,6 +385,53 @@ await check("bivariate", async () => {
   await p.context().close();
 });
 
+await check("rates", async () => {
+  const ref = JSON.parse(await readFile("tests/stats-reference.json", "utf8")).rates.chr;
+  const chr = JSON.parse(await dataFile("layers/chr_counties_2025.geojson")).features;
+  const small = chr.filter((f) => Number.isFinite(f.properties.v138_rawvalue) && f.properties.v138_numerator < 20).length;
+  const p = await openPage();
+  await p.keyboard.press("n");
+  await p.click('[data-library="chr_counties_2025"]');
+  await waitText("#toast", "Added County Health Rankings", p);
+  await p.evaluate(() => window.rumb.app.setMeasure("v138_rawvalue"));
+  await p.click("#smooth-rate");
+  await p.selectOption("#smooth-measure", "v138_rawvalue");
+  await p.click("#smooth-go");
+  await waitText("#legend", "Drug overdose deaths (per 100,000): empirical Bayes", p);
+  // Empirical Bayes rates as spdep::EBest finds them, per 100,000.
+  const eb = await p.evaluate(() =>
+    Object.fromEntries(window.rumb.app.layer().collection.features.map((f) => [f.id, f.properties.eb_v138_rawvalue])),
+  );
+  const off = ref.ids.filter((id, i) => Math.abs(eb[id] - ref.eb[i] * 1e5) > 1e-6 * ref.eb[i] * 1e5);
+  expect(!off.length, "EB rates differ for " + off.join(", "));
+  expect(await p.evaluate(() => window.rumb.app.fieldList(window.rumb.app.layer()).includes("seb_v138_rawvalue")), "spatial EB field");
+  // Hatching marks rates on fewer than 20 deaths.
+  await p.evaluate(() => window.rumb.app.setMeasure("v138_rawvalue"));
+  await p.check("#look-hatch");
+  await p.waitForSelector("[data-hatched]");
+  const hatched = await p.$eval("[data-hatched]", (el) => Number(el.dataset.hatched));
+  expect(hatched === small, "hatched " + hatched + " vs " + small);
+  await p.evaluate((id) => window.rumb.app.selectFeature(id), ref.ids[0]);
+  await waitText("#inspect-panel", "95% limits (exact Poisson)", p);
+  // The smoothed fields and the hatch travel in a share link.
+  await p.evaluate(() => window.rumb.runCommand("share"));
+  await p.locator("#share-link").waitFor();
+  const url = await p.inputValue("#share-link");
+  await p.context().close();
+  const q = await openPage();
+  await q.goto(url.replace(/^https?:\/\/[^/]+/, origin));
+  await ready(q);
+  await waitText("#toast", "Opened a shared map", q);
+  await q.waitForSelector("[data-hatched]");
+  const kept = await q.evaluate(() => {
+    const e = window.rumb.state.stack.find((x) => x.id === "chr_counties_2025");
+    const l = window.rumb.app.layerById("chr_counties_2025");
+    return [e.derived?.[0]?.methods?.join("+"), e.style?.hatch, l.collection.features.some((f) => Number.isFinite(f.properties.eb_v138_rawvalue))].join();
+  });
+  expect(kept === "eb+seb+ci,true,true", "shared smoothing " + kept);
+  await q.context().close();
+});
+
 await check("identity", async () => {
   const p = await openPage();
   const ids = ["lyr-tracts-fill", "lyr-tracts-outline", "anchor-areas", "anchor-points", "anchor-labels", "sel-line"];

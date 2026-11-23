@@ -8,6 +8,7 @@
 // where the browser cannot compress. Pure apart from CompressionStream.
 import { normalizeFilter } from "../geo/filter.js";
 import { METHODS } from "../stats/methods.js";
+import { rateSpec } from "../stats/rates.js";
 import { WEIGHT_KINDS } from "../stats/neighbors.js";
 
 /** Longest link part rumb writes (characters after #state=). */
@@ -16,7 +17,7 @@ const VIEW_KEYS = [
   "measure", "category", "palette", "classification", "count", "breaks",
   "method", "inference", "yField", "rule", "k", "band", "power", "symmetric", "study", "permutations", "seed", "fdr",
 ];
-const LOOK_KEYS = ["color", "opacity", "size", "shape", "outline", "outlineColor"];
+const LOOK_KEYS = ["color", "opacity", "size", "shape", "outline", "outlineColor", "hatch"];
 
 const toBase64Url = (bytes) => {
   let binary = "";
@@ -59,6 +60,7 @@ export function shareState(state, { camera, isShared, reference }) {
       if (Object.keys(look).length) out.st = look;
       if (e.label) out.l = e.label;
       if (e.counts?.length) out.n = e.counts.filter(isShared);
+      if (e.derived?.length) out.dv = e.derived.map((d) => [d.measure, d.methods]);
       return out;
     }),
     w: own ? pick(state, VIEW_KEYS) : pick(state.layerViews?.[focus], VIEW_KEYS),
@@ -165,6 +167,7 @@ export function readShare(data, { known, palettes, region }) {
         shape: ["circle", "square", "triangle", "diamond"].includes(st.shape) ? st.shape : undefined,
         outline: num(st.outline, 0, 5),
         outlineColor: color(st.outlineColor),
+        hatch: st.hatch === true ? true : undefined,
       }),
     );
     stack.push({
@@ -173,6 +176,12 @@ export function readShare(data, { known, palettes, region }) {
       ...(Object.keys(style).length && { style }),
       ...(str(e.l) && { label: e.l }),
       ...(Array.isArray(e.n) && { counts: e.n.filter((x) => typeof x === "string" && known(x)) }),
+      ...(Array.isArray(e.dv) && {
+        derived: e.dv
+          .slice(0, 12)
+          .map((d) => Array.isArray(d) && rateSpec({ kind: "rate", measure: str(d[0]), methods: Array.isArray(d[1]) ? d[1] : [] }))
+          .filter(Boolean),
+      }),
     });
   }
   const active = known(data.a) ? data.a : stack[0]?.id;

@@ -159,6 +159,25 @@ out$variants <- list(
   eb = list(ids = I(connected_ids), I = unname(ebi$statistic), a = a, b = b, z = (p - b) / sqrt(a + b / base))
 )
 
+# ---- rates: empirical Bayes, spatial EB, window rates, excess risk ---------------------
+# Global EB on County Health Rankings drug overdose deaths (counties with counts),
+# and spatial EB (GeoDa's form) and window rates on tract poverty over the queen graph.
+chr <- st_drop_geometry(st_read("public/data/ms/layers/chr_counties_2025.geojson", quiet = TRUE))
+chr_ids <- as.character(chr$id)
+od <- is.finite(chr$v138_numerator) & is.finite(chr$v138_denominator) & chr$v138_denominator > 0
+ebg <- EBest(chr$v138_numerator[od], chr$v138_denominator[od])
+od_counts <- chr$v138_numerator[od]
+od_limits <- t(vapply(od_counts, function(k) poisson.test(k)$conf.int, numeric(2)))
+ebl <- EBlocal(events, base, queen, geoda = TRUE)
+window <- lag.listw(nb2listw(include.self(queen), style = "B"), events) /
+  lag.listw(nb2listw(include.self(queen), style = "B"), base)
+out$rates <- list(
+  chr = list(ids = I(chr_ids[od]), eb = ebg$estmm, a = attr(ebg, "parameters")$a, b = attr(ebg, "parameters")$b,
+             excess = (od_counts / chr$v138_denominator[od]) / (sum(od_counts) / sum(chr$v138_denominator[od])),
+             lower = od_limits[, 1] / chr$v138_denominator[od], upper = od_limits[, 2] / chr$v138_denominator[od]),
+  tracts = list(ids = I(connected_ids), seb = ebl$est, window = window)
+)
+
 out$packages <- list(sf = as.character(packageVersion("sf")), spdep = as.character(packageVersion("spdep")))
 
 jsonlite::write_json(out, "tests/stats-reference.json", digits = NA, auto_unbox = TRUE, dataframe = "rows")

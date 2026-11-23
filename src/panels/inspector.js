@@ -7,6 +7,7 @@ import { featureId } from "../core/features.js";
 import { aggregate, coverageLabel, neighborsOf, poolOf } from "../stats/pool.js";
 import { clusters } from "../map/classify.js";
 import { methodOf } from "../stats/methods.js";
+import { acsReliability, rateLimits, UNSTABLE_EVENTS } from "../stats/rates.js";
 import { $, fill, h, icon, s } from "../ui/dom.js";
 
 const row = (key, val) => h("div", null, h("dt", { text: key }), h("dd", { text: String(val) }));
@@ -186,6 +187,24 @@ export function createInspector(app) {
           props[info.moe] == null ? "Unavailable" : "±" + number(props[info.moe]) + " pp",
         ),
       );
+    // How far to trust the estimate: the ACS margin's coefficient of
+    // variation, or for event rates the exact Poisson limits and NCHS's rule.
+    if (info?.moe && props[measure] != null) {
+      const level = info.confidence || ref.moeLevel || 90;
+      const grade = acsReliability(props[measure], props[info.moe], level);
+      if (grade) {
+        const cv = props[measure] ? (props[info.moe] / (level === 95 ? 1.96 : 1.645) / Math.abs(props[measure])) * 100 : null;
+        metrics.push(row("Reliability", grade + (cv != null ? " (CV " + number(cv, 0) + "%)" : "")));
+      }
+    }
+    const pool = poolOf(info);
+    if (info?.format === "rate" && pool?.kind === "ratio" && pool.denominator && !info.smoothed) {
+      const e = props[pool.numerator],
+        limits = rateLimits([e], [props[pool.denominator]], pool.scale ?? 1)[0];
+      if (limits)
+        metrics.push(row("95% limits (exact Poisson)", number(limits[0]) + "–" + number(limits[1]) + unit));
+      if (Number.isFinite(e) && e < UNSTABLE_EVENTS) metrics.push(row("Reliability", "Unstable: " + e + " events (fewer than 20)"));
+    }
     if (info?.lcl && info?.ucl)
       metrics.push(
         row(

@@ -19,6 +19,7 @@ import { mapColors } from "../map/basemap-style.js";
 import { classItems, renderLegend, renderOthers } from "../map/legend.js";
 import { methodOf } from "../stats/methods.js";
 import { poolOf } from "../stats/pool.js";
+import { acsReliability, UNSTABLE_EVENTS } from "../stats/rates.js";
 import { $, h, options } from "../ui/dom.js";
 
 export function createStyle(app) {
@@ -67,6 +68,10 @@ export function createStyle(app) {
       : "Count points in each area";
     const classed = !!state.measure && !state.category;
     $("classes-row").hidden = $("palette-row").hidden = !classed;
+    // Rates with counts can be smoothed; polygons can hatch unreliable estimates.
+    $("smooth-rate").hidden = !app.fieldList(l).some((f) => poolOf(app.fieldMeta(l, f))?.denominator);
+    $("hatch-row").hidden = kind !== "polygon" && kind !== "mixed";
+    $("look-hatch").checked = !!entry?.style?.hatch;
     renderLook(l, kind);
     $("classification").value = state.classification;
     $("class-count").value = String(state.count);
@@ -129,6 +134,28 @@ export function createStyle(app) {
   const uniformOf = (l) =>
     app.state.stack.find((e) => e.id === l.id)?.style?.color || l.meta?.style?.color || UNIFORM_COLOR;
 
+  /**
+   * Whether a feature's estimate of a measure is unreliable, or null when
+   * the measure has no rule: an ACS estimate whose coefficient of variation is
+   * over 40%, a count rate on fewer than 20 events (NCHS), or a value its
+   * source flags as unreliable. Model-based and smoothed values have none.
+   */
+  function reliabilityRule(l, measure) {
+    const info = app.fieldMeta(l, measure);
+    if (!info || info.modelBased || info.smoothed) return null;
+    if (info.moe) {
+      const level = info.confidence || app.ref.moeLevel || 90;
+      return { note: "ACS margin of error over 40% of the estimate", test: (p) => acsReliability(p[measure], p[info.moe], level) === "low" };
+    }
+    const pool = poolOf(info);
+    if (pool?.kind !== "ratio" || !pool.denominator) return null;
+    return {
+      note: "fewer than " + UNSTABLE_EVENTS + " events" + (pool.flag ? ", or flagged by the source" : ""),
+      test: (p) =>
+        (pool.flag && p[pool.flag] === 1) || (Number.isFinite(p[pool.numerator]) && p[pool.numerator] < UNSTABLE_EVENTS),
+    };
+  }
+
   /** One layer's features with __rumb_id and __rumb_color, and how they were classed. */
   function colorize(l, view) {
     const features = l.collection.features,
@@ -148,6 +175,9 @@ export function createStyle(app) {
     const { na, ns } = neutralColors();
     const clusterColor = (key) => (key === "NS" ? ns : key === "NA" ? na : classes[key]?.[1] ?? na);
     const uniform = uniformOf(l);
+    const hatching = !!app.state.stack.find((e) => e.id === l.id)?.style?.hatch && !!measure;
+    const rule = hatching ? reliabilityRule(l, measure) : null;
+    let unreliable = 0;
     const annotated = features.map((f, i) => {
       const id = featureId(f),
         v = data[i];
@@ -166,9 +196,29 @@ export function createStyle(app) {
             ? na
             : colors[classOf(v, cuts)];
       if (clustered) color = clusterColor(method.classOf(view.result.byId[id]));
-      return { ...f, properties: { ...f.properties, __rumb_id: id, __rumb_color: color, __rumb_class: cls } };
+      const flagged = !!rule && Number.isFinite(v) && rule.test(f.properties || {});
+      if (flagged) unreliable++;
+      return {
+        ...f,
+        properties: { ...f.properties, __rumb_id: id, __rumb_color: color, __rumb_class: cls, __rumb_unreliable: flagged },
+      };
     });
-    return { annotated, data, cuts, colors, cats, measure, clustered, clusterColor, method, classes, uniform, na, suppressed };
+    return {
+      annotated,
+      data,
+      cuts,
+      colors,
+      cats,
+      measure,
+      clustered,
+      clusterColor,
+      method,
+      classes,
+      uniform,
+      na,
+      suppressed,
+      hatched: rule ? { count: unreliable, note: rule.note } : null,
+    };
   }
 
   /** A compact legend entry for a shown layer that is not the focus. */
@@ -209,7 +259,7 @@ export function createStyle(app) {
     const l = app.layer();
     values.clear();
     for (const f of l.collection.features) values.set(featureId(f), f);
-    const { data, cuts, colors, cats, clustered, clusterColor, method, classes, uniform, na, suppressed } =
+    const { data, cuts, colors, cats, clustered, clusterColor, method, classes, uniform, na, suppressed, hatched } =
       focus || colorize(l, state);
     lastCuts = cuts;
 
@@ -247,6 +297,7 @@ export function createStyle(app) {
           : null,
         missing: data.length - valid.length,
         missingNote: suppressed ? suppressed + " suppressed by the source" : "",
+        hatched,
         action,
       });
     }
