@@ -1,4 +1,5 @@
 // Moran statistics use row-standardized first-order weights over the analysis universe.
+import { randomGenerator } from "./random.js";
 
 // The browser build puts GeoDaLib's wasm in a versioned folder beside the
 // worker (scripts/build.mjs); tests in Node read it from node_modules.
@@ -10,17 +11,6 @@ function lisaWasm() {
 
 const average = (values) =>
   values.reduce((sum, value) => sum + value, 0) / values.length;
-
-function randomGenerator(seed) {
-  // Mulberry32. A uint32 seed determines every shuffle across browsers.
-  let state = seed >>> 0;
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
-    let x = Math.imul(state ^ (state >>> 15), 1 | state);
-    x ^= x + Math.imul(x ^ (x >>> 7), 61 | x);
-    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 export function adjustFdr(pValues) {
   const ordered = pValues
