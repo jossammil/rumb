@@ -53,7 +53,7 @@ export function createAnalysis(app) {
       records = app.records();
     $("study").replaceChildren(
       ...options([
-        ["all", l.builtIn ? ref.studyAll || "Entire layer" : "Entire layer"],
+        ["all", l.id === ref.id ? ref.studyAll || "Entire layer" : "Entire layer"],
         ["extent", "Current map extent on run"],
         ...groups(records, ref.groupField).map((g) => [ref.groupField + ":" + g, g]),
       ]),
@@ -101,7 +101,7 @@ export function createAnalysis(app) {
           .filter((f) => f.properties[ref.groupField] === state.study.slice(group.length))
           .map(featureId);
       if (state.study === "extent") {
-        studyIds = app.atlas.visibleIds();
+        studyIds = app.atlas.visibleIds(state.active);
         studyName = "Selected map extent";
       }
       // Rates with a zero denominator are excluded rather than read as zero.

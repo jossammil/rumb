@@ -284,6 +284,24 @@ await check("clusters", async () => {
   await download("#export-map");
 });
 
+await check("identity", async () => {
+  const p = await openPage();
+  const ids = ["lyr-tracts-fill", "lyr-tracts-outline", "anchor-areas", "anchor-points", "anchor-labels", "sel-line"];
+  const has = await p.evaluate(
+    (list) => list.every((id) => window.rumb.map.getLayer(id)) && !window.rumb.map.getLayer("areas"),
+    ids,
+  );
+  expect(has, "stacked map layers missing");
+  // A click picks the feature under the cursor through its layer.
+  const box = await p.locator("#map").boundingBox();
+  await p.mouse.click(box.x + box.width * 0.62, box.y + box.height * 0.55);
+  await p.locator("#inspect-panel:not([hidden])").waitFor();
+  const selected = await p.evaluate(() => window.rumb.state.selected);
+  expect(/^28\d{9}$/.test(selected || ""), "a click did not select a tract");
+  await p.waitForFunction(() => window.rumb.map.querySourceFeatures("selection").length > 0);
+  await p.context().close();
+});
+
 await check("join", async () => {
   await page.setInputFiles("#file-picker", {
     name: "measures.csv",

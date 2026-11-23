@@ -1,9 +1,11 @@
-// The MapLibre style: a Natural Earth backdrop for the region, Census roads, an
-// optional 1° grid, then the data layer drawn from one GeoJSON source whose
-// features carry __rumb_id and __rumb_color. Colors come from the theme (mapColors), so the backdrop can
-// change with it while data colors stay put.
+// The MapLibre style: a Natural Earth backdrop for the region, Census roads and
+// an optional 1° grid, with hidden anchor layers that mark where stacked data
+// layers go (map/layer-specs.js), plus sources for Compare and the selection.
+// Data features carry __rumb_id and __rumb_color. Colors come from the theme
+// (mapColors), so the backdrop can change with it while data colors stay put.
 
-export const DATA_LAYERS = ["areas", "lines", "points"];
+/** A hidden layer that marks where a band of stacked layers ends. */
+const anchor = (id) => ({ id, type: "background", layout: { visibility: "none" }, paint: {} });
 
 /** Map colors read from the theme's CSS tokens, with the original light look as fallback. */
 export function mapColors(root = document.documentElement) {
@@ -54,11 +56,10 @@ export function themedPaint(c) {
     lakes: { "fill-color": c.water },
     rivers: { "line-color": c.river },
     states: { "line-color": c.boundary },
-    outlines: { "line-color": c.outline },
-    points: { "circle-stroke-color": c.pointStroke },
-    neighbors: { "line-color": c.neighbor },
-    selected: { "line-color": c.selected },
-    "selected-point": { "circle-color": c.selected, "circle-stroke-color": c.pointStroke },
+    "cmp-outline": { "line-color": c.outline },
+    "sel-neighbor": { "line-color": c.neighbor },
+    "sel-line": { "line-color": c.selected },
+    "sel-point": { "circle-color": c.selected, "circle-stroke-color": c.pointStroke },
     "roads-secondary": { "line-color": c.roadMinor },
     "roads-primary": { "line-color": c.road },
     "road-labels": { "text-color": c.label, "text-halo-color": c.halo },
@@ -86,7 +87,8 @@ export function buildStyle(region, regionPath, c = mapColors()) {
       regionNames: src({ type: "FeatureCollection", features: labels }),
       roads: src(empty),
       graticule: src(empty),
-      area: src(empty),
+      cmp: src(empty),
+      selection: src(empty),
     },
     layers: [
       { id: "ocean", type: "background", paint: paint.ocean },
@@ -107,31 +109,21 @@ export function buildStyle(region, regionPath, c = mapColors()) {
         filter: kind("states"),
         paint: { ...paint.states, "line-width": 1.35, "line-dasharray": [5, 2] },
       },
+      // Compare draws its scored areas from its own source while the stack is hidden.
       {
-        id: "areas",
+        id: "cmp-fill",
         type: "fill",
-        source: "area",
-        filter: ["==", ["geometry-type"], "Polygon"],
+        source: "cmp",
         paint: { "fill-color": ["get", "__rumb_color"], "fill-opacity": 0.94 },
       },
       {
-        id: "outlines",
+        id: "cmp-outline",
         type: "line",
-        source: "area",
-        filter: ["==", ["geometry-type"], "Polygon"],
-        paint: {
-          ...paint.outlines,
-          "line-opacity": 0.68,
-          "line-width": width([4, 0.35, 7, 0.75, 11, 1.4]),
-        },
+        source: "cmp",
+        paint: { ...paint["cmp-outline"], "line-opacity": 0.68, "line-width": width([4, 0.35, 7, 0.75, 11, 1.4]) },
       },
-      {
-        id: "lines",
-        type: "line",
-        source: "area",
-        filter: ["==", ["geometry-type"], "LineString"],
-        paint: { "line-color": ["get", "__rumb_color"], "line-width": 3 },
-      },
+      // Stacked layers' fills, outlines and lines go just before this anchor.
+      anchor("anchor-areas"),
       // Roads (Census TIGER numbered routes) sit above area fills so they stay
       // readable over a choropleth, and below points and selections.
       {
@@ -158,39 +150,32 @@ export function buildStyle(region, regionPath, c = mapColors()) {
         layout: { visibility: "none" },
         paint: { ...paint.graticule, "line-width": 0.8, "line-opacity": 0.7, "line-dasharray": [1, 3] },
       },
+      // Stacked layers' points go just before this anchor, above the roads.
+      anchor("anchor-points"),
+      // The selection and its neighbors, from whichever layer they belong to.
       {
-        id: "points",
-        type: "circle",
-        source: "area",
-        filter: ["==", ["geometry-type"], "Point"],
-        paint: {
-          "circle-radius": 5,
-          "circle-color": ["get", "__rumb_color"],
-          ...paint.points,
-          "circle-stroke-width": 1,
-        },
-      },
-      {
-        id: "neighbors",
+        id: "sel-neighbor",
         type: "line",
-        source: "area",
-        filter: ["==", ["get", "__rumb_id"], ""],
-        paint: { ...paint.neighbors, "line-width": 2, "line-dasharray": [2, 1] },
+        source: "selection",
+        filter: ["==", ["get", "role"], "neighbor"],
+        paint: { ...paint["sel-neighbor"], "line-width": 2, "line-dasharray": [2, 1] },
       },
       {
-        id: "selected",
+        id: "sel-line",
         type: "line",
-        source: "area",
-        filter: ["==", ["get", "__rumb_id"], ""],
-        paint: { ...paint.selected, "line-width": 3.3 },
+        source: "selection",
+        filter: ["all", ["==", ["get", "role"], "selected"], ["!=", ["geometry-type"], "Point"]],
+        paint: { ...paint["sel-line"], "line-width": 3.3 },
       },
       {
-        id: "selected-point",
+        id: "sel-point",
         type: "circle",
-        source: "area",
-        filter: ["all", ["==", ["geometry-type"], "Point"], ["==", ["get", "__rumb_id"], ""]],
-        paint: { ...paint["selected-point"], "circle-radius": 6, "circle-stroke-width": 3 },
+        source: "selection",
+        filter: ["all", ["==", ["get", "role"], "selected"], ["==", ["geometry-type"], "Point"]],
+        paint: { ...paint["sel-point"], "circle-radius": 6, "circle-stroke-width": 3 },
       },
+      // Stacked layers' labels go just before this anchor.
+      anchor("anchor-labels"),
       {
         id: "road-labels",
         type: "symbol",

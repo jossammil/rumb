@@ -81,7 +81,7 @@ export function createInspector(app) {
     const { state } = app;
     const id = state.selected;
     if (!id) {
-      app.atlas.select(null, []);
+      app.atlas.select({ layer: state.active });
       return null;
     }
     const l = app.layer(),
@@ -89,7 +89,7 @@ export function createInspector(app) {
         ? app.ws.neighborData?.[state.rule]
         : app.ws.graphs.get(l.id + "-" + state.rule);
     const adjacent = state.result?.byId?.[id]?.neighbors ?? graph?.[id];
-    app.atlas.select(id, adjacent || []);
+    app.atlas.select({ layer: state.active, ids: id, neighbors: adjacent || [] });
     return adjacent;
   }
 

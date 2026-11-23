@@ -69,7 +69,7 @@ export function createStyle(app) {
       if (clustered) color = clusterColor(state.result.byId[id]?.cluster ?? "NA");
       return { ...f, properties: { ...f.properties, __rumb_id: id, __rumb_color: color } };
     });
-    app.atlas.draw(annotated);
+    app.atlas.setData(state.active, annotated);
 
     const legend = $("legend");
     const action = state.result

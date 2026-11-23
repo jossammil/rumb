@@ -172,3 +172,53 @@ test("the layer library matches the files it describes", () => {
   assert.throws(() => validateLibrary({ layers: [{ id: "tracts", name: "x", geometry: "point", file: "f" }] }, catalog));
   assert.throws(() => validateLibrary({ layers: [{ id: "a", name: "A", geometry: "blob", file: "f" }] }));
 });
+
+test("the layer stack keeps order, visibility and its focus layer", async () => {
+  const { withLayer, withoutLayer, moveLayer, setVisible, normalizeStack, drawnIds, stackEntry } = await import(
+    "../src/core/stack.js"
+  );
+  let stack = [stackEntry("tracts")];
+  stack = withLayer(withLayer(stack, "fire"), "chr");
+  assert.deepEqual(drawnIds(stack), ["tracts", "fire", "chr"]);
+  assert.equal(withLayer(stack, "fire"), stack);
+  stack = moveLayer(stack, "chr", -1);
+  assert.deepEqual(drawnIds(stack), ["tracts", "chr", "fire"]);
+  assert.equal(moveLayer(stack, "tracts", -1), stack);
+  stack = setVisible(stack, "chr", false);
+  assert.deepEqual(drawnIds(stack), ["tracts", "fire"]);
+  assert.deepEqual(drawnIds(withoutLayer(stack, "fire")), ["tracts"]);
+  // Saved stacks: duplicates and unknown layers go; the focus is always shown.
+  const saved = [{ id: "a", visible: false }, "b", { id: "a" }, { id: "gone" }, { nope: 1 }];
+  const fixed = normalizeStack(saved, "a", (id) => id !== "gone");
+  assert.deepEqual(fixed, [{ id: "a", visible: true }, { id: "b", visible: true }]);
+  assert.deepEqual(normalizeStack(undefined, "tracts"), [{ id: "tracts", visible: true }]);
+  // Projects saved before stacking draw just their active layer.
+  const old = normalizeState({ active: "q", layers: [{ id: "q", name: "Q", collection: { features: [] } }] }, catalog);
+  assert.deepEqual(old.stack, [{ id: "q", visible: true }]);
+  assert.deepEqual(normalizeState({}, catalog).stack, [{ id: "tracts", visible: true }]);
+});
+
+test("map layers for a stacked layer, by kind and band", async () => {
+  const { layerSpecs, kindOf, orderMapLayers, sourceId } = await import("../src/map/layer-specs.js");
+  const colors = { outline: "#000", pointStroke: "#fff" };
+  const ids = (kind) => layerSpecs("x", kind, colors).map((s) => [s.id, s.band, s.interactive]);
+  assert.deepEqual(ids("polygon"), [["lyr-x-fill", "area", true], ["lyr-x-outline", "area", false]]);
+  assert.deepEqual(ids("point"), [["lyr-x-point", "point", true]]);
+  assert.deepEqual(ids("line"), [["lyr-x-line", "area", true]]);
+  assert.equal(ids("mixed").length, 4);
+  assert.ok(layerSpecs("x", "mixed", colors).every((s) => s.spec.filter && s.spec.source === sourceId("x")));
+  assert.ok(layerSpecs("x", "polygon", colors).every((s) => !s.spec.filter));
+  const fill = layerSpecs("x", "polygon", colors, { fillOpacity: 0.5 })[0].spec.paint;
+  assert.equal(fill["fill-opacity"], 0.5);
+  assert.equal(layerSpecs("x", "point", colors)[0].spec.paint["circle-stroke-color"], "#fff");
+  const g = (type) => ({ geometry: { type } });
+  assert.equal(kindOf([g("Polygon"), g("MultiPolygon")]), "polygon");
+  assert.equal(kindOf([g("Point")]), "point");
+  assert.equal(kindOf([g("Point"), g("Polygon")]), "mixed");
+  assert.equal(kindOf([]), "mixed");
+  const specs = { a: layerSpecs("a", "polygon", colors), b: layerSpecs("b", "point", colors), c: layerSpecs("c", "polygon", colors) };
+  // Points draw above every polygon; polygons follow the stack.
+  assert.deepEqual(orderMapLayers(["a", "b", "c"], (id) => specs[id]), [
+    "lyr-a-fill", "lyr-a-outline", "lyr-c-fill", "lyr-c-outline", "lyr-b-point",
+  ]);
+});

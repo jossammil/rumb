@@ -114,7 +114,7 @@ export function createWorkspace(catalog, { status = () => {}, onDatabase = () =>
     },
     /** Fields that can color a layer. */
     fieldList(layer) {
-      return layer.builtIn ? ref.measures : numericFields(layer.collection.features);
+      return layer.id === ref.id ? ref.measures : numericFields(layer.collection.features);
     },
     /**
      * Opens a project's files in a fresh database before anything is replaced,

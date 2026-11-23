@@ -1,6 +1,7 @@
 // The workspace state: what a saved project records, its defaults, and how a
 // state from an older project (Field Atlas, before the rename) is brought up to date.
 import { referenceLayer, starterSQL } from "../catalog/catalog.js";
+import { normalizeStack, stackEntry } from "./stack.js";
 
 /** Settings each map layer remembers when you switch away from it and back. */
 export const LAYER_VIEW_KEYS = [
@@ -44,6 +45,8 @@ export function defaults(catalog) {
     comparisons: {},
     compareLayer: null,
     graticule: false,
+    // Layers drawn on the map, bottom to top (core/stack.js); `active` is the focus.
+    stack: [stackEntry(ref.id)],
   };
 }
 
@@ -71,5 +74,8 @@ export function normalizeState(saved, catalog) {
   }));
   state.layerViews ||= {};
   state.comparisons ||= {};
+  // Projects saved before layers could stack drew only the active layer.
+  const known = new Set([referenceLayer(catalog).id, ...state.layers.map((l) => l.id)]);
+  state.stack = normalizeStack(saved.stack ?? [stackEntry(state.active)], state.active, (id) => known.has(id));
   return state;
 }

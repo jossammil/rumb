@@ -11,6 +11,7 @@ import { fieldLabel, loadCatalog } from "./catalog/catalog.js";
 import { number } from "./catalog/format.js";
 import { bindCommands, COMMANDS } from "./core/commands.js";
 import { featureId } from "./core/features.js";
+import { drawnIds, stackEntry } from "./core/stack.js";
 import { SHORTCUTS, shortcutFor } from "./core/keys.js";
 import { THEMES } from "./core/settings.js";
 import { defaults, LAYER_VIEW_KEYS, layerViewDefaults } from "./core/state.js";
@@ -18,6 +19,7 @@ import { createStore } from "./core/store.js";
 import { createWorkspace } from "./core/workspace.js";
 import { createOffline } from "./data/offline.js";
 import { exportMapImage } from "./map/export-png.js";
+import { kindOf } from "./map/layer-specs.js";
 import { initMap } from "./map/map.js";
 import { createAnalysis } from "./panels/analysis.js";
 import { createCompare } from "./panels/compare.js";
@@ -80,10 +82,25 @@ async function start() {
     label: (field) => fieldLabel(catalog, field),
     fieldList: (l) => ws.fieldList(l),
     allLayers: () => [ws.referenceView(), ...store.state.layers],
-    layer() {
-      const { active, layers } = store.state;
-      return active === ws.ref.id ? ws.referenceView() : layers.find((l) => l.id === active);
+    /** A layer by id: the reference layer or a query layer. */
+    layerById: (id) => (id === ws.ref.id ? ws.referenceView() : store.state.layers.find((l) => l.id === id)),
+    /** The focus layer: the one the style panel, inspector and analysis act on. */
+    layer: () => app.layerById(store.state.active),
+    /** Makes the map's layers match state.stack (sources, order, visibility). */
+    syncMap() {
+      const { stack } = store.state;
+      for (const id of app.mapped) if (!stack.some((e) => e.id === id)) app.atlas.removeLayer(id);
+      app.mapped = new Set();
+      for (const e of stack) {
+        const l = app.layerById(e.id);
+        if (!l) continue;
+        if (!app.atlas.has(e.id)) app.atlas.addLayer(e.id, l.id === ws.ref.id ? "polygon" : kindOf(l.collection.features));
+        app.atlas.setVisible(e.id, e.visible);
+        app.mapped.add(e.id);
+      }
+      app.atlas.syncStack(drawnIds(stack));
     },
+    mapped: new Set(),
     records: () => app.layer().collection.features,
     idleStatus() {
       if (store.state.view === "compare") status($("cmp-count").textContent);
@@ -145,8 +162,9 @@ async function start() {
     app.style.renderControls(fields);
     app.analysis.renderControls(fields);
     const ref = ws.ref;
+    app.syncMap();
     app.setTitles(
-      l.builtIn
+      l.id === ref.id
         ? { title: ref.title, subtitle: ref.subtitle, credit: ref.credit, context: ref.context || ref.subtitle }
         : {
             title: l.name,
@@ -179,6 +197,7 @@ async function start() {
       b.setAttribute("aria-current", b.dataset.view === view ? "page" : "false");
     }
     $("settings").classList.remove("open");
+    if (!comparing) app.atlas.setCompare(null);
     app.bench.render(mapped ? "map" : view);
     if (mapped) app.atlas.map.resize();
     if (comparing) {
@@ -199,7 +218,8 @@ async function start() {
       ...state.layerViews,
       [state.active]: Object.fromEntries(LAYER_VIEW_KEYS.map((key) => [key, state[key]])),
     };
-    store.set({ active: id, compareLayer: id });
+    // Until layers can be stacked from the layer list, the focus layer is the one drawn.
+    store.set({ active: id, compareLayer: id, stack: [stackEntry(id)] });
     const l = app.layer();
     const saved = layerViews[id] || layerViewDefaults(catalog, l.preferredMeasure || app.fieldList(l)[0] || "");
     delete layerViews[id];
@@ -211,7 +231,10 @@ async function start() {
   app.atlas = initMap({
     region: catalog.region,
     regionPath: catalog.path,
-    onSelect: (id) => (store.state.view === "compare" ? app.compare.toggle(String(id)) : app.selectFeature(id)),
+    onSelect: ({ layer, id }) => {
+      if (layer === "cmp") app.compare.toggle(id);
+      else if (layer === store.state.active) app.selectFeature(id);
+    },
     onPointer: (lngLat) => app.statusbar?.position(lngLat),
   });
   await Promise.all([app.atlas.ready, ws.loadDisplay()]);
@@ -242,7 +265,7 @@ async function start() {
   });
   renderAll();
   app.atlas.map.once("idle", () => {
-    if (app.atlas.map.queryRenderedFeatures({ layers: ["areas"] }).length) {
+    if (app.atlas.drawn(ws.ref.id)) {
       performance.mark("rumb-first-map");
       timings.firstMap = Math.round(performance.now());
     }

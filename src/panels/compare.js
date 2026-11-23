@@ -36,7 +36,7 @@ export function createCompare(app) {
     ascending,
     only;
   const panel = $("cmp-panel");
-  const onReference = () => active?.builtIn;
+  const onReference = () => active?.id === app.ref.id;
   const label = (field) =>
     onReference()
       ? fieldInfo(app.catalog, field)?.label || refData?.measures[field]?.label || field
@@ -73,8 +73,8 @@ export function createCompare(app) {
       context: active.name,
       credit: onReference() ? compareInfo?.credit || app.ref.credit : "Local polygon layer",
     });
-    app.atlas.draw([]);
-    app.atlas.select([], []);
+    app.atlas.setCompare([]);
+    app.atlas.select({ layer: "cmp" });
     if (fit || active.id !== id) app.atlas.fit(active.collection, 0);
     try {
       if (onReference() && compareInfo?.reference) {
@@ -230,7 +230,7 @@ export function createCompare(app) {
   }
   function drawMap() {
     const { na } = neutralColors();
-    app.atlas.draw(
+    app.atlas.setCompare(
       features.map((f) => {
         const r = result.byId.get(featureId(f));
         const color = r.reason
@@ -349,7 +349,7 @@ export function createCompare(app) {
 
   function selection() {
     const ids = new Set(config.selected);
-    app.atlas.select(config.selected, []);
+    app.atlas.select({ layer: "cmp", ids: config.selected });
     for (const dot of $("cmp-plot").querySelectorAll("circle")) {
       dot.classList.toggle("chosen", ids.has(dot.dataset.id));
       if (ids.has(dot.dataset.id)) dot.parentNode.append(dot);
