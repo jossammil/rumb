@@ -62,7 +62,11 @@ export function shareState(state, { camera, isShared, reference }) {
       if (e.counts?.length) out.n = e.counts.filter(isShared);
       if (e.derived?.length)
         out.dv = e.derived.map((d) =>
-          d.kind === "model" ? { m: d.type, y: d.y, x: d.xs, w: d.weights } : [d.measure, d.methods],
+          d.kind === "model"
+            ? { m: d.type, y: d.y, x: d.xs, w: d.weights }
+            : d.kind === "access"
+              ? { a: d.layer, s: d.size, p: d.population, wi: d.within, c: d.catchment, d: d.decay }
+              : [d.measure, d.methods],
         );
       return out;
     }),
@@ -200,7 +204,10 @@ export function readShare(data, { known, palettes, region }) {
           .map((d) =>
             Array.isArray(d)
               ? derivedSpec({ kind: "rate", measure: str(d[0]), methods: Array.isArray(d[1]) ? d[1] : [] })
-              : d && typeof d === "object" && derivedSpec({ kind: "model", type: d.m, y: str(d.y), xs: d.x, weights: d.w }),
+              : d && typeof d === "object" && d.a
+                ? known(str(d.a)) &&
+                  derivedSpec({ kind: "access", layer: str(d.a), size: str(d.s), population: str(d.p), within: d.wi, catchment: d.c, decay: d.d })
+                : d && typeof d === "object" && derivedSpec({ kind: "model", type: d.m, y: str(d.y), xs: d.x, weights: d.w }),
           )
           .filter(Boolean),
       }),

@@ -139,6 +139,31 @@ out$counts <- list(
   nb = c(summarize_count(nb), list(theta = nb$theta, thetaSe = nb$SE.theta))
 )
 
+# ---- access to facilities: nearest, within, E2SFCA ------------------------------------------
+# From every tract's 2020 center of population to pharmacies (each counts once) and
+# nursing homes (weighted by beds), in EPSG:3814 by sf; the formulas written out here.
+tract_xy <- st_coordinates(st_transform(st_as_sf(data.frame(lon = centers$lon, lat = centers$lat),
+                                                 coords = c("lon", "lat"), crs = 4269), 3814))
+population <- acs$acs_population[match(centers$ids, acs$GEOID)]
+access <- function(layer, size_field, within = 10, catchment = 30, kind = "gaussian") {
+  pts <- st_read(file.path("public/data/ms/layers", paste0(layer, ".geojson")), quiet = TRUE)
+  sxy <- st_coordinates(st_transform(pts, 3814))
+  size <- if (is.null(size_field)) rep(1, nrow(pts)) else pts[[size_field]]
+  d <- sqrt(outer(tract_xy[, 1], sxy[, 1], "-")^2 + outer(tract_xy[, 2], sxy[, 2], "-")^2)
+  d0 <- catchment * 1609.344
+  g <- if (kind == "step") (d <= d0) * 1 else ifelse(d <= d0, (exp(-0.5 * (d / d0)^2) - exp(-0.5)) / (1 - exp(-0.5)), 0)
+  pop <- ifelse(is.finite(population) & population > 0, population, 0)
+  served <- colSums(g * pop)
+  ratio <- as.vector(g %*% ifelse(served > 0, size / served, 0)) * 10000
+  list(nearest = apply(d, 1, min) / 1609.344, count = rowSums(d <= within * 1609.344), ratio = ratio)
+}
+out$access <- list(
+  ids = I(centers$ids), xy = unname(tract_xy), population = population,
+  pharmacies = access("pharmacies_2010", NULL),
+  pharmaciesStep = access("pharmacies_2010", NULL, kind = "step"),
+  nursingBeds = access("nursing_homes_2024", "beds", within = 15, catchment = 20)
+)
+
 out$packages <- lapply(setNames(nm = c("sf", "jsonlite", "spdep", "lmtest", "spatialreg", "MASS")), function(p) as.character(packageVersion(p)))
 jsonlite::write_json(out, "tests/models-reference.json", digits = NA, auto_unbox = TRUE, dataframe = "rows", matrix = "rowmajor")
 message("Wrote tests/models-reference.json")

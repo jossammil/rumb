@@ -361,6 +361,7 @@ export function createAnalysis(app) {
     exportDetails,
     saveModelFields,
     modelRequest,
+    locations,
     clearResults,
     renderControls,
     exportStats,

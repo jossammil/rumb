@@ -20,7 +20,8 @@ import { defaults, LAYER_VIEW_KEYS, layerViewDefaults, stateFields } from "./cor
 import { callStats } from "./stats/client.js";
 import { poolOf } from "./stats/pool.js";
 import { RATE_METHODS, rateFields } from "./stats/rates.js";
-import { derivedSpec, modelFields } from "./core/derived.js";
+import { accessFields, derivedSpec, modelFields } from "./core/derived.js";
+import { accessMeasures } from "./stats/access.js";
 import { createStore } from "./core/store.js";
 import { createWorkspace } from "./core/workspace.js";
 import { createOffline } from "./data/offline.js";
@@ -152,11 +153,11 @@ async function start() {
         for (const raw of e.derived || []) {
           const spec = derivedSpec(raw);
           if (!spec) continue;
-          if (spec.kind === "model") {
+          if (spec.kind === "model" || spec.kind === "access") {
             const key = e.id + JSON.stringify(spec);
             if (failedDerived.has(key)) continue;
             try {
-              changed = (await deriveModel(e.id, spec)) || changed;
+              changed = (await (spec.kind === "model" ? deriveModel : deriveAccess)(e.id, spec)) || changed;
             } catch (error) {
               failedDerived.add(key);
               throw error;
@@ -487,6 +488,44 @@ async function start() {
     });
     return true;
   }
+  /** Measures access from each area's center to a point layer's facilities, as fields. */
+  async function deriveAccess(id, spec) {
+    const view = countedLayer(id);
+    if (!view || derivedOf(view, spec)) return false;
+    await ws.ensureFields([spec.population]);
+    const facilities = app.layerById(spec.layer) || (await ws.loadLayer(spec.layer).then(() => baseLayer(spec.layer)));
+    if (!facilities) throw new Error("The facility layer " + spec.layer + " is not available.");
+    const fresh = countedLayer(id);
+    const { points } = await app.analysis.locations(fresh, fresh.collection.features);
+    const projection = app.tools.projection;
+    const supply = facilities.collection.features.filter((f) => f.geometry?.type === "Point");
+    const ids = fresh.collection.features.map(featureId);
+    const out = accessMeasures(
+      { xy: ids.map((i) => points[i] || null), population: fresh.collection.features.map((f) => f.properties?.[spec.population]) },
+      {
+        xy: supply.map((f) => projection.forward(f.geometry.coordinates)),
+        size: supply.map((f) => (spec.size ? Number(f.properties?.[spec.size]) || 0 : 1)),
+      },
+      { within: spec.within, catchment: spec.catchment, kind: spec.decay },
+    );
+    const [near, within, ratio] = accessFields(spec);
+    const name = facilities.name || spec.layer,
+      unit = spec.size ? app.label(spec.size, facilities).toLowerCase() : name.toLowerCase();
+    derivedStore(fresh.collection).set(JSON.stringify(spec), {
+      fields: [near, within, ratio],
+      extraFields: {
+        [near]: { label: "Miles to the nearest of " + name, format: "number", unit: " mi", smoothed: true },
+        [within]: { label: name + " within " + spec.within + " miles", format: "integer", smoothed: true },
+        [ratio]: {
+          label: name + " access (E2SFCA, " + unit + " per 10,000 people)",
+          format: "number",
+          smoothed: true,
+        },
+      },
+      values: { [near]: out.nearest, [within]: out.count, [ratio]: out.ratio },
+    });
+    return true;
+  }
   /** Queen contiguity as neighbor indices by feature, for spatial smoothing. */
   async function contiguityRows(view) {
     const graph = view.reference
@@ -754,6 +793,10 @@ function wire(app) {
       if (app.state.view !== "map") app.setView("map");
       if (!$("analyze").disabled) app.analysis.run();
     },
+    access: () => {
+      if (app.state.view !== "map") app.setView("map");
+      import("./panels/access.js").then((m) => m.openAccess(app), report);
+    },
     "smooth-rate": () => {
       if (app.state.view !== "map") app.setView("map");
       import("./panels/smooth.js").then((m) => m.openSmooth(app), report);
@@ -949,6 +992,7 @@ function wire(app) {
   on("filter-clear", "click", () => app.filter.clear());
   on("count-points", "click", () => runCommand("count-points"));
   on("smooth-rate", "click", () => runCommand("smooth-rate"));
+  on("access-tool", "click", () => runCommand("access"));
   on("look-hatch", "change", (ev) => app.setLook({ style: { hatch: ev.target.checked || undefined } }));
   on("share-map", "click", () => runCommand("share"));
   on("look-reset", "click", () => {

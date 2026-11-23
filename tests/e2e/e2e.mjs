@@ -530,6 +530,44 @@ await check("counts-model", async () => {
   await p.context().close();
 });
 
+await check("access", async () => {
+  const ref = JSON.parse(await readFile("tests/models-reference.json", "utf8")).access;
+  const p = await openPage();
+  await p.click("#access-tool");
+  await p.selectOption("#access-layer", "pharmacies_2010");
+  await p.click("#access-go");
+  await waitText("#toast", "Added access to Pharmacies", p);
+  await waitText("#legend", "access (E2SFCA", p);
+  // The same distances, counts and E2SFCA ratios as R on sf's distances.
+  const got = await p.evaluate(() =>
+    Object.fromEntries(
+      window.rumb.app.layer().collection.features.map((f) => [
+        f.properties.GEOID,
+        [f.properties.near_pharmacies_2010, f.properties.in_pharmacies_2010, f.properties.acc_pharmacies_2010],
+      ]),
+    ),
+  );
+  const off = ref.ids.filter((id, i) => {
+    const [near, count, ratio] = got[id];
+    return (
+      Math.abs(near - ref.pharmacies.nearest[i]) > 1e-6 ||
+      count !== ref.pharmacies.count[i] ||
+      Math.abs(ratio - ref.pharmacies.ratio[i]) > 1e-6 * Math.max(1, ref.pharmacies.ratio[i])
+    );
+  });
+  expect(!off.length, "access differs for " + off.slice(0, 5).join(", "));
+  // The access fields travel in a share link.
+  await p.evaluate(() => window.rumb.runCommand("share"));
+  await p.locator("#share-link").waitFor();
+  const url = await p.inputValue("#share-link");
+  await p.context().close();
+  const q = await openPage();
+  await q.goto(url.replace(/^https?:\/\/[^/]+/, origin));
+  await ready(q);
+  await waitText("#legend", "access (E2SFCA", q);
+  await q.context().close();
+});
+
 await check("identity", async () => {
   const p = await openPage();
   const ids = ["lyr-tracts-fill", "lyr-tracts-outline", "anchor-areas", "anchor-points", "anchor-labels", "sel-line"];

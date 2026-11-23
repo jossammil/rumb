@@ -46,6 +46,7 @@
         "sources": "sources.json"
       },
       "tables": "tables/index.json",
+      "populationField": "acs_population",
       "idField": "GEOID",
       "idLabel": "11-character tract GEOID",
       "labelField": "name",

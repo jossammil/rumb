@@ -22,8 +22,32 @@ export function modelSpec(spec) {
   };
 }
 
+/**
+ * An access spec made safe: { kind: "access", layer (point facilities),
+ * size (a field, or null to count each facility once), population (field),
+ * within and catchment (miles), decay ("gaussian" or "step") }.
+ */
+export function accessSpec(spec) {
+  if (spec?.kind !== "access" || typeof spec.layer !== "string" || !spec.layer) return null;
+  if (typeof spec.population !== "string" || !spec.population) return null;
+  const miles = (v, fallback) => (Number(v) >= 0.5 && Number(v) <= 200 ? Number(v) : fallback);
+  return {
+    kind: "access",
+    layer: spec.layer,
+    size: typeof spec.size === "string" && spec.size ? spec.size : null,
+    population: spec.population,
+    within: miles(spec.within, 10),
+    catchment: miles(spec.catchment, 30),
+    decay: spec.decay === "step" ? "step" : "gaussian",
+  };
+}
+
+/** The fields an access spec adds: nearest distance, count within, E2SFCA ratio. */
+export const accessFields = (spec) => ["near_" + spec.layer, "in_" + spec.layer, "acc_" + spec.layer];
+
 /** Any derived spec made safe, or null. */
-export const derivedSpec = (spec) => (spec?.kind === "model" ? modelSpec(spec) : rateSpec(spec));
+export const derivedSpec = (spec) =>
+  spec?.kind === "model" ? modelSpec(spec) : spec?.kind === "access" ? accessSpec(spec) : rateSpec(spec);
 
 /** The fields a model spec adds: predicted, residual and standardized residual. */
 export const modelFields = (spec) => ["fit_" + spec.y, "res_" + spec.y, "sres_" + spec.y];

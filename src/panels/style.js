@@ -71,6 +71,7 @@ export function createStyle(app) {
     // Rates with counts can be smoothed; polygons can hatch unreliable estimates.
     $("smooth-rate").hidden = !app.fieldList(l).some((f) => poolOf(app.fieldMeta(l, f))?.denominator);
     $("hatch-row").hidden = kind !== "polygon" && kind !== "mixed";
+    $("access-tool").hidden = kind !== "polygon";
     $("look-hatch").checked = !!entry?.style?.hatch;
     renderLook(l, kind);
     $("classification").value = state.classification;

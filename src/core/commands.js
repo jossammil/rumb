@@ -25,6 +25,7 @@ export const COMMANDS = [
   { id: "measure", label: "Measure distance and area", group: "Tools" },
   { id: "count-points", label: "Count the map's points in each area (or stop)", group: "Analysis" },
   { id: "smooth-rate", label: "Smooth a rate (empirical Bayes, window rates, limits)…", group: "Analysis" },
+  { id: "access", label: "Access to facilities (nearest, within, E2SFCA)…", group: "Analysis" },
   { id: "filter-radius", label: "Filter by distance from a point (radius)", group: "Filter" },
   { id: "filter-buffer", label: "Filter by distance from the selection (buffer)", group: "Filter" },
   { id: "filter-draw", label: "Filter by a drawn area", group: "Filter" },
