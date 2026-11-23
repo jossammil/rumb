@@ -8,14 +8,14 @@
 // where the browser cannot compress. Pure apart from CompressionStream.
 import { normalizeFilter } from "../geo/filter.js";
 import { METHODS } from "../stats/methods.js";
-import { rateSpec } from "../stats/rates.js";
+import { densitySpec, derivedSpec, MODEL_KINDS } from "./derived.js";
 import { WEIGHT_KINDS } from "../stats/neighbors.js";
 
 /** Longest link part rumb writes (characters after #state=). */
 export const SHARE_LIMIT = 8000;
 const VIEW_KEYS = [
   "measure", "category", "palette", "classification", "count", "breaks",
-  "method", "inference", "yField", "scan", "rule", "k", "band", "power", "symmetric", "study", "permutations", "seed", "fdr",
+  "method", "inference", "yField", "scan", "model", "pointWeight", "rule", "k", "band", "power", "symmetric", "study", "permutations", "seed", "fdr",
 ];
 const LOOK_KEYS = ["color", "opacity", "size", "shape", "outline", "outlineColor", "hatch"];
 
@@ -60,7 +60,14 @@ export function shareState(state, { camera, isShared, reference }) {
       if (Object.keys(look).length) out.st = look;
       if (e.label) out.l = e.label;
       if (e.counts?.length) out.n = e.counts.filter(isShared);
-      if (e.derived?.length) out.dv = e.derived.map((d) => [d.measure, d.methods]);
+      if (e.derived?.length)
+        out.dv = e.derived.map((d) =>
+          d.kind === "model"
+            ? { m: d.type, y: d.y, x: d.xs, w: d.weights }
+            : d.kind === "access"
+              ? { a: d.layer, s: d.size, p: d.population, wi: d.within, c: d.catchment, d: d.decay }
+              : [d.measure, d.methods],
+        );
       return out;
     }),
     w: own ? pick(state, VIEW_KEYS) : pick(state.layerViews?.[focus], VIEW_KEYS),
@@ -72,9 +79,15 @@ export function shareState(state, { camera, isShared, reference }) {
     g: state.graticule ? 1 : undefined,
     vw: state.view === "compare" ? "compare" : undefined,
     c: state.comparisons?.[reference] ? pick(state.comparisons[reference], ["components", "color", "selected"]) : undefined,
+    // Generated layers (density surfaces) travel as their specs and are rebuilt.
+    gen: (state.layers || []).filter((l) => l.generated && stack.some((e) => e.id === l.id)).map((l) => l.generated),
   };
+  if (!data.gen.length) delete data.gen;
   return JSON.parse(JSON.stringify(data));
 }
+
+/** The generated layers a link asks for, as safe specs. */
+export const generatedOf = (data) => (Array.isArray(data?.gen) ? data.gen.slice(0, 4).map(densitySpec).filter(Boolean) : []);
 
 /** The text after #state= for shared data; shortened (picks, then the drawn area) to fit the limit. */
 export async function encodeShare(data, { limit = SHARE_LIMIT } = {}) {
@@ -140,6 +153,14 @@ export function readShare(data, { known, palettes, region }) {
         method: METHODS[w.method] ? w.method : undefined,
         inference: ["normal", "permutation"].includes(w.inference) ? w.inference : undefined,
         yField: str(w.yField),
+        pointWeight: str(w.pointWeight),
+        model:
+          w.model && typeof w.model === "object"
+            ? {
+                type: MODEL_KINDS.includes(w.model.type) ? w.model.type : "ols",
+                xs: Array.isArray(w.model.xs) ? w.model.xs.map((x) => str(x)).filter(Boolean).slice(0, 12) : [],
+              }
+            : undefined,
         scan:
           w.scan && typeof w.scan === "object"
             ? {
@@ -187,7 +208,14 @@ export function readShare(data, { known, palettes, region }) {
       ...(Array.isArray(e.dv) && {
         derived: e.dv
           .slice(0, 12)
-          .map((d) => Array.isArray(d) && rateSpec({ kind: "rate", measure: str(d[0]), methods: Array.isArray(d[1]) ? d[1] : [] }))
+          .map((d) =>
+            Array.isArray(d)
+              ? derivedSpec({ kind: "rate", measure: str(d[0]), methods: Array.isArray(d[1]) ? d[1] : [] })
+              : d && typeof d === "object" && d.a
+                ? known(str(d.a)) &&
+                  derivedSpec({ kind: "access", layer: str(d.a), size: str(d.s), population: str(d.p), within: d.wi, catchment: d.c, decay: d.d })
+                : d && typeof d === "object" && derivedSpec({ kind: "model", type: d.m, y: str(d.y), xs: d.x, weights: d.w }),
+          )
           .filter(Boolean),
       }),
     });

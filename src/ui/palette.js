@@ -113,6 +113,9 @@ export function createPalette(source) {
     e.stopPropagation();
   });
   dialog.addEventListener("close", () => {
+    // The close event is queued, and a busy page can deliver it after a quick
+    // Ctrl+K has opened the palette again; that palette keeps its focus.
+    if (dialog.open) return;
     // Leave no focus in the closed palette, or the next key would type into it.
     if (dialog.contains(document.activeElement)) document.activeElement.blur();
     if (back?.isConnected && back !== document.body) back.focus();

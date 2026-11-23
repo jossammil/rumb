@@ -5,6 +5,7 @@
 // existed) is a Local Moran result. Pure.
 import { number } from "../catalog/format.js";
 import { clusters } from "../map/classify.js";
+import { ellipseAxes } from "./points.js";
 
 const fixed = (v, d = 4) => (v == null || !Number.isFinite(v) ? "" : number(v, d));
 
@@ -358,6 +359,286 @@ METHODS.scan = {
   scatter: false,
   reading: false,
   miles,
+};
+
+const MODEL_NAMES = {
+  ols: "Ordinary least squares",
+  lag: "Spatial lag (maximum likelihood)",
+  error: "Spatial error (maximum likelihood)",
+  poisson: "Poisson (log-population offset)",
+  nb: "Negative binomial (log-population offset)",
+};
+
+// Regression residuals: standardized, in GeoDa's bands, on RdBu (red: the
+// measure is higher than the model predicts).
+const residualClasses = {
+  P3: ["More than 2.5 SD above the prediction", "#b2182b"],
+  P2: ["1.5 to 2.5 SD above", "#ef8a62"],
+  P1: ["0.5 to 1.5 SD above", "#fddbc7"],
+  Z: ["Within 0.5 SD", "#c9d0cc"],
+  N1: ["0.5 to 1.5 SD below", "#d1e5f0"],
+  N2: ["1.5 to 2.5 SD below", "#67a9cf"],
+  N3: ["More than 2.5 SD below the prediction", "#2166ac"],
+  NA: ["Unavailable", "#8a918b"],
+};
+const pText = (p) => (p < 0.0001 ? "<0.0001" : fixed(p));
+/** Three significant digits, for rate ratios that can be very small. */
+const sig = (v) => (Number.isFinite(v) ? String(Number(v.toPrecision(3))) : "");
+const testRow = (name, t) => (t ? [name, fixed(t.statistic, 3), String(t.df ?? ""), pText(t.p)] : null);
+
+METHODS.model = {
+  id: "model",
+  label: "Regression (linear, spatial or count)",
+  title: "Regression",
+  legendTitle: "Standardized residuals",
+  modeLabel: "Residuals",
+  short: "residuals",
+  request: "model",
+  file: "regression-areas.csv",
+  classes: () => residualClasses,
+  swatches: ["P3", "P1", "N1", "N3"],
+  classOf: (record) => record?.cluster ?? "NA",
+  featureRows: (record, result) =>
+    COUNTED.has(result?.modelType)
+      ? [
+          ["Observed count", number(record.value, 0)],
+          ["Expected by the model", fixed(record.fitted, 1)],
+          ["Pearson residual", fixed(record.residual, 2)],
+        ]
+      : [
+          ["Predicted", fixed(record.fitted, 3)],
+          ["Residual", fixed(record.residual, 3)],
+          ["Standardized residual", fixed(record.standardized, 2)],
+        ],
+  summaryRows: (result) => [
+    ["Model", MODEL_NAMES[result.modelType || "ols"]],
+    ["Areas", number(result.n, 0)],
+    ...(COUNTED.has(result.modelType)
+      ? [
+          ["Deviance · null", fixed(result.deviance.residual, 2) + " · " + fixed(result.deviance.null, 2) + " (df " + result.deviance.df + ")"],
+          ["Log-likelihood · AIC", fixed(result.logLik, 2) + " · " + fixed(result.aic, 2)],
+          result.theta
+            ? ["θ (dispersion)", fixed(result.theta.estimate, 3) + " (SE " + fixed(result.theta.se, 3) + ")"]
+            : ["Pearson χ² / df", fixed(result.dispersion, 2) + (result.dispersion > 1.5 ? " (overdispersed: try negative binomial)" : "")],
+          ["Residual Moran’s I", fixed(result.residualMoran.I, 4) + " (permutation p " + fixed(result.residualMoran.p, 3) + ")"],
+        ]
+      : linearSummary(result)),
+  ],
+  /** Tables under the summary: [{ caption, head, rows }]. */
+  details: (result) => (COUNTED.has(result.modelType) ? countDetails(result) : linearDetails(result)),
+  /** Charts under the tables: [{ kind, … }] for ui/chart.js. */
+  charts: (result) => {
+    const counted = COUNTED.has(result.modelType);
+    const records = Object.entries(result.byId).filter(([, r]) => Number.isFinite(r.fitted));
+    return [
+      {
+        kind: "points",
+        points: records.map(([id, r]) => ({ id, x: r.fitted, y: r.residual })),
+        xLabel: counted ? "Expected count" : "Predicted",
+        yLabel: counted ? "Pearson residual" : "Residual",
+        reference: 0,
+      },
+      { kind: "histogram", values: records.map(([, r]) => r.standardized), xLabel: counted ? "Pearson residual" : "Standardized residual" },
+    ];
+  },
+  reportText: (result) =>
+    (COUNTED.has(result.modelType)
+      ? MODEL_NAMES[result.modelType] + ": AIC " + fixed(result.aic, 1) + ", " + number(result.n, 0) + " areas · residual Moran's I " + fixed(result.residualMoran.I, 3)
+      : "R² " + fixed(result.r2, 3) + " on " + result.covariates.length + " covariates, " + number(result.n, 0) + " areas" +
+        (result.spatial ? " · residual Moran's I " + fixed(result.spatial.moran.I, 3) + " (p " + pText(result.spatial.moran.p) + ")" : "")) +
+    " · " + result.studyName,
+  rule: () => "residuals in standard deviations",
+  ruleText: (result) => result.suggestion || "",
+  csvFields: [
+    "GEOID_or_feature_ID",
+    "measure",
+    "value",
+    "predicted",
+    "residual",
+    "standardized_residual",
+    "residual_class",
+    "reason",
+    "study_area",
+    "covariates",
+    "neighbor_rule",
+    "method",
+  ],
+  csvRow: (id, r, result, state) => [
+    id,
+    state.measure,
+    r.value,
+    r.fitted,
+    r.residual,
+    r.standardized,
+    r.cluster,
+    r.reason,
+    result.studyName,
+    result.covariates.join(" "),
+    result.weights?.label || state.rule,
+    result.methodNote,
+  ],
+  /** Further downloads from the summary: the coefficient and diagnostic tables. */
+  exports: [{ label: "Export coefficients", file: "regression-model.csv" }],
+  scatter: false,
+  reading: false,
+  trials: null,
+};
+
+// The linear models' summary rows (after the model and area count).
+function linearSummary(result) {
+  return [
+    ...(result.parameter
+      ? [
+          [result.parameter.name, fixed(result.parameter.estimate, 4) + " (SE " + fixed(result.parameter.se, 4) + ", p " + pText(result.parameter.p) + ")"],
+          ["LR test against OLS", fixed(result.lr.statistic, 2) + " (p " + pText(result.lr.p) + ")"],
+          ["AIC · OLS AIC", fixed(result.aic, 2) + " · " + fixed(result.olsAic, 2)],
+          ["Model residual Moran’s I", fixed(result.residualMoran, 4)],
+        ]
+      : [
+          ["R² · adjusted", fixed(result.r2, 3) + " · " + fixed(result.adjR2, 3)],
+          ["F", fixed(result.F.statistic, 2) + " (p " + pText(result.F.p) + ")"],
+        ]),
+    ["Log-likelihood · AIC", fixed(result.logLik, 2) + " · " + fixed(result.aic, 2)],
+    ["Condition number", fixed(result.conditionNumber, 1) + (result.conditionNumber > 30 ? " (collinearity likely)" : "")],
+    ...(result.spatial
+      ? [[(result.parameter ? "OLS residual" : "Residual") + " Moran’s I", fixed(result.spatial.moran.I, 4) + " (z " + fixed(result.spatial.moran.z, 2) + ", p " + pText(result.spatial.moran.p) + ")"]]
+      : []),
+  ];
+}
+
+// The linear models' tables: coefficients, impacts (lag), diagnostics.
+function linearDetails(result) {
+  return [
+    {
+      caption: "Coefficients",
+      head: ["", "Estimate", "SE", result.parameter ? "z" : "t", "p", "VIF"],
+      rows: result.coefficients.map((c, j) => [
+        c.label || c.name,
+        fixed(c.estimate, 4),
+        fixed(c.se, 4),
+        fixed(c.statistic, 2),
+        pText(c.p),
+        j && result.vif?.[j - 1] != null ? fixed(result.vif[j - 1], 2) : "",
+      ]),
+    },
+    ...(result.impacts
+      ? [
+          {
+            caption: "Impacts (average effect of a unit change)",
+            head: ["", "Direct", "Indirect", "Total"],
+            rows: result.impacts.map((m) => [m.label || m.name, fixed(m.direct, 4), fixed(m.indirect, 4), fixed(m.total, 4)]),
+          },
+        ]
+      : []),
+    {
+      caption: result.parameter ? "OLS diagnostics" : "Diagnostics",
+      head: ["Test", "Value", "df", "p"],
+      rows: [
+        testRow("Jarque–Bera (normality)", result.jarqueBera),
+        testRow("Breusch–Pagan", result.breuschPagan),
+        testRow("Koenker–Bassett", result.koenker),
+        result.spatial && ["Moran’s I (residuals)", fixed(result.spatial.moran.I, 4), "", pText(result.spatial.moran.p)],
+        testRow("LM-lag", result.spatial?.lmLag),
+        testRow("Robust LM-lag", result.spatial?.robustLmLag),
+        testRow("LM-error", result.spatial?.lmError),
+        testRow("Robust LM-error", result.spatial?.robustLmError),
+        testRow("SARMA", result.spatial?.sarma),
+      ].filter(Boolean),
+      note: result.suggestion,
+    },
+  ];
+}
+
+// A count model's tables: coefficients as rate ratios, and the fit tests.
+function countDetails(result) {
+  return [
+    {
+      caption: "Coefficients",
+      head: ["", "Estimate", "SE", "z", "p", "Rate ratio", "95% CI"],
+      rows: result.coefficients.map((c) => [
+        c.label || c.name,
+        fixed(c.estimate, 4),
+        fixed(c.se, 4),
+        fixed(c.statistic, 2),
+        pText(c.p),
+        sig(c.ratio),
+        sig(c.lower) + "–" + sig(c.upper),
+      ]),
+    },
+    {
+      caption: "Fit",
+      head: ["Test", "Value", "df", "p"],
+      rows: [
+        ["Residual deviance", fixed(result.deviance.residual, 2), String(result.deviance.df), pText(result.deviance.p)],
+        ["Moran’s I (Pearson residuals)", fixed(result.residualMoran.I, 4), "", fixed(result.residualMoran.p, 3)],
+      ],
+      note: result.theta
+        ? "θ = " + fixed(result.theta.estimate, 3) + ": the variance is μ + μ²/θ."
+        : result.dispersion > 1.5
+          ? "The Pearson χ²/df of " + fixed(result.dispersion, 2) + " shows overdispersion; the negative binomial model allows for it."
+          : null,
+    },
+  ];
+}
+
+const COUNTED = new Set(["poisson", "nb"]);
+
+// Point patterns: the points keep one color; the centers and ellipse are drawn over them.
+const MI = 1609.344;
+const reading = (ann) =>
+  ann.p > 0.05 ? "consistent with random" : ann.ratio < 1 ? "clustered" : "dispersed (more even than random)";
+METHODS.points = {
+  id: "points",
+  label: "Point pattern (nearest neighbor, Ripley's L, centers)",
+  title: "Point pattern",
+  legendTitle: "Point pattern",
+  modeLabel: "Centers",
+  short: "point pattern",
+  request: "points",
+  file: "point-pattern.csv",
+  classes: () => ({ P: ["Points (centers and spread dashed)", "#e0a030"], NA: ["Unavailable", "#8a918b"] }),
+  swatches: ["P"],
+  classOf: (record) => record?.cluster ?? "NA",
+  featureRows: (record) => [
+    ["Nearest other point", fixed(record.nearest, 2) + " mi"],
+    ...(record.weight != null ? [["Weight", number(record.weight)]] : []),
+  ],
+  summaryRows: (result) => {
+    const { ann, ripley, centers } = result;
+    const axes = ellipseAxes(centers.ellipse);
+    return [
+      ["Points", number(result.n, 0) + (result.weighted ? " (weighted)" : "")],
+      ["Study area", number(ann.area, 0) + " sq mi"],
+      ["Mean nearest distance", fixed(ann.observed, 2) + " mi (random: " + fixed(ann.expected, 2) + ")"],
+      ["Nearest neighbor ratio", fixed(ann.ratio, 3) + ": " + reading(ann) + " (z " + fixed(ann.z, 2) + ", p " + pText(ann.p) + ")"],
+      [
+        "Ripley’s L",
+        ripley.above || ripley.below
+          ? [ripley.above && "clustered at " + ripley.above, ripley.below && "dispersed at " + ripley.below].filter(Boolean).join(", ") + " of 25 distances"
+          : "within the random envelope at every distance",
+      ],
+      ["Standard distance", fixed(centers.standardDistance / MI, 1) + " mi"],
+      ["Ellipse", fixed(axes.major / MI, 1) + " × " + fixed(axes.minor / MI, 1) + " mi, major axis at " + fixed(axes.bearing, 0) + "° from north"],
+    ];
+  },
+  charts: (result) => [
+    {
+      kind: "line",
+      data: { x: result.ripley.d, y: result.ripley.L, lo: result.ripley.lo, hi: result.ripley.hi, reference: 0 },
+      xLabel: "Distance (mi)",
+      yLabel: "L(d) − d (mi)",
+    },
+  ],
+  reportText: (result) =>
+    number(result.n, 0) + " points · nearest neighbor ratio " + fixed(result.ann.ratio, 3) + " (" + reading(result.ann) + ", p " + pText(result.ann.p) + ")",
+  rule: (result) => "envelope of " + result.permutations + " random patterns",
+  ruleText: (result) => "The band is the range of L(d) − d over " + result.permutations + " random patterns inside the outline; above it means clustered at that distance.",
+  basis: () => "Points within the region's outline",
+  csvFields: ["feature_ID", "nearest_point_mi", "weight", "nearest_neighbor_ratio", "z", "p", "method"],
+  csvRow: (id, r, result) => [id, r.nearest, r.weight, result.ann.ratio, result.ann.z, result.ann.p, result.methodNote],
+  trials: "simulated patterns",
+  scatter: false,
+  reading: false,
 };
 
 /** The methods in the order the menu lists them. */

@@ -5,69 +5,28 @@ import { number } from "../catalog/format.js";
 import { formatValue, popupRows } from "../catalog/popup.js";
 import { featureId } from "../core/features.js";
 import { aggregate, coverageLabel, neighborsOf, poolOf } from "../stats/pool.js";
-import { clusters } from "../map/classify.js";
 import { basisOf, methodOf } from "../stats/methods.js";
 import { acsReliability, rateLimits, UNSTABLE_EVENTS } from "../stats/rates.js";
-import { $, fill, h, icon, s } from "../ui/dom.js";
+import { histogram, lineChart, pointChart, scatter } from "../ui/chart.js";
+import { $, fill, h, icon } from "../ui/dom.js";
 
 const row = (key, val) => h("div", null, h("dt", { text: key }), h("dd", { text: String(val) }));
 
-/** The Moran scatterplot: standardized value against the neighbor average. */
-export function scatter(result, selected, onPick, [xLabel, yLabel] = ["Standardized measure", "Neighbor average"]) {
-  const points = Object.entries(result.byId).filter(
-    ([, r]) => Number.isFinite(r.z) && Number.isFinite(r.lag),
-  );
-  const span = Math.max(0.1, ...points.flatMap(([, r]) => [Math.abs(r.z), Math.abs(r.lag)]));
-  const x = (z) => 125 + (z / span) * 93,
-    y = (lag) => 76 - (lag / span) * 57;
-  const dots = points.map(([id, r]) =>
-    s(
-      "circle",
-      {
-        "data-point": id,
-        cx: x(r.z),
-        cy: y(r.lag),
-        r: 2.9,
-        class: r.cluster === "NS" ? "ns-dot" : null,
-        fill: r.cluster === "NS" ? null : clusters[r.cluster][1],
-        opacity: 0.7,
-        onclick: () => onPick(id),
-      },
-      s("title", { text: id }),
+/** A method's table: { caption, head, rows, note }. */
+const statTable = ({ caption, head, rows, note }) => [
+  h(
+    "div",
+    { class: "stat-wrap" },
+    h(
+      "table",
+      { class: "stat-table", "data-table": caption },
+      h("caption", { text: caption }),
+      h("thead", null, h("tr", null, head.map((x) => h("th", { scope: "col", text: x })))),
+      h("tbody", null, rows.map((r) => h("tr", null, r.map((x, i) => (i ? h("td", { text: x }) : h("th", { scope: "row", text: x })))))),
     ),
-  );
-  const sel = result.byId[selected];
-  return s(
-    "svg",
-    {
-      class: "scatter",
-      viewBox: "0 0 250 165",
-      role: "img",
-      "aria-label": "Moran scatterplot. Horizontal axis: " + xLabel + ". Vertical axis: " + yLabel + ".",
-    },
-    s("rect", { x: 26, y: 9, width: 199, height: 133, rx: 3, class: "plot-bg" }),
-    s("path", { d: "M26 76h199M125 9v133", class: "plot-axis", "stroke-dasharray": "3 3" }),
-    s("path", {
-      d: "M32 " + y(-span * result.globalI) + "L218 " + y(span * result.globalI),
-      class: "plot-fit",
-    }),
-    dots,
-    sel?.z != null &&
-      s("circle", {
-        cx: x(sel.z),
-        cy: y(sel.lag),
-        r: 5,
-        class: "plot-mark",
-        "pointer-events": "none",
-      }),
-    s(
-      "g",
-      { "font-size": 9, class: "plot-text", "text-anchor": "middle" },
-      s("text", { x: 125, y: 158, text: xLabel }),
-      s("text", { transform: "translate(12 76) rotate(-90)", text: yLabel }),
-    ),
-  );
-}
+  ),
+  note && h("p", { class: "subtle model-note", text: note }),
+];
 
 const MEANING = {
   HH: "This is a high-value cluster.",
@@ -306,11 +265,18 @@ export function createInspector(app) {
       result.caution && h("p", { class: "caution", id: "analysis-caution", text: result.caution }),
       h("div", { class: "segmented" }, mode("value", "Measure"), mode("cluster", method.modeLabel)),
       method.scatter && scatter(result, state.selected, (id) => app.selectFeature(id), method.scatterLabels),
+      (method.details?.(result) || []).map((t) => statTable(t)),
+      (method.charts?.(result) || []).map((c) =>
+        c.kind === "points"
+          ? pointChart(c.points, { ...c, selected: state.selected, onPick: (id) => app.selectFeature(id) })
+          : c.kind === "line"
+            ? lineChart(c.data, c)
+            : histogram(c.values, c),
+      ),
       h(
         "p",
         { class: "subtle" },
-        result.permutations + " " + (method.trials || "permutations") + " · Seed " + result.seed,
-        h("br"),
+        method.trials !== null && [result.permutations + " " + (method.trials || "permutations") + " · Seed " + result.seed, h("br")],
         method.ruleText ? method.ruleText(result) : (result.fdr ? "FDR-adjusted q" : "Unadjusted local p") + " ≤ " + result.alpha,
       ),
       h(
@@ -319,6 +285,21 @@ export function createInspector(app) {
         icon("download", 13),
         "Export statistics",
       ),
+      (method.exports || []).map((x, i) =>
+        h(
+          "button",
+          { class: "plain-btn", "data-export": i, onclick: () => app.analysis.exportDetails(i) },
+          icon("download", 13),
+          x.label,
+        ),
+      ),
+      result.method === "model" &&
+        h("button", {
+          class: "plain-btn",
+          id: "model-fields",
+          text: "Add predictions and residuals as fields",
+          onclick: () => app.perform(null, () => app.analysis.saveModelFields()),
+        }),
     );
   }
 

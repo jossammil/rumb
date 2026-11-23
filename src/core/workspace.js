@@ -150,6 +150,16 @@ export function createWorkspace(catalog, { status = () => {}, onDatabase = () =>
     merged = { base: display, count: tableColumns.size, collection };
     return collection;
   }
+  /** The region's outline (GeoJSON), for point patterns and density surfaces; read once. */
+  let outlinePromise = null;
+  function outline() {
+    if (!catalog.region.outline) return Promise.reject(new Error("This region has no outline for point patterns."));
+    outlinePromise ??= json(catalog.region.outline).catch((error) => {
+      outlinePromise = null;
+      throw error;
+    });
+    return outlinePromise;
+  }
   /** Centers of population for a layer ({ ids, lon, lat, population }), or null when none ship. */
   async function centers(layerId) {
     const index = await tables();
@@ -226,6 +236,7 @@ export function createWorkspace(catalog, { status = () => {}, onDatabase = () =>
     loadTable,
     ensureFields,
     centers,
+    outline,
     /** The table metadata a reference field comes from, once the index is read. */
     tableOf,
     /** A table field's metadata, or undefined. */

@@ -106,11 +106,18 @@ async function check(name, fn) {
     console.log(`PASS  ${name} (${((Date.now() - started) / 1000).toFixed(1)} s)`);
   } catch (error) {
     failed++;
-    console.log(`FAIL  ${name}: ${error.message.split("\n")[0]}`);
-    if (shots)
+    const lines = error.message.split("\n");
+    console.log(`FAIL  ${name}: ${lines[0]}`);
+    // Playwright's call log says what a timed-out action was waiting for.
+    for (const line of lines.slice(1, 8)) if (line.trim()) console.log("      " + line.trim());
+    if (shots) {
       await page
         ?.screenshot({ path: path.join(shots, `${which}-FAIL-${name}.png`) })
         .catch(() => {});
+      // Most checks open their own page; capture the newest one still open too.
+      const own = pages.filter((p) => p !== page && !p.isClosed()).at(-1);
+      await own?.screenshot({ path: path.join(shots, `${which}-FAIL-${name}-page.png`) }).catch(() => {});
+    }
   }
 }
 const expect = (ok, message) => {
@@ -461,6 +468,146 @@ await check("scan", async () => {
   const bytes = await download("#save-results", p);
   expect(bytes.toString().startsWith("GEOID_or_feature_ID,measure,cases,population,expected,cluster"), "scan CSV header");
   await p.context().close();
+});
+
+await check("regression", async () => {
+  const ref = JSON.parse(await readFile("tests/models-reference.json", "utf8"));
+  const p = await openPage();
+  await p.evaluate(() => window.rumb.app.setMeasure("places_diabetes"));
+  await p.selectOption("#method", "model");
+  await p.waitForSelector("#covariates");
+  for (const x of ref.linalg.covariates) await p.check(`[data-covariate="${x}"]`);
+  await p.click("#analyze");
+  // The same fit and residual diagnostics as lm and spdep.
+  await waitText("#inspect-panel", "R² · adjusted" + ref.ols.r2.toFixed(3), p);
+  await waitText("#inspect-panel", "Residual Moran’s I" + ref.ols.queen.I.toFixed(4), p);
+  await waitText("#legend", "Standardized residuals", p);
+  await waitText("#analysis-caution", "Model-based estimates", p);
+  const intercept = await p.locator('[data-table="Coefficients"] tbody tr td').first().textContent();
+  expect(intercept === ref.ols.coef[0].toFixed(4), "intercept " + intercept);
+  expect((await p.locator("#inspect-panel svg.chart").count()) === 2, "residual charts");
+  const bytes = await download('[data-export="0"]', p);
+  expect(bytes.toString().startsWith("Coefficients"), "coefficient CSV");
+  // Predictions and residuals become fields that other analyses can use.
+  await p.click("#model-fields");
+  await waitText("#toast", "Added predictions and residuals", p);
+  await p.evaluate(() => window.rumb.app.setMeasure("res_places_diabetes"));
+  await p.keyboard.press("h");
+  await waitText("#inspect-panel", "Hot spot analysis", p);
+  // Spatial lag and error models by maximum likelihood, as spatialreg fits them.
+  await p.evaluate(() => window.rumb.app.setMeasure("places_diabetes"));
+  await p.selectOption("#method", "model");
+  await p.selectOption("#model-type", "lag");
+  await p.click("#analyze");
+  await waitText("#inspect-panel", "ρ (rho)" + ref.spatial.queen.lag.rho.toFixed(4), p);
+  await p.waitForSelector('[data-table^="Impacts"]');
+  await p.selectOption("#model-type", "error");
+  await p.click("#analyze");
+  await waitText("#inspect-panel", "λ (lambda)" + ref.spatial.queen.error.lambda.toFixed(4), p);
+  // Plain k nearest is not symmetric, so the model says so.
+  await p.selectOption("#rule", "knn");
+  await p.click("#analyze");
+  await waitText("#toast", "Spatial models need symmetric weights", p);
+  await p.context().close();
+});
+
+await check("counts-model", async () => {
+  const ref = JSON.parse(await readFile("tests/models-reference.json", "utf8")).counts;
+  const p = await openPage();
+  await p.keyboard.press("n");
+  await p.click('[data-library="chr_counties_2025"]');
+  await waitText("#toast", "Added County Health Rankings", p);
+  await p.evaluate(() => window.rumb.app.setMeasure("v138_rawvalue"));
+  await p.selectOption("#method", "model");
+  await p.waitForSelector("#model-type");
+  await p.selectOption("#model-type", "poisson");
+  for (const x of ref.covariates) await p.check(`[data-covariate="${x}"]`);
+  await waitText("#model-note", "with log(", p);
+  await p.click("#analyze");
+  // Drug overdose deaths are overdispersed for a Poisson model, so it says so.
+  await waitText("#inspect-panel", "overdispersed", p);
+  await waitText("#inspect-panel", "Log-likelihood · AIC", p);
+  await p.selectOption("#model-type", "nb");
+  await p.click("#analyze");
+  // The negative binomial fit is MASS::glm.nb's.
+  await waitText("#inspect-panel", "θ (dispersion)" + ref.nb.theta.toFixed(3), p);
+  const ratio = await p.locator('[data-table="Coefficients"] tbody tr:nth-child(2) td:nth-child(6)').textContent();
+  expect(ratio === String(Number(Math.exp(ref.nb.coef[1]).toPrecision(3))), "rate ratio " + ratio);
+  await waitText("#legend", "Standardized residuals", p);
+  await p.context().close();
+});
+
+await check("access", async () => {
+  const ref = JSON.parse(await readFile("tests/models-reference.json", "utf8")).access;
+  const p = await openPage();
+  await p.click("#access-tool");
+  await p.selectOption("#access-layer", "pharmacies_2010");
+  await p.click("#access-go");
+  await waitText("#toast", "Added access to Pharmacies", p);
+  await waitText("#legend", "access (E2SFCA", p);
+  // The same distances, counts and E2SFCA ratios as R on sf's distances.
+  const got = await p.evaluate(() =>
+    Object.fromEntries(
+      window.rumb.app.layer().collection.features.map((f) => [
+        f.properties.GEOID,
+        [f.properties.near_pharmacies_2010, f.properties.in_pharmacies_2010, f.properties.acc_pharmacies_2010],
+      ]),
+    ),
+  );
+  const off = ref.ids.filter((id, i) => {
+    const [near, count, ratio] = got[id];
+    return (
+      Math.abs(near - ref.pharmacies.nearest[i]) > 1e-6 ||
+      count !== ref.pharmacies.count[i] ||
+      Math.abs(ratio - ref.pharmacies.ratio[i]) > 1e-6 * Math.max(1, ref.pharmacies.ratio[i])
+    );
+  });
+  expect(!off.length, "access differs for " + off.slice(0, 5).join(", "));
+  // The access fields travel in a share link.
+  await p.evaluate(() => window.rumb.runCommand("share"));
+  await p.locator("#share-link").waitFor();
+  const url = await p.inputValue("#share-link");
+  await p.context().close();
+  const q = await openPage();
+  await q.goto(url.replace(/^https?:\/\/[^/]+/, origin));
+  await ready(q);
+  await waitText("#legend", "access (E2SFCA", q);
+  await q.context().close();
+});
+
+await check("points", async () => {
+  const ref = JSON.parse(await readFile("tests/models-reference.json", "utf8")).points.health;
+  const p = await openPage();
+  await p.keyboard.press("n");
+  await p.click('[data-library="public_health_departments_2010"]');
+  await waitText("#toast", "Added Public health departments", p);
+  await p.selectOption("#method", "points");
+  await p.waitForSelector("#point-weight");
+  await p.click("#analyze");
+  // About one department per county: more even than random, as R's formula finds.
+  await waitText("#inspect-panel", "Nearest neighbor ratio" + ref.ann.ratio.toFixed(3) + ": dispersed", p);
+  expect((await p.locator("#inspect-panel svg.chart").count()) === 1, "Ripley's L chart");
+  await p.waitForFunction(() => window.rumb.map.querySourceFeatures("analysis").length >= 2);
+  // A density surface becomes a layer of its own.
+  await p.click("#density-tool");
+  await waitText("#density-note", "Auto bandwidth for 90 points", p);
+  await p.click("#density-go");
+  await waitText("#toast", "Added Density of public health departments", p);
+  await waitText("#legend", "per sq mi (quartic kernel", p);
+  const cells = await p.evaluate(() => window.rumb.app.layer().collection.features.length);
+  expect(cells > 1000, "density cells " + cells);
+  // The surface travels in a share link as its spec and is rebuilt.
+  await p.evaluate(() => window.rumb.runCommand("share"));
+  await p.locator("#share-link").waitFor();
+  const url = await p.inputValue("#share-link");
+  await p.context().close();
+  const q = await openPage();
+  await q.goto(url.replace(/^https?:\/\/[^/]+/, origin));
+  await ready(q);
+  await waitText("#toast", "Opened a shared map", q);
+  const rebuilt = await q.evaluate(() => window.rumb.state.layers.find((l) => l.generated)?.collection.features.length);
+  expect(rebuilt === cells, "rebuilt cells " + rebuilt);
+  await q.context().close();
 });
 
 await check("identity", async () => {
@@ -1185,7 +1332,20 @@ await check("palette", async () => {
   expect((await p.evaluate(() => window.rumb.state.view)) === "sql", "palette did not open SQL");
   // Places are found by name, and choosing one selects it on the map.
   await p.keyboard.press("Control+k");
+  await p.locator("#palette[open]").waitFor();
+  await p.waitForFunction(() => document.activeElement?.id === "palette-input", null, { timeout: 5000 });
+  // A busy page can deliver the first close event after the palette has opened
+  // again; replay that late event and the typing must still reach the palette.
+  await p.evaluate(() => document.querySelector("#palette").dispatchEvent(new Event("close")));
   await p.keyboard.type(ids[0]);
+  // If the typing went anywhere but the palette, say where, rather than time out on the click.
+  const typed = await p.evaluate(() => ({
+    value: document.querySelector("#palette-input").value,
+    open: document.querySelector("#palette").open,
+    focus: document.activeElement?.id || document.activeElement?.tagName,
+    view: window.rumb.state.view,
+  }));
+  expect(typed.value === ids[0] && typed.open, "palette lost the typing: " + JSON.stringify(typed));
   await p.locator("#palette-list li", { hasText: ids[0] }).first().click();
   await waitText("#inspect-panel", "Adams County", p);
   await p.context().close();
@@ -1294,6 +1454,18 @@ await check("offline", async () => {
   await p.waitForFunction(() => window.rumb.map.querySourceFeatures("roads").length > 0);
   await p.evaluate(() => window.rumb.app.filter.set({ kind: "radius", center: [-90.18, 32.3], miles: 25 }));
   await waitText('[data-count="fire_stations_2020"]', "88 of", p);
+  // Point patterns (with the region's outline) and regressions run offline too.
+  await p.evaluate(() => window.rumb.app.filter.clear());
+  await p.selectOption("#method", "points");
+  await p.waitForSelector("#point-weight");
+  await p.click("#analyze");
+  await waitText("#inspect-panel", "Nearest neighbor ratio", p);
+  await p.click('[data-layer="tracts"]');
+  await p.selectOption("#method", "model");
+  await p.waitForSelector("#covariates");
+  await p.check('[data-covariate="acs_no_vehicle_pct"]');
+  await p.click("#analyze");
+  await waitText("#inspect-panel", "R² · adjusted", p);
   await p.evaluate(() => (window.print = () => (window.__printed = true)));
   await p.keyboard.press("p");
   await p.click("#report-print");

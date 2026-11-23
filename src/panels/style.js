@@ -71,6 +71,8 @@ export function createStyle(app) {
     // Rates with counts can be smoothed; polygons can hatch unreliable estimates.
     $("smooth-rate").hidden = !app.fieldList(l).some((f) => poolOf(app.fieldMeta(l, f))?.denominator);
     $("hatch-row").hidden = kind !== "polygon" && kind !== "mixed";
+    $("access-tool").hidden = kind !== "polygon";
+    $("density-tool").hidden = kind !== "point";
     $("look-hatch").checked = !!entry?.style?.hatch;
     renderLook(l, kind);
     $("classification").value = state.classification;
@@ -302,8 +304,8 @@ export function createStyle(app) {
       });
     }
     renderOthers(legend, others);
-    // A scan's windows draw over the map while its clusters show.
-    app.atlas.setAnalysisShapes(clustered && method.id === "scan" ? state.result.circles : null);
+    // A scan's windows, or a point pattern's centers and ellipse, draw over the map while the result shows.
+    app.atlas.setAnalysisShapes(clustered && state.result.circles ? state.result.circles : null);
     app.filter?.renderSummary();
     app.renderInspector();
   }

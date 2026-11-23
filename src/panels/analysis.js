@@ -4,9 +4,13 @@
 import { featureId, groups, isPolygon } from "../core/features.js";
 import { csvText } from "../data/csv.js";
 import { projectedIndex } from "../geo/filter.js";
+import { mapGeometry } from "../geo/spatial.js";
+import { ellipseRing } from "../stats/points.js";
 import { callStats } from "../stats/client.js";
 import { METHOD_LIST, methodId, methodOf } from "../stats/methods.js";
 import { poolOf } from "../stats/pool.js";
+import { modelSpec } from "../core/derived.js";
+import { COUNT_TYPES } from "../stats/models.js";
 import { centroid, DISTANCE_KINDS, summaryText } from "../stats/neighbors.js";
 import { $, icon, options, saveBlob } from "../ui/dom.js";
 
@@ -18,6 +22,8 @@ const PANELS = {
   bilisa: () => import("./methods/bilisa.js"),
   eblisa: () => import("./methods/eblisa.js"),
   scan: () => import("./methods/scan.js"),
+  model: () => import("./methods/model.js"),
+  points: () => import("./methods/points.js"),
 };
 
 export function createAnalysis(app) {
@@ -64,17 +70,18 @@ export function createAnalysis(app) {
     $("fdr").checked = state.fdr;
     renderWeights();
     // Contiguity needs polygons; distance weights work between any features.
+    // A point pattern needs points and no measure.
     const byDistance = DISTANCE_KINDS.has(state.rule);
-    button.disabled =
-      !fields.length ||
-      !state.measure ||
-      !!state.category ||
-      running != null ||
-      (!byDistance && !records.every(isPolygon));
+    const pattern = state.method === "points";
+    button.disabled = pattern
+      ? running != null || app.kindOf(l) !== "point" || records.length < 3
+      : !fields.length || !state.measure || !!state.category || running != null || (!byDistance && !records.every(isPolygon));
     button.title = button.disabled
-      ? byDistance
-        ? "Choose a numeric measure."
-        : "Choose a polygon layer with a numeric measure, or distance-based neighbors."
+      ? pattern
+        ? "Make a point layer the focus for a point pattern."
+        : byDistance
+          ? "Choose a numeric measure."
+          : "Choose a polygon layer with a numeric measure, or distance-based neighbors."
       : "";
   }
 
@@ -93,9 +100,10 @@ export function createAnalysis(app) {
     const { state } = app,
       rule = state.rule,
       scanning = state.method === "scan";
-    // A scan grows windows by distance; it has no neighbor weights.
-    $("rule").disabled = scanning;
-    $("weights-params").hidden = scanning || !DISTANCE_KINDS.has(rule);
+    // A scan grows windows by distance and a point pattern compares with random points: neither uses neighbors.
+    const free = scanning || state.method === "points";
+    $("rule").disabled = free;
+    $("weights-params").hidden = free || !DISTANCE_KINDS.has(rule);
     $("k-field").hidden = rule !== "knn";
     $("symmetric-field").hidden = rule !== "knn";
     $("band-field").hidden = rule !== "band" && rule !== "idw";
@@ -110,6 +118,23 @@ export function createAnalysis(app) {
       : DISTANCE_KINDS.has(rule)
         ? "Distances run between centers of population where the data has them, otherwise area centroids, in the region's projection."
         : "";
+  }
+
+  /** A point pattern's centers, standard distance circle and ellipse, in longitude and latitude. */
+  function patternShapes({ mean, median, standardDistance, ellipse }) {
+    const inv = app.tools.projection.inverse;
+    const ring = (pts) => ({ type: "Polygon", coordinates: [pts.map(inv)] });
+    const circle = Array.from({ length: 73 }, (_, i) => {
+      const t = (2 * Math.PI * (i % 72)) / 72;
+      return [mean[0] + standardDistance * Math.cos(t), mean[1] + standardDistance * Math.sin(t)];
+    });
+    const feature = (role, geometry) => ({ type: "Feature", properties: { role }, geometry });
+    return [
+      feature("ellipse", ring(ellipseRing(ellipse))),
+      feature("standard-distance", ring(circle)),
+      feature("mean", { type: "Point", coordinates: inv(mean) }),
+      feature("median", { type: "Point", coordinates: inv(median) }),
+    ];
   }
 
   /** Each scan cluster's window as a circle around its center, in longitude and latitude. */
@@ -159,9 +184,10 @@ export function createAnalysis(app) {
       const weights = { kind: state.rule, k: state.k, miles: state.band, power: state.power, symmetric: state.symmetric };
       const ids = new Set(items.map(featureId));
       let neighbors, points, from;
-      const scanning = state.method === "scan";
-      if (scanning || DISTANCE_KINDS.has(state.rule)) ({ points, from } = await locations(l, items));
-      else {
+      const scanning = state.method === "scan",
+        pattern = state.method === "points";
+      if (scanning || pattern || DISTANCE_KINDS.has(state.rule)) ({ points, from } = await locations(l, items));
+      if (!pattern && !scanning && !DISTANCE_KINDS.has(state.rule)) {
         // Reference and library polygons ship their neighbors; other layers compute them once.
         let graph = l.reference
           ? (await app.ws.neighbors())[state.rule]
@@ -201,6 +227,24 @@ export function createAnalysis(app) {
         await app.ws.ensureFields([state.yField]);
         extra.second = byId(state.yField);
       }
+      if (pattern) {
+        const outline = await app.ws.outline();
+        const projected = outline.features.map((f) => mapGeometry(f.geometry, app.tools.projection.forward));
+        extra.polygons = projected.flatMap((g) => (g.type === "Polygon" ? [g.coordinates] : g.coordinates));
+        if (state.pointWeight) extra.pointWeights = byId(state.pointWeight);
+      }
+      if (state.method === "model") {
+        const xs = (state.model?.xs || []).filter((x) => x !== state.measure);
+        if (!xs.length) throw new Error("Choose at least one covariate for the regression.");
+        await app.ws.ensureFields(xs);
+        Object.assign(extra, { modelType: state.model.type || "ols", covariates: Object.fromEntries(xs.map((x) => [x, byId(x)])) });
+        // Count models explain the measure's numerator with log(denominator) as the offset.
+        if (COUNT_TYPES.has(extra.modelType)) {
+          const pool = poolOf(app.fieldMeta(l, state.measure));
+          if (!pool?.denominator) throw new Error("Count models need a rate with counts: choose a measure with a numerator and a denominator.");
+          Object.assign(extra, { events: byId(pool.numerator), base: byId(pool.denominator) });
+        }
+      }
       if (scanning) {
         const pool = poolOf(app.fieldMeta(l, state.measure));
         if (!pool?.denominator) throw new Error("A spatial scan needs a rate with counts: choose a measure with a numerator and a denominator.");
@@ -239,7 +283,13 @@ export function createAnalysis(app) {
         res.from = from;
         res.circles = scanShapes(res.clusters, points);
       }
+      if (pattern) res.circles = patternShapes(res.centers);
       if (state.method === "bilisa") res.secondLabel = app.label(state.yField);
+      if (res.method === "model") {
+        const name = (n) => (n === "(Intercept)" ? "Intercept" : app.label(n));
+        res.coefficients.forEach((c) => (c.label = name(c.name)));
+        res.impacts?.forEach((m) => (m.label = name(m.name)));
+      }
       // Model-based estimates (CDC PLACES) borrow strength from covariates, so their patterns are partly the model's.
       const modeled = [state.measure, state.method === "bilisa" && state.yField]
         .filter(Boolean)
@@ -274,9 +324,74 @@ export function createAnalysis(app) {
     );
   }
 
+  /** One of a method's further downloads: its summary tables as CSV. */
+  function exportDetails(i) {
+    const a = app.state.result,
+      method = methodOf(a),
+      x = method.exports[i];
+    const rows = (method.details?.(a) || []).flatMap((t) => [[t.caption], t.head, ...t.rows, ...(t.note ? [[t.note]] : []), []]);
+    saveBlob(new Blob([csvText(rows)], { type: "text/csv;charset=utf-8" }), x.file);
+  }
+
+  /** Keeps the current regression's predictions and residuals as fields of the layer. */
+  async function saveModelFields() {
+    const { state } = app;
+    const spec = modelSpec({
+      kind: "model",
+      type: state.model?.type,
+      y: state.measure,
+      xs: state.model?.xs,
+      weights: { kind: state.rule, k: state.k, miles: state.band, power: state.power, symmetric: state.symmetric },
+    });
+    if (!spec) throw new Error("Run a regression with at least one covariate first.");
+    const others = (state.stack.find((e) => e.id === state.active)?.derived || []).filter((d) => !(d.kind === "model" && d.y === spec.y));
+    app.store.set({ stack: state.stack.map((e) => (e.id === state.active ? { ...e, derived: [...others, spec] } : e)) });
+    await app.ensureDerived();
+    app.renderAll();
+    app.notify("Added predictions and residuals of " + app.label(spec.y) + " as fields, under Derived.");
+  }
+
+  /**
+   * The worker request for a model spec on a layer (for derived fields):
+   * the outcome, covariates and weights over the whole layer.
+   */
+  async function modelRequest(l, spec) {
+    await app.ws.ensureFields([spec.y, ...spec.xs]);
+    const items = l.collection.features;
+    const byId = (field) => Object.fromEntries(items.map((f) => [featureId(f), f.properties[field]]));
+    const request = {
+      type: "model",
+      values: byId(spec.y),
+      covariates: Object.fromEntries(spec.xs.map((x) => [x, byId(x)])),
+      weights: spec.weights,
+    };
+    if (COUNT_TYPES.has(spec.type)) {
+      const pool = poolOf(app.fieldMeta(l, spec.y));
+      if (!pool?.denominator) throw new Error("Count models need a rate with counts.");
+      await app.ws.ensureFields([pool.numerator, pool.denominator]);
+      Object.assign(request, { events: byId(pool.numerator), base: byId(pool.denominator) });
+    }
+    const ids = new Set(items.map(featureId));
+    if (DISTANCE_KINDS.has(spec.weights.kind)) request.points = (await locations(l, items)).points;
+    else {
+      const graph = l.reference
+        ? (await app.ws.neighbors())[spec.weights.kind]
+        : l.library && l.meta.neighbors
+          ? (await app.ws.loadLayerNeighbors(l.id))[spec.weights.kind]
+          : app.ws.graphs.get(l.id + "-" + spec.weights.kind) ||
+            (await callStats({ type: "weights", features: items, rule: spec.weights.kind }));
+      request.neighbors = Object.fromEntries(items.map((f) => [featureId(f), (graph[featureId(f)] || []).filter((id) => ids.has(id))]));
+    }
+    return { ...request, modelType: spec.type };
+  }
+
   return {
     run,
     cancel,
+    exportDetails,
+    saveModelFields,
+    modelRequest,
+    locations,
     clearResults,
     renderControls,
     exportStats,

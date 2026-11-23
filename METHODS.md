@@ -3,8 +3,9 @@
 This page gives the formula behind each statistic in rumb, its source and the R
 code it is checked against. The code is in `src/stats/`, written from the
 publications cited here rather than ported from R or other GPL sources. The
-R reference values come from `scripts/reference-stats.R` (and, for Local
-Moran, `scripts/prepare-data.R`) and are compared in `tests/*.test.js`.
+R reference values come from `scripts/reference-stats.R` and
+`scripts/reference-models.R` (and, for Local Moran,
+`scripts/prepare-data.R`). They are compared in `tests/*.test.js`.
 
 ## Data the statistics use
 
@@ -167,6 +168,153 @@ centers:
 In Chromium, 999 replicates over 878 tracts take about 2.9 s at 25% and
 5.4 s at 50%.
 
+## Regression
+
+The outcome is the measure on the map, and the covariates are the ones you
+tick. An area needs every variable and an eligible neighbor; the inspector
+counts the rest out.
+
+**Ordinary least squares** (`stats/regression.js`):
+- β by Householder QR; standard errors from σ²(XᵀX)⁻¹ with
+  σ² = e'e / (n − k); t tests.
+- R² and adjusted R², and the F test.
+- Log-likelihood −n/2 (ln 2π + ln(e'e/n) + 1). AIC and Schwarz count σ
+  as a parameter, as R and spatialreg do (GeoDa does not).
+- The Belsley condition number: √(λmax/λmin) of XᵀX with unit-length
+  columns. Values over 30 suggest collinearity.
+- Each covariate's VIF: 1 / (1 − R²) on the others.
+- Jarque–Bera: n/6 (S² + (K − 3)²/4).
+- Breusch–Pagan: half the explained sum of squares of e²/σ̂² on X.
+  Koenker–Bassett: n R² of e² on X.
+
+**Spatial diagnostics** use the row-standardized weights W, with
+M = I − X(XᵀX)⁻¹Xᵀ and T = tr(WᵀW + WW). Every trace comes from p × p
+products over sparse weights.
+
+| Test | Statistic |
+| --- | --- |
+| Moran's I of the residuals | I = e'We / e'e; E[I] = tr(MW)/(n − k); Var[I] = [tr(MWMWᵀ) + tr(MWMW) + tr(MW)²] / ((n − k)(n − k + 2)) − E[I]² (Cliff & Ord 1981) |
+| LM-error | (e'We/σ²)² / T |
+| LM-lag | (e'Wy/σ²)² / nJ, with nJ = (WXβ)'M(WXβ)/σ² + T |
+| Robust LM-error | (e'We/σ² − T e'Wy/(σ² nJ))² / (T − T²/nJ) |
+| Robust LM-lag | (e'Wy/σ² − e'We/σ²)² / (nJ − T) |
+| SARMA | robust LM-lag + LM-error, on 2 df |
+
+The guide that follows the tests is Anselin's (2005):
+- keep OLS when neither LM test is significant;
+- otherwise pick the model whose test is;
+- when both are, pick the one whose robust test is.
+
+**Checks:**
+- `lm`, `lmtest::bptest`, and VIF and Jarque–Bera by formula, to 1e-10.
+- `spdep::lm.morantest` and `lm.RStests`, to 1e-9, over queen and
+  6-nearest weights.
+- The data: PLACES diabetes on four ACS covariates, over 869 tracts.
+
+**Spatial lag** (y = ρWy + Xβ + ε) and **spatial error** (y = Xβ + u,
+u = λWu + ε) models are fitted by maximum likelihood (`stats/spatial-models.js`;
+Ord 1975, Anselin 1988):
+- **Concentrated likelihood:** maximized by Brent's method on
+  (1/ω_min, 1/ω_max), with log|I − ρW| = Σ log(1 − ρω_i).
+- **Eigenvalues ω of W:** taken from the symmetric matrix D^-½ S D^-½
+  similar to the row-standardized W = D⁻¹S. So the raw weights S must be
+  symmetric: contiguity, a distance band, inverse distance or symmetric k
+  nearest. Up to 2,500 areas.
+- **Standard errors:** from the full information matrix, as spatialreg's
+  eigen method computes them. tr(AᵀA), with A = W(I − ρW)⁻¹, comes from
+  Neumann series over the sparse weights.
+- **Tests:** LR against OLS and Wald.
+- **Lag model impacts** (LeSage & Pace 2009):
+  - direct = β · mean(1/(1 − ρω_i));
+  - total = β/(1 − ρ);
+  - indirect = total − direct.
+
+**Check:**
+- `spatialreg::lagsarlm`, `errorsarlm` (`method = "eigen"`) and
+  `impacts`, over queen and distance-band weights.
+- ρ, λ and β to 1e-6, standard errors to 1e-5, and log-likelihood and
+  AIC to 1e-9.
+
+**Count models** (`stats/glm.js`) explain a rate's numerator with a log link
+and log(denominator) as the offset:
+- **Poisson** is fitted by IRLS.
+- **Negative binomial** (NB2, variance μ + μ²/θ) alternates IRLS for β
+  with Newton steps for θ by maximum likelihood, as `MASS::glm.nb` does.
+- **Output:**
+  - z tests;
+  - rate ratios exp(β), with Wald 95% limits;
+  - deviance against the intercept-only model;
+  - AIC (θ counts as a parameter);
+  - the Pearson χ²/df, as a guide to overdispersion;
+  - Moran's I of the Pearson residuals, with a 999-permutation p.
+
+**Check:**
+- `glm(family = poisson)` and `MASS::glm.nb` on drug overdose deaths by
+  county. R is fitted to full convergence (ε = 1e-14).
+- Coefficients to 1e-7; SEs, deviances, AIC and Pearson residuals to
+  1e-6; θ and its SE.
+
+## Access to facilities
+
+Access is measured from each area's center of population to the points of a
+facility layer (`stats/access.js`). Distances are straight lines in
+EPSG:3814, not travel times.
+
+| Field | Meaning |
+| --- | --- |
+| `near_*` | Miles to the nearest facility |
+| `in_*` | Facilities within a chosen distance |
+| `acc_*` | E2SFCA (Luo & Qi 2009) per 10,000 people |
+
+The E2SFCA ratio is built in two steps:
+1. Each facility j gets R_j = S_j / Σ_k G(d_kj) P_k, over the areas k
+   within the catchment d₀. S_j is 1 or a capacity field.
+2. Each area gets A_i = Σ_j G(d_ij) R_j.
+
+G is a step (1 inside d₀), or Dai's (2010) Gaussian
+(e^(−½(d/d₀)²) − e^(−½)) / (1 − e^(−½)).
+
+**Check:** R formulas on sf's distances, for every tract: pharmacies with
+Gaussian and step decay, and nursing-home beds.
+
+## Point patterns and density
+
+These statistics use the points of a layer and the region's outline
+(`stats/points.js`).
+
+- **Average nearest neighbor** (Clark & Evans 1954):
+  - R = mean nearest distance / (0.5 / √(n/A));
+  - z = (observed − expected) / (0.26136 / √(n²/A));
+  - A is the area of the outline in EPSG:3814.
+- **Ripley's L(d) − d** (Besag 1977):
+  - L(d) = √(K(d)/π), with K(d) = A · 2 · #{pairs within d} / (n(n − 1));
+  - there is no edge correction;
+  - the curve is compared with the range of simulated random patterns
+    inside the outline (99, or fewer for large layers).
+- **Centrography:**
+  - (weighted) mean center;
+  - median center by Weiszfeld's iteration;
+  - standard distance √(Σw d²/Σw);
+  - the standard deviational ellipse (Yuill 1971): its angle from
+    tan θ = ((Σx̃² − Σỹ²) + √((Σx̃² − Σỹ²)² + 4(Σx̃ỹ)²)) / (2Σx̃ỹ), and its
+    axes √2 · √(Σw(x̃ cos θ − ỹ sin θ)² / Σw) and the like (Wang, Shi &
+    Miao 2015).
+- **Density surfaces:**
+  - quartic kernel (Silverman 1986, eq. 4.5):
+    D = (3/π) Σ w_i (1 − (d_i/r)²)² / r², per square mile, on cells inside
+    the outline;
+  - the default radius is Esri's spatial variant of Silverman's rule,
+    0.9 · min(SD, √(1/ln 2) · Dm) · n^(−0.2), where SD is the standard
+    distance and Dm the median distance from the mean center.
+
+**Check:** R formulas on sf's projection, for health departments and for
+nursing homes weighted by beds, to 1e-6 or better:
+- the outline's area;
+- the nearest neighbor statistics;
+- L at four distances;
+- the centers, ellipse and bandwidth;
+- densities at sample points.
+
 ## Distributions and random numbers
 
 `stats/dist.js` computes:
@@ -190,6 +338,18 @@ where R's own upper tail shows rumb's value is the closer one.
 **Check:** their moments and a chi-square goodness-of-fit pass at fixed
 seeds.
 
+`stats/linalg.js` covers the linear algebra (Golub & Van Loan):
+- Householder QR;
+- triangular inverses;
+- Cholesky;
+- the eigenvalues of symmetric matrices, by Householder tridiagonalization
+  and implicit QR steps with Wilkinson shifts.
+
+`dist.js` also gives digamma and trigamma by their asymptotic series.
+
+**Check:** `qr.coef`, `chol2inv` and `eigen(symmetric = TRUE)`, to 1e-10.
+The eigen check runs on 869 tracts.
+
 ## References
 
 - Anselin, L. (1995). Local indicators of spatial association — LISA. *Geographical Analysis* 27(2), 93–115.
@@ -205,3 +365,19 @@ seeds.
 - Marshall, R. J. (1991). Mapping disease and mortality rates using empirical Bayes estimators. *Applied Statistics* 40(2), 283–294.
 - Ord, J. K., & Getis, A. (1995). Local spatial autocorrelation statistics: distributional issues and an application. *Geographical Analysis* 27(4), 286–306.
 - Benjamini, Y., & Hochberg, Y. (1995). Controlling the false discovery rate. *Journal of the Royal Statistical Society B* 57(1), 289–300.
+- Anselin, L. (1988). *Spatial Econometrics: Methods and Models*. Kluwer.
+- Anselin, L. (2005). *Exploring Spatial Data with GeoDa: A Workbook*. CSISS.
+- Anselin, L., Bera, A. K., Florax, R., & Yoon, M. J. (1996). Simple diagnostic tests for spatial dependence. *Regional Science and Urban Economics* 26, 77–104.
+- Besag, J. (1977). Comments on Ripley's paper. *Journal of the Royal Statistical Society B* 39, 193–195.
+- Clark, P. J., & Evans, F. C. (1954). Distance to nearest neighbor as a measure of spatial relationships in populations. *Ecology* 35(4), 445–453.
+- Dai, D. (2010). Black residential segregation, disparities in spatial access to health care facilities, and late-stage breast cancer diagnosis in metropolitan Detroit. *Health & Place* 16, 1038–1052.
+- Golub, G. H., & Van Loan, C. F. (2013). *Matrix Computations* (4th ed.). Johns Hopkins.
+- LeSage, J., & Pace, R. K. (2009). *Introduction to Spatial Econometrics*. CRC Press.
+- Luo, W., & Qi, Y. (2009). An enhanced two-step floating catchment area (E2SFCA) method for measuring spatial accessibility to primary care physicians. *Health & Place* 15, 1100–1107.
+- Luo, W., & Wang, F. (2003). Measures of spatial accessibility to health care in a GIS environment. *Environment and Planning B* 30, 865–884.
+- McCullagh, P., & Nelder, J. A. (1989). *Generalized Linear Models* (2nd ed.). Chapman & Hall.
+- Ord, K. (1975). Estimation methods for models of spatial interaction. *Journal of the American Statistical Association* 70, 120–126.
+- Silverman, B. W. (1986). *Density Estimation for Statistics and Data Analysis*. Chapman & Hall.
+- Venables, W. N., & Ripley, B. D. (2002). *Modern Applied Statistics with S* (4th ed.). Springer.
+- Wang, B., Shi, W., & Miao, Z. (2015). Confidence analysis of standard deviational ellipse and its extension into higher dimensional Euclidean space. *PLoS ONE* 10(3), e0118537.
+- Yuill, R. S. (1971). The standard deviational ellipse: an updated tool for spatial description. *Geografiska Annaler B* 53(1), 28–39.
