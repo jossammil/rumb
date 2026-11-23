@@ -1,7 +1,6 @@
 // The inspector card on the map: the selected feature's value and its margin
 // of error, the plain-language reading of its cluster, and the analysis
 // summary with the Moran scatterplot.
-import { fieldInfo } from "../catalog/catalog.js";
 import { number } from "../catalog/format.js";
 import { clusters } from "../map/classify.js";
 import { $, fill, h, icon, s } from "../ui/dom.js";
@@ -87,7 +86,9 @@ export function createInspector(app) {
     const l = app.layer(),
       graph = l.reference
         ? app.ws.neighborData?.[state.rule]
-        : app.ws.graphs.get(l.id + "-" + state.rule);
+        : l.library
+          ? app.ws.layerNeighbors(l.id)?.[state.rule]
+          : app.ws.graphs.get(l.id + "-" + state.rule);
     const adjacent = state.result?.byId?.[id]?.neighbors ?? graph?.[id];
     app.atlas.select({ layer: state.active, ids: id, neighbors: adjacent || [] });
     return adjacent;
@@ -95,11 +96,13 @@ export function createInspector(app) {
 
   function featureBlock({ feature, id, adjacent }) {
     const { state, ref } = app;
+    const l = app.layer(),
+      fields = app.searchFields(l);
     const props = feature.properties || {},
       measure = state.measure,
       record = state.result?.byId?.[id],
       // Margins of error and denominators apply to the reference layer's own fields.
-      info = app.layer().referenceFields ? fieldInfo(app.catalog, measure) : null,
+      info = app.fieldMeta(l, measure),
       unit = info?.unit || "";
     const value =
       measure && props[measure] != null
@@ -159,16 +162,16 @@ export function createInspector(app) {
           meaning,
       });
     }
-    const group = ref.groupField ? props[ref.groupField] : null;
+    const group = fields.groupField ? props[fields.groupField] : null;
     return h(
       "section",
       { class: "inspect-block" },
       h(
         "div",
         { class: "inspection-head" },
-        h("h3", { text: props[ref.labelField] ?? props.name ?? props.NAME ?? "Feature " + id }),
+        h("h3", { text: props[fields.labelField] ?? props.name ?? props.NAME ?? "Feature " + id }),
       ),
-      h("p", { class: "subtle", text: [group, props[ref.idField] ?? id].filter(Boolean).join(" · ") }),
+      h("p", { class: "subtle", text: [group, (fields.idField && props[fields.idField]) ?? id].filter(Boolean).join(" · ") }),
       h("div", { class: "score", text: value }),
       h("div", { class: "subtle", text: app.label(measure) }),
       h("dl", { class: "metrics" }, metrics),
@@ -247,8 +250,16 @@ export function createInspector(app) {
       feature && featureBlock({ feature, id: state.selected, adjacent }),
       state.result && analysisBlock(),
     );
-    // Reference-layer neighbors load on first selection.
-    if (state.selected && !app.ws.neighborData && app.layer().reference)
+    // Reference-layer and library neighbors load on first selection.
+    const l = app.layer();
+    if (state.selected && l.library && l.meta.neighbors && app.ws.layerNeighbors(l.id) === undefined)
+      app.ws
+        .loadLayerNeighbors(l.id)
+        .then(() => {
+          if (app.state.selected && app.state.inspector) render();
+        })
+        .catch(app.fail);
+    if (state.selected && !app.ws.neighborData && l.reference)
       app.ws
         .neighbors()
         .then(() => {

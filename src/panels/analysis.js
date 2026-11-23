@@ -1,6 +1,5 @@
 // Spatial analysis: the Find clusters controls, running Moran's I and LISA in
 // the statistics worker, and the statistics CSV.
-import { fieldInfo } from "../catalog/catalog.js";
 import { featureId, groups, isPolygon } from "../core/features.js";
 import { csvText } from "../data/csv.js";
 import { callStats } from "../stats/client.js";
@@ -50,12 +49,13 @@ export function createAnalysis(app) {
   function renderControls(fields) {
     const { state, ref } = app,
       l = app.layer(),
-      records = app.records();
+      records = app.records(),
+      { groupField } = app.searchFields(l);
     $("study").replaceChildren(
       ...options([
         ["all", l.id === ref.id ? ref.studyAll || "Entire layer" : "Entire layer"],
         ["extent", "Current map extent on run"],
-        ...groups(records, ref.groupField).map((g) => [ref.groupField + ":" + g, g]),
+        ...groups(records, groupField).map((g) => [groupField + ":" + g, g]),
       ]),
     );
     for (const [id, value] of Object.entries({
@@ -83,7 +83,12 @@ export function createAnalysis(app) {
         l = app.layer(),
         items = app.records(),
         cacheKey = l.id + "-" + state.rule;
-      let graph = l.reference ? (await app.ws.neighbors())[state.rule] : app.ws.graphs.get(cacheKey);
+      // Reference and library polygons ship their neighbors; other layers compute them once.
+      let graph = l.reference
+        ? (await app.ws.neighbors())[state.rule]
+        : l.library && l.meta.neighbors
+          ? (await app.ws.loadLayerNeighbors(l.id))[state.rule]
+          : app.ws.graphs.get(cacheKey);
       if (!graph) {
         graph = await callStats({ type: "weights", features: items, rule: state.rule }, control.signal);
         app.ws.graphs.set(cacheKey, graph);
@@ -95,17 +100,18 @@ export function createAnalysis(app) {
       const values = Object.fromEntries(items.map((f) => [featureId(f), f.properties[state.measure]]));
       let studyIds,
         studyName = $("study").selectedOptions[0].textContent;
-      const group = ref.groupField + ":";
-      if (ref.groupField && state.study.startsWith(group))
+      const { groupField } = app.searchFields(l);
+      const group = groupField + ":";
+      if (groupField && state.study.startsWith(group))
         studyIds = items
-          .filter((f) => f.properties[ref.groupField] === state.study.slice(group.length))
+          .filter((f) => f.properties[groupField] === state.study.slice(group.length))
           .map(featureId);
       if (state.study === "extent") {
         studyIds = app.atlas.visibleIds(state.active);
         studyName = "Selected map extent";
       }
       // Rates with a zero denominator are excluded rather than read as zero.
-      const universe = l.referenceFields ? fieldInfo(app.catalog, state.measure)?.universe : null;
+      const universe = app.fieldMeta(l, state.measure)?.universe;
       const denominators = universe
         ? Object.fromEntries(items.map((f) => [featureId(f), f.properties[universe]]))
         : undefined;

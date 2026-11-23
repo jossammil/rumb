@@ -47,6 +47,8 @@ export function defaults(catalog) {
     graticule: false,
     // Layers drawn on the map, bottom to top (core/stack.js); `active` is the focus.
     stack: [stackEntry(ref.id)],
+    // Census roads draw above area fills, or below them.
+    roads: "above",
   };
 }
 
@@ -63,7 +65,7 @@ export function layerViewDefaults(catalog, measure) {
  * rename used `tracts` and `baseMeasures` for what are now `reference` and
  * `referenceFields`; the map camera travels separately.
  */
-export function normalizeState(saved, catalog) {
+export function normalizeState(saved, catalog, isLibraryLayer = () => false) {
   const { camera, mapCamera, ...rest } = saved;
   const state = { ...defaults(catalog), ...rest };
   state.region = catalog.region.id;
@@ -76,6 +78,10 @@ export function normalizeState(saved, catalog) {
   state.comparisons ||= {};
   // Projects saved before layers could stack drew only the active layer.
   const known = new Set([referenceLayer(catalog).id, ...state.layers.map((l) => l.id)]);
-  state.stack = normalizeStack(saved.stack ?? [stackEntry(state.active)], state.active, (id) => known.has(id));
+  state.stack = normalizeStack(
+    saved.stack ?? [stackEntry(state.active)],
+    state.active,
+    (id) => known.has(id) || isLibraryLayer(id),
+  );
   return state;
 }

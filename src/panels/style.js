@@ -1,7 +1,8 @@
 // Map style: the measure, classification and palette controls, and drawing
-// the active layer's colors and legend.
-import { fieldInfo } from "../catalog/catalog.js";
+// every stacked layer's colors (each from its own view settings) and the focus
+// layer's legend.
 import { featureId } from "../core/features.js";
+import { layerViewDefaults } from "../core/state.js";
 import { neutralColors } from "../map/basemap-style.js";
 import { classify, classOf, clusters, palettes, ramp, UNIFORM_COLOR } from "../map/classify.js";
 import { classItems, renderLegend } from "../map/legend.js";
@@ -44,32 +45,53 @@ export function createStyle(app) {
     );
   }
 
-  /** Colors every feature, redraws the map and the legend, then the inspector. */
+  /** A layer's view settings: the state for the focus layer, else what it remembered. */
+  function viewOf(l) {
+    const { state } = app;
+    if (l.id === state.active) return state;
+    return (
+      state.layerViews[l.id] ||
+      layerViewDefaults(app.catalog, l.preferredMeasure || app.fieldList(l)[0] || "")
+    );
+  }
+
+  /** One layer's features with __rumb_id and __rumb_color, and how they were classed. */
+  function colorize(l, view) {
+    const features = l.collection.features,
+      measure = view.measure,
+      data = features.map((f) => f.properties?.[measure]);
+    const cuts = classify(data, view.count, view.classification),
+      colors = ramp(view.palette, cuts.length + 1);
+    const clustered = view.mode === "cluster" && view.result;
+    const { na, ns } = neutralColors();
+    const clusterColor = (key) => (key === "NS" ? ns : key === "NA" ? na : clusters[key][1]);
+    const uniform = l.meta?.style?.color || UNIFORM_COLOR;
+    const annotated = features.map((f) => {
+      const id = featureId(f),
+        v = f.properties?.[measure];
+      let color = !measure ? uniform : !Number.isFinite(v) ? na : colors[classOf(v, cuts)];
+      if (clustered) color = clusterColor(view.result.byId[id]?.cluster ?? "NA");
+      return { ...f, properties: { ...f.properties, __rumb_id: id, __rumb_color: color } };
+    });
+    return { annotated, data, cuts, colors, clustered, clusterColor, uniform, na };
+  }
+
+  /** Colors every stacked layer, redraws the map and the legend, then the inspector. */
   function draw() {
     const { state } = app;
     if (state.view === "compare") return;
-    const l = app.layer(),
-      features = l.collection.features,
-      data = features.map((f) => f.properties?.[state.measure]);
-    const cuts = classify(data, state.count, state.classification),
-      colors = ramp(state.palette, cuts.length + 1);
-    const clustered = state.mode === "cluster" && state.result;
-    const { na, ns } = neutralColors();
-    const clusterColor = (key) => (key === "NS" ? ns : key === "NA" ? na : clusters[key][1]);
+    let focus = null;
+    for (const e of state.stack) {
+      const l = app.layerById(e.id);
+      if (!l || !app.atlas.has(e.id)) continue;
+      const drawn = colorize(l, viewOf(l));
+      app.atlas.setData(e.id, drawn.annotated);
+      if (e.id === state.active) focus = drawn;
+    }
+    const l = app.layer();
     values.clear();
-    const annotated = features.map((f) => {
-      const id = featureId(f),
-        v = f.properties?.[state.measure];
-      values.set(id, f);
-      let color = !state.measure
-        ? UNIFORM_COLOR
-        : !Number.isFinite(v)
-          ? na
-          : colors[classOf(v, cuts)];
-      if (clustered) color = clusterColor(state.result.byId[id]?.cluster ?? "NA");
-      return { ...f, properties: { ...f.properties, __rumb_id: id, __rumb_color: color } };
-    });
-    app.atlas.setData(state.active, annotated);
+    for (const f of l.collection.features) values.set(featureId(f), f);
+    const { data, cuts, colors, clustered, clusterColor, uniform, na } = focus || colorize(l, state);
 
     const legend = $("legend");
     const action = state.result
@@ -85,12 +107,13 @@ export function createStyle(app) {
       items = Object.entries(clusters).map(([key, [text]]) => ({ text, color: clusterColor(key) }));
       renderLegend(legend, { kind: "categories", title: "Local Moran clusters", items, action });
     } else if (!state.measure) {
-      items = [{ color: UNIFORM_COLOR, text: "Features" }];
-      renderLegend(legend, { kind: "ramp", title: "Features", items, action });
+      const title = l.meta ? l.name : "Features";
+      items = [{ color: uniform, text: title }];
+      renderLegend(legend, { kind: l.meta ? "categories" : "ramp", title, items, action });
     } else {
       items = classItems(colors, cuts, na);
       const valid = data.filter(Number.isFinite);
-      const unit = l.referenceFields ? fieldInfo(app.catalog, state.measure)?.unit || "" : "";
+      const unit = app.fieldMeta(l, state.measure)?.unit || "";
       renderLegend(legend, {
         kind: "ramp",
         title: app.label(state.measure),

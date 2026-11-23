@@ -103,14 +103,17 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
     return ids.length ? map.queryRenderedFeatures(point, { layers: ids }) : [];
   };
   map.on("click", (e) => {
-    const f = hits(e.point)[0];
-    if (f)
-      onSelect({
-        layer: pickable.get(f.layer.id),
-        id: String(f.properties.__rumb_id),
-        lngLat: e.lngLat,
-        additive: e.originalEvent?.shiftKey || false,
-      });
+    // Every layer hit at the point, top first, one feature per layer.
+    const seen = new Set();
+    const found = [];
+    for (const f of hits(e.point)) {
+      const layer = pickable.get(f.layer.id);
+      if (seen.has(layer)) continue;
+      seen.add(layer);
+      found.push({ layer, id: String(f.properties.__rumb_id) });
+    }
+    if (found.length)
+      onSelect({ ...found[0], hits: found, lngLat: e.lngLat, additive: e.originalEvent?.shiftKey || false });
   });
   map.on("mousemove", (e) => {
     map.getCanvas().style.cursor = hits(e.point).length ? "pointer" : "";
@@ -218,6 +221,11 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
     drawn: (id) => api.visibleIds(id).length > 0,
     camera() {
       return { center: map.getCenter().toArray(), zoom: map.getZoom() };
+    },
+    /** Draws the roads above area fills ("above") or below them ("below"). */
+    setRoads(position) {
+      for (const id of ["roads-secondary", "roads-primary"])
+        if (map.getLayer(id)) map.moveLayer(id, position === "below" ? "cmp-fill" : "graticule");
     },
     /** Shows or hides the 1° grid over the region's backdrop. */
     graticule(on) {

@@ -7,11 +7,11 @@ import "./styles/shell.css";
 import "./styles/map.css";
 import "./styles/panels.css";
 import "./styles/themes.css";
-import { fieldLabel, loadCatalog } from "./catalog/catalog.js";
+import { fieldInfo, fieldLabel, loadCatalog } from "./catalog/catalog.js";
 import { number } from "./catalog/format.js";
 import { bindCommands, COMMANDS } from "./core/commands.js";
 import { featureId } from "./core/features.js";
-import { drawnIds, stackEntry } from "./core/stack.js";
+import { drawnIds, moveLayer, setVisible, stackEntry, withLayer, withoutLayer } from "./core/stack.js";
 import { SHORTCUTS, shortcutFor } from "./core/keys.js";
 import { THEMES } from "./core/settings.js";
 import { defaults, LAYER_VIEW_KEYS, layerViewDefaults } from "./core/state.js";
@@ -26,7 +26,7 @@ import { createCompare } from "./panels/compare.js";
 import { createFiles } from "./panels/files.js";
 import { findFeatures, openFind } from "./panels/find.js";
 import { createInspector } from "./panels/inspector.js";
-import { renderLayers } from "./panels/layers.js";
+import { describeLayer, openLibrary, renderLayers } from "./panels/layers.js";
 import { createStyle } from "./panels/style.js";
 import { createWorkbench } from "./panels/workbench.js";
 import { $, addIcons, on, report, toast } from "./ui/dom.js";
@@ -79,11 +79,32 @@ async function start() {
     notify: (message, options = {}) => toast(message, options === true ? { error: true } : options),
     fail: report,
     status,
-    label: (field) => fieldLabel(catalog, field),
+    /** A field's label on the focus layer (or another layer). */
+    label: (field, l = app.layer()) => fieldLabel(catalog, field, l?.meta),
+    /** Catalog metadata for a field of a layer: library fields, or the reference's own. */
+    fieldMeta(l, field) {
+      if (l?.meta) return l.meta.fields?.[field];
+      return l?.referenceFields ? fieldInfo(catalog, field) : undefined;
+    },
+    /** Fields that name, group and identify a layer's features (search, inspector, study areas). */
+    searchFields(l) {
+      if (l?.meta) return { labelField: l.meta.labelField, groupField: l.meta.placeField, idField: null };
+      return { labelField: ws.ref.labelField, groupField: ws.ref.groupField, idField: ws.ref.idField };
+    },
     fieldList: (l) => ws.fieldList(l),
     allLayers: () => [ws.referenceView(), ...store.state.layers],
-    /** A layer by id: the reference layer or a query layer. */
-    layerById: (id) => (id === ws.ref.id ? ws.referenceView() : store.state.layers.find((l) => l.id === id)),
+    /** A layer by id: the reference layer, a query layer or a loaded library layer. */
+    layerById(id) {
+      if (id === ws.ref.id) return ws.referenceView();
+      const query = store.state.layers.find((l) => l.id === id);
+      if (query) return query;
+      const meta = ws.meta(id),
+        collection = ws.layerCollection(id);
+      if (!meta || !collection) return undefined;
+      if (libraryViews.get(id)?.collection !== collection)
+        libraryViews.set(id, { id, name: meta.name, collection, library: true, meta });
+      return libraryViews.get(id);
+    },
     /** The focus layer: the one the style panel, inspector and analysis act on. */
     layer: () => app.layerById(store.state.active),
     /** Makes the map's layers match state.stack (sources, order, visibility). */
@@ -94,13 +115,59 @@ async function start() {
       for (const e of stack) {
         const l = app.layerById(e.id);
         if (!l) continue;
-        if (!app.atlas.has(e.id)) app.atlas.addLayer(e.id, l.id === ws.ref.id ? "polygon" : kindOf(l.collection.features));
+        if (!app.atlas.has(e.id))
+          app.atlas.addLayer(e.id, l.meta?.geometry || (l.id === ws.ref.id ? "polygon" : kindOf(l.collection.features)));
         app.atlas.setVisible(e.id, e.visible);
         app.mapped.add(e.id);
       }
       app.atlas.syncStack(drawnIds(stack));
+      app.atlas.setRoads(store.state.roads);
     },
     mapped: new Set(),
+    /** Reads the library layers a stack needs (after a restore); drops any that are gone. */
+    async loadStack() {
+      const missing = [];
+      for (const e of store.state.stack)
+        if (!app.layerById(e.id))
+          await ws.loadLayer(e.id).catch(() => missing.push(e.id));
+      if (missing.length) {
+        let { stack, active } = store.state;
+        for (const id of missing) stack = withoutLayer(stack, id);
+        if (missing.includes(active)) active = stack[0]?.id || ws.ref.id;
+        store.set({ stack: stack.length ? stack : [stackEntry(ws.ref.id)], active });
+        app.notify("Some layers in this project are not available: " + missing.join(", ") + ".");
+      }
+    },
+    /** Reads a library layer, puts it on top of the map and makes it the focus. */
+    async addLibraryLayer(id) {
+      const { meta } = await ws.loadLayer(id);
+      focusLayer(id);
+      app.notify("Added " + meta.name + " to the map.");
+    },
+    /** Takes a layer off the map. The focus moves to the layer below, or above. */
+    removeFromStack(id) {
+      const { stack, active } = store.state;
+      if (stack.length < 2) return app.notify("The map needs at least one layer.");
+      const i = stack.findIndex((e) => e.id === id);
+      const next = withoutLayer(stack, id);
+      if (id === active) {
+        store.set({ stack: next });
+        focusLayer(next[Math.max(0, i - 1)].id);
+      } else {
+        store.set({ stack: next });
+        renderAll();
+      }
+    },
+    moveInStack(id, delta) {
+      store.set({ stack: moveLayer(store.state.stack, id, delta) });
+      renderAll();
+    },
+    toggleLayer(id) {
+      const e = store.state.stack.find((x) => x.id === id);
+      if (!e || id === store.state.active) return;
+      store.set({ stack: setVisible(store.state.stack, id, !e.visible) });
+      renderAll();
+    },
     records: () => app.layer().collection.features,
     idleStatus() {
       if (store.state.view === "compare") status($("cmp-count").textContent);
@@ -136,7 +203,8 @@ async function start() {
     draw: () => app.style.draw(),
     renderInspector: () => app.inspector.render(),
     setView,
-    showLayer,
+    focusLayer,
+    showLayer: (id) => focusLayer(id, { fit: true }),
     selectFeature(id) {
       if (!app.values.has(String(id))) return;
       store.set({ selected: String(id), inspector: true });
@@ -150,7 +218,7 @@ async function start() {
     /** Adds a mapped query result and shows it. */
     addLayer(layer, sql) {
       store.set({ layers: [...store.state.layers, layer], sql });
-      showLayer(layer.id);
+      focusLayer(layer.id, { fit: true });
       app.notify("Added " + layer.name + " to the map.");
     },
   };
@@ -166,7 +234,14 @@ async function start() {
     app.setTitles(
       l.id === ref.id
         ? { title: ref.title, subtitle: ref.subtitle, credit: ref.credit, context: ref.context || ref.subtitle }
-        : {
+        : l.meta
+          ? {
+              title: l.name,
+              subtitle: describeLayer(l, ref) + " · " + l.meta.group,
+              credit: l.meta.credit,
+              context: l.meta.credit,
+            }
+          : {
             title: l.name,
             subtitle:
               number(l.collection.features.length) + " features · " + (l.reference ? ref.name : "Local query layer"),
@@ -210,30 +285,36 @@ async function start() {
     }
   }
 
-  /** Switches the active layer, remembering each layer's own view settings. */
-  function showLayer(id, fit = true) {
+  /**
+   * Makes a layer the focus (adding it on top of the stack if needed),
+   * remembering each layer's own view settings.
+   */
+  function focusLayer(id, { fit = false } = {}) {
     app.analysis.cancel();
     const { state } = app;
-    const layerViews = {
-      ...state.layerViews,
-      [state.active]: Object.fromEntries(LAYER_VIEW_KEYS.map((key) => [key, state[key]])),
-    };
-    // Until layers can be stacked from the layer list, the focus layer is the one drawn.
-    store.set({ active: id, compareLayer: id, stack: [stackEntry(id)] });
-    const l = app.layer();
-    const saved = layerViews[id] || layerViewDefaults(catalog, l.preferredMeasure || app.fieldList(l)[0] || "");
+    const layerViews = { ...state.layerViews };
+    if (id !== state.active)
+      layerViews[state.active] = Object.fromEntries(LAYER_VIEW_KEYS.map((key) => [key, state[key]]));
+    const l = app.layerById(id);
+    const saved =
+      id === state.active
+        ? {}
+        : layerViews[id] || layerViewDefaults(catalog, l.preferredMeasure || app.fieldList(l)[0] || "");
     delete layerViews[id];
-    store.set({ ...saved, layerViews });
+    store.set({ active: id, compareLayer: id, stack: withLayer(state.stack, id), ...saved, layerViews });
     setView("map");
     if (fit) app.atlas.fit(l.collection);
   }
+  const libraryViews = new Map();
 
   app.atlas = initMap({
     region: catalog.region,
     regionPath: catalog.path,
-    onSelect: ({ layer, id }) => {
-      if (layer === "cmp") app.compare.toggle(id);
-      else if (layer === store.state.active) app.selectFeature(id);
+    onSelect: ({ layer, id, hits }) => {
+      if (layer === "cmp") return app.compare.toggle(id);
+      // The focus layer's feature under the cursor, even when another layer is on top.
+      const own = hits.find((x) => x.layer === store.state.active);
+      if (own) app.selectFeature(own.id);
     },
     onPointer: (lngLat) => app.statusbar?.position(lngLat),
   });
@@ -292,6 +373,14 @@ async function start() {
   };
 }
 
+/** Moves the focus to the next shown layer below (-1) or above (+1) in the stack. */
+function stepFocus(app, delta) {
+  const shown = app.state.stack.filter((e) => e.visible);
+  const i = shown.findIndex((e) => e.id === app.state.active);
+  const next = shown[i + delta];
+  if (next) app.focusLayer(next.id);
+}
+
 /** Shows a sidebar section (layers, style, analyze) and focuses its first control. */
 function focusSection(app, name) {
   if (app.state.view !== "map") app.setView("map");
@@ -306,7 +395,11 @@ function wire(app) {
   const { store } = app;
   const inMap = () => app.state.view === "map" || app.state.view === "compare";
   const runCommand = bindCommands({
-    palette: () => palette.open(),
+    palette: () => {
+      // The library loads in the background so its layers can be offered.
+      app.ws.library().then((lib) => (library = lib), () => {});
+      palette.open();
+    },
     "view-map": () => app.setView("map"),
     "view-compare": () => app.setView("compare"),
     "view-data": () => app.setView("data"),
@@ -343,6 +436,13 @@ function wire(app) {
     coords: () => update({ coords: getSettings().coords === "dms" ? "dd" : "dms" }),
     help: () => openHelp(app.version),
     graticule: () => store.set({ graticule: !app.state.graticule }),
+    "add-layer": () => openLibrary(app),
+    "roads-position": () => {
+      store.set({ roads: app.state.roads === "below" ? "above" : "below" });
+      app.renderAll();
+    },
+    "layer-down": () => stepFocus(app, -1),
+    "layer-up": () => stepFocus(app, 1),
   });
   app.runCommand = runCommand;
 
@@ -354,6 +454,7 @@ function wire(app) {
     "clear-selection": () => !!app.state.selected,
     offline: () => !!app.offline,
   };
+  let library = null;
   const palette = createPalette((query) => {
     const { state } = app;
     const items = COMMANDS.filter((c) => c.id !== "palette" && (available[c.id]?.() ?? true)).map((c) => ({
@@ -362,7 +463,7 @@ function wire(app) {
       keys: keyOf[c.id],
       run: () => runCommand(c.id),
     }));
-    for (const l of app.allLayers())
+    for (const l of [...app.allLayers(), ...state.stack.map((e) => app.layerById(e.id)).filter((l) => l?.library)])
       items.push({
         group: "Layer",
         label: l.name,
@@ -381,16 +482,24 @@ function wire(app) {
       });
     for (const t of THEMES)
       items.push({ group: "Theme", label: t.name, hint: t.note, run: () => update({ theme: t.id }) });
+    for (const meta of library?.layers || [])
+      if (!state.stack.some((e) => e.id === meta.id))
+        items.push({
+          group: "Add layer",
+          label: meta.name,
+          hint: meta.group,
+          run: () => app.perform(null, () => app.addLibraryLayer(meta.id)),
+        });
     const ranked = rankItems(items, query, 40);
     if (query.trim().length < 2) return ranked;
-    const ref = app.ref;
-    const places = findFeatures(app.records(), query, ref, 8).map((f) => {
+    const fields = app.searchFields(app.layer());
+    const places = findFeatures(app.records(), query, fields, 8).map((f) => {
       const id = featureId(f),
         p = f.properties || {};
       return {
         group: "Place",
-        label: String(p[ref.labelField] || id),
-        hint: [p[ref.groupField], id].filter(Boolean).join(" · "),
+        label: String(p[fields.labelField] || id),
+        hint: [p[fields.groupField], id].filter(Boolean).join(" · "),
         run: () => {
           if (app.state.view !== "map") app.setView("map");
           app.selectFeature(id);
@@ -403,8 +512,13 @@ function wire(app) {
 
   for (const b of document.querySelectorAll("#nav button")) on(b, "click", () => app.setView(b.dataset.view));
   for (const b of document.querySelectorAll(".rail [data-tool]")) on(b, "click", () => runCommand(b.dataset.tool));
-  for (const id of ["open-palette", "sb-palette"]) on(id, "click", () => palette.open());
+  for (const id of ["open-palette", "sb-palette"]) on(id, "click", () => runCommand("palette"));
   for (const id of ["add-data", "import-data"]) on(id, "click", () => $("file-picker").click());
+  on("add-layer", "click", () => openLibrary(app));
+  on("roads-above", "change", (ev) => {
+    store.set({ roads: ev.target.checked ? "above" : "below" });
+    app.renderAll();
+  });
   on("find-feature", "click", () => openFind(app));
   on("file-picker", "change", (event) => {
     const files = [...event.target.files];

@@ -391,6 +391,59 @@ await check("mobile", async () => {
   await p.context().close();
 });
 
+await check("layers", async () => {
+  const p = await openPage();
+  await p.click("#add-layer");
+  await p.click('[data-library="fire_stations_2020"]');
+  await waitText("#toast", /Added Fire stations/, p);
+  await p.keyboard.press("n");
+  await p.click('[data-library="chr_counties_2025"]');
+  await waitText("#toast", /Added County Health Rankings/, p);
+  const ids = () => p.evaluate(() => window.rumb.state.stack.map((e) => e.id + (e.visible ? "" : ":hidden")).join());
+  expect((await ids()) === "tracts,fire_stations_2020,chr_counties_2025", "stack " + (await ids()));
+  // The newest layer is the focus, so its measures fill the style panel.
+  expect((await p.inputValue("#measure")) === "v085_rawvalue", "County Health Rankings lead measure");
+  await waitText("#legend", "Uninsured", p);
+  // Areas draw below the roads and points above them, whatever the stack order.
+  const bands = await p.evaluate(() => {
+    const order = window.rumb.map.getStyle().layers.map((l) => l.id);
+    return ["lyr-tracts-fill", "lyr-chr_counties_2025-fill", "roads-primary", "lyr-fire_stations_2020-point"].map((id) =>
+      order.indexOf(id),
+    );
+  });
+  expect(bands.every((v, i) => v >= 0 && (i === 0 || v > bands[i - 1])), "layer bands " + bands);
+  await p.click('[data-row="chr_counties_2025"] [aria-label^="Move down"]');
+  await p.click('[data-row="chr_counties_2025"] [aria-label^="Move down"]');
+  await p.click('[data-row="fire_stations_2020"] .eye');
+  expect((await ids()) === "chr_counties_2025,tracts,fire_stations_2020:hidden", "moved and hidden " + (await ids()));
+  expect(
+    (await p.evaluate(() => window.rumb.map.getLayoutProperty("lyr-fire_stations_2020-point", "visibility"))) === "none",
+    "hidden layer still drawn",
+  );
+  // The tracts keep their statistics with other layers on the map.
+  await p.click('[data-layer="tracts"]');
+  expect((await p.inputValue("#measure")) === "poverty_pct", "tract measure restored");
+  await p.click("#analyze");
+  await waitText("#inspect-panel", "0.2768", p);
+  await p.click('[data-view="compare"]');
+  await waitText("#cmp-count", "870 of 878 areas ranked", p);
+  await p.click('[data-view="map"]');
+  // A project keeps the stack and carries the library layers' files.
+  const saved = await download("#save-project", p);
+  const q = await openPage();
+  const fetched = [];
+  q.on("request", (r) => fetched.push(r.url()));
+  await restore(q, saved, "stack.rumb");
+  const back = await q.evaluate(() => window.rumb.state.stack.map((e) => e.id + (e.visible ? "" : ":hidden")).join());
+  expect(back === "chr_counties_2025,tracts,fire_stations_2020:hidden", "restored stack " + back);
+  await q.click('[data-layer="chr_counties_2025"]');
+  await waitText("#legend", "Uninsured", q);
+  expect(!fetched.some((u) => /chr_counties_2025\.geojson|fire_stations_2020\.geojson/.test(u)), "layer files fetched again");
+  await shot("layers", q);
+  await p.context().close();
+  await q.context().close();
+});
+
 // ---- compare -----------------------------------------------------------------
 await check("compare", async () => {
   const p = await openPage();
