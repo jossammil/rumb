@@ -213,15 +213,19 @@ The spatial query returned one result per tract and counted 39,670 points inside
 - The scan is purely spatial (no space-time), and there is no geographically
   weighted regression or Bayesian disease mapping. Distances, access
   included, are straight lines in the state's projection, not travel times.
-- Spatial lag and error models need symmetric weights (not plain k nearest)
-  and at most 2,500 areas, since they use the weights' eigenvalues. Ripley's
+- Spatial lag and error models need symmetric weights (not plain k nearest).
+  Up to 2,500 areas they use the weights' eigenvalues; above, a Chebyshev
+  approximation of the log-determinant with numerical-Hessian standard
+  errors; they refuse above 20,000 areas. Ripley's
   L has no edge correction; the random envelope, drawn inside the same
   outline, carries the same bias.
 - CDC PLACES values are model-based; patterns in them partly reflect CDC's
   model, and results on them say so. County Health Rankings suppresses
   death counts under 10, so those counties drop out of smoothing and scans.
 - A spatial scan of tracts at windows up to 50% of the population takes
-  about 5 seconds; the default is 25%.
+  about 5 seconds; the default is 25%. A scan past its work budget (window
+  entries × replicates, 2 billion) does not run and suggests a radius or fewer
+  replicates (999 or 99) instead; large states usually need a radius.
 - The library's older layers keep their original vintages. Older MARIS
   districts get neighbors from tolerances (0.5 m), not exact shared vertices,
   and 911 service areas overlap.

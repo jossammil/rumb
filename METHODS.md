@@ -158,6 +158,10 @@ The scan is the Poisson model, purely spatial (Kulldorff 1997):
   (R + 1). Each replicate redistributes C cases in proportion to population
   by a seeded multinomial draw.
 - **Relative risk:** (c / E) / ((C − c) / (C − E)).
+- **Work budget:** window entries × replicates up to 2 billion. A larger
+  scan does not run; it suggests the widest whole-mile radius that fits, or
+  fewer replicates (999 or 99). Windows are built in two passes (sizes, then members) into
+  typed arrays.
 
 **Check:** `smerc::scan.test` (Poisson, multinomial) on the same projected
 centers:
@@ -223,6 +227,14 @@ Ord 1975, Anselin 1988):
 - **Standard errors:** from the full information matrix, as spatialreg's
   eigen method computes them. tr(AᵀA), with A = W(I − ρW)⁻¹, comes from
   Neumann series over the sparse weights.
+- **Above 2,500 areas** (up to 20,000):
+  - log|I − ρW| by the Chebyshev approximation of order 7 (Pace & LeSage
+    2004) on (−1, 0.999), with exact traces of the powers of the same
+    symmetric matrix: tr S^2m = ‖S^m‖²_F and tr S^(2m+1) = ⟨S^m, S^(m+1)⟩;
+  - standard errors from a numerical Hessian of the log-likelihood
+    concentrated on σ²;
+  - impacts from the power series Σ ρ^j tr W^j, with exact traces to
+    order 8 and seeded Monte Carlo traces beyond.
 - **Tests:** LR against OLS and Wald.
 - **Lag model impacts** (LeSage & Pace 2009):
   - direct = β · mean(1/(1 − ρω_i));
@@ -234,6 +246,10 @@ Ord 1975, Anselin 1988):
   `impacts`, over queen and distance-band weights.
 - ρ, λ and β to 1e-6, standard errors to 1e-5, and log-likelihood and
   AIC to 1e-9.
+- Above 2,500 areas: `method = "Chebyshev"` (`cheb_q = 7`) on a 60 × 60
+  rook lattice with synthetic data. ρ, λ, β and LR to 1e-6, log-likelihood
+  and AIC to 1e-9, standard errors to 1e-3 (both are numerical Hessians),
+  and direct and indirect impacts to 1e-5.
 
 **Count models** (`stats/glm.js`) explain a rate's numerator with a log link
 and log(denominator) as the offset:
@@ -368,6 +384,7 @@ The eigen check runs on 869 tracts.
 - Anselin, L. (1988). *Spatial Econometrics: Methods and Models*. Kluwer.
 - Anselin, L. (2005). *Exploring Spatial Data with GeoDa: A Workbook*. CSISS.
 - Anselin, L., Bera, A. K., Florax, R., & Yoon, M. J. (1996). Simple diagnostic tests for spatial dependence. *Regional Science and Urban Economics* 26, 77–104.
+- Barry, R. P., & Pace, R. K. (1999). Monte Carlo estimates of the log determinant of large sparse matrices. *Linear Algebra and its Applications* 289, 41–54.
 - Besag, J. (1977). Comments on Ripley's paper. *Journal of the Royal Statistical Society B* 39, 193–195.
 - Clark, P. J., & Evans, F. C. (1954). Distance to nearest neighbor as a measure of spatial relationships in populations. *Ecology* 35(4), 445–453.
 - Dai, D. (2010). Black residential segregation, disparities in spatial access to health care facilities, and late-stage breast cancer diagnosis in metropolitan Detroit. *Health & Place* 16, 1038–1052.
@@ -377,6 +394,7 @@ The eigen check runs on 869 tracts.
 - Luo, W., & Wang, F. (2003). Measures of spatial accessibility to health care in a GIS environment. *Environment and Planning B* 30, 865–884.
 - McCullagh, P., & Nelder, J. A. (1989). *Generalized Linear Models* (2nd ed.). Chapman & Hall.
 - Ord, K. (1975). Estimation methods for models of spatial interaction. *Journal of the American Statistical Association* 70, 120–126.
+- Pace, R. K., & LeSage, J. P. (2004). Chebyshev approximation of log-determinants of spatial weight matrices. *Computational Statistics & Data Analysis* 45(2), 179–196.
 - Silverman, B. W. (1986). *Density Estimation for Statistics and Data Analysis*. Chapman & Hall.
 - Venables, W. N., & Ripley, B. D. (2002). *Modern Applied Statistics with S* (4th ed.). Springer.
 - Wang, B., Shi, W., & Miao, Z. (2015). Confidence analysis of standard deviational ellipse and its extension into higher dimensional Euclidean space. *PLoS ONE* 10(3), e0118537.
