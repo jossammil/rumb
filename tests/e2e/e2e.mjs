@@ -1055,6 +1055,17 @@ await check("offline", async () => {
   await p.keyboard.press("1");
   await p.click("#analyze");
   await waitText("#inspect-panel", "0.2768", p);
+  // The library, its layers, the roads, filters and the report work offline too.
+  await p.keyboard.press("n");
+  await p.click('[data-library="fire_stations_2020"]');
+  await waitText("#toast", "Added Fire stations", p);
+  await p.waitForFunction(() => window.rumb.map.querySourceFeatures("roads").length > 0);
+  await p.evaluate(() => window.rumb.app.filter.set({ kind: "radius", center: [-90.18, 32.3], miles: 25 }));
+  await waitText('[data-count="fire_stations_2020"]', "88 of", p);
+  await p.evaluate(() => (window.print = () => (window.__printed = true)));
+  await p.keyboard.press("p");
+  await p.click("#report-print");
+  await p.waitForFunction(() => window.__printed === true);
   await ctx.setOffline(false);
   await ctx.close();
 });
