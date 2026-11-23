@@ -1,5 +1,5 @@
-// The statistics worker: Moran analyses, hot spots, polygon contiguity and
-// buffer outlines, off the main thread.
+// The statistics worker: Moran analyses, hot spots, spatial scans, polygon
+// contiguity and buffer outlines, off the main thread.
 import { analyze } from "./stats.js";
 
 self.onmessage = async ({ data }) => {
@@ -7,7 +7,10 @@ self.onmessage = async ({ data }) => {
   try {
     let result;
     if (type === "analyze") result = await analyze(data);
-    else if (type === "bilisa" || type === "eblisa") {
+    else if (type === "scan") {
+      const { scanAreas } = await import("./scan.js");
+      result = scanAreas({ ...data, onProgress: (progress) => self.postMessage({ id, progress }) });
+    } else if (type === "bilisa" || type === "eblisa") {
       const { bivariate, ebMoran } = await import("./variants.js");
       result = await (type === "bilisa" ? bivariate(data) : ebMoran(data));
     } else if (type === "gistar") {

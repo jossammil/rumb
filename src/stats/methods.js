@@ -242,8 +242,129 @@ METHODS.eblisa = {
   reading: false,
 };
 
+// Scan clusters by rank: reds for excess, blues for deficits, lightest last.
+const HIGH = ["#b2182b", "#d6604d", "#f4a582", "#fddbc7"],
+  LOW = ["#2166ac", "#4393c3", "#92c5de", "#d1e5f0"];
+const scanClasses = (result) => {
+  const out = {};
+  const list = result?.clusters?.length ? result.clusters : [1, 2, 3].map((rank) => ({ rank, cases: 1, expected: 0 }));
+  for (const k of list) {
+    const high = k.cases >= k.expected,
+      color = (high ? HIGH : LOW)[Math.min(k.rank, 4) - 1];
+    const kind = (high ? "High" : "Low") + "-rate";
+    out["K" + k.rank] = [
+      (k.rank === 1 ? "Most likely " + kind.toLowerCase() + " cluster" : kind + " cluster " + k.rank) +
+        (k.p != null ? " (p " + fixed(k.p, 3) + ")" : ""),
+      color,
+    ];
+  }
+  out.NS = ["Not in a reported cluster", "#c9d0cc"];
+  out.NA = ["Unavailable", "#8a918b"];
+  return out;
+};
+const clusterOf = (result, record) => result?.clusters?.find((k) => "K" + k.rank === record?.cluster);
+const miles = (m) => number(m / 1609.344, 1) + " mi";
+
+METHODS.scan = {
+  id: "scan",
+  label: "Rate clusters (Kulldorff spatial scan)",
+  title: "Spatial scan",
+  legendTitle: "Spatial scan clusters",
+  modeLabel: "Clusters",
+  short: "scan clusters",
+  request: "scan",
+  file: "scan-clusters.csv",
+  classes: scanClasses,
+  swatches: ["K1", "K2", "K3"],
+  classOf: (record) => record?.cluster ?? "NA",
+  featureRows: (record, result) => {
+    const k = clusterOf(result, record);
+    return [
+      ["Cases", number(record.cases, 0)],
+      ["Expected", fixed(record.expected, 1)],
+      ["Observed ÷ expected", fixed(record.cases / record.expected, 2)],
+      ["Cluster", k ? (k.rank === 1 ? "Most likely" : "Secondary " + k.rank) + " · p " + fixed(k.p, 3) : "None reported"],
+    ];
+  },
+  summaryRows: (result) => [
+    ...result.clusters.map((k) => [
+      (k.rank === 1 ? "Most likely" : "Cluster " + k.rank),
+      k.members.length + " areas · O/E " + fixed(k.ratio, 2) + " · RR " + fixed(k.relativeRisk, 2) + " · LLR " +
+        fixed(k.llr, 2) + " · p " + fixed(k.p, 3),
+    ]),
+    ["Cases", number(result.total.cases, 0) + " in " + number(result.n, 0) + " areas"],
+    ...(result.missing ? [["Left out", number(result.missing, 0) + " areas without counts"]] : []),
+  ],
+  reportText: (result) => {
+    const k = result.clusters[0];
+    return k
+      ? "Most likely cluster: " + k.members.length + " areas, RR " + fixed(k.relativeRisk, 2) + ", p " + fixed(k.p, 3) +
+          (result.clusters.length > 1 ? " · " + (result.clusters.length - 1) + " secondary" : "") + " · " + result.studyName
+      : "No cluster · " + result.studyName;
+  },
+  rule: () => "secondary clusters at p ≤ 0.05",
+  ruleText: (result) =>
+    "Windows up to " + Math.round(result.maxPop * 100) + "% of the population" +
+    (result.maxMiles ? " and " + result.maxMiles + " mi" : "") +
+    " · scanning for " + (result.direction === "both" ? "high and low" : result.direction) + " rates",
+  csvFields: [
+    "GEOID_or_feature_ID",
+    "measure",
+    "cases",
+    "population",
+    "expected",
+    "cluster",
+    "cluster_llr",
+    "cluster_relative_risk",
+    "cluster_p",
+    "cluster_radius_mi",
+    "cluster_center",
+    "reason",
+    "study_area",
+    "replicates",
+    "seed",
+    "max_population_share",
+    "max_radius_mi",
+    "direction",
+    "method",
+  ],
+  csvRow: (id, r, result, state) => {
+    const k = clusterOf(result, r);
+    return [
+      id,
+      state.measure,
+      r.cases,
+      r.population,
+      r.expected,
+      r.cluster,
+      k?.llr,
+      k?.relativeRisk,
+      k?.p,
+      k ? k.radius / 1609.344 : null,
+      k?.center,
+      r.reason,
+      result.studyName,
+      result.permutations,
+      result.seed,
+      result.maxPop,
+      result.maxMiles,
+      result.direction,
+      result.methodNote,
+    ];
+  },
+  /** What the analysis was built on, for the summary and notes. */
+  basis: (result) => "Windows around " + (result.from || "area centers"),
+  trials: "replicates",
+  scatter: false,
+  reading: false,
+  miles,
+};
+
 /** The methods in the order the menu lists them. */
 export const METHOD_LIST = Object.values(METHODS);
+
+/** What a result was built on: its weights, or the method's own basis. */
+export const basisOf = (result, rule) => methodOf(result).basis?.(result) || result?.weights?.label || rule + " neighbors";
 
 /** The method that made a result (Local Moran for results saved before methods). */
 export const methodOf = (result) => METHODS[result?.method] || METHODS.lisa;

@@ -178,7 +178,31 @@ out$rates <- list(
   tracts = list(ids = I(connected_ids), seb = ebl$est, window = window)
 )
 
-out$packages <- list(sf = as.character(packageVersion("sf")), spdep = as.character(packageVersion("spdep")))
+# ---- Kulldorff's spatial scan (Poisson) with smerc ---------------------------------------
+# Circular windows up to half the population, at least two cases, over the
+# projected centers of population. alpha = 1 lists every non-overlapping window.
+suppressPackageStartupMessages(library(smerc))
+county_centers <- jsonlite::read_json("public/data/ms/tables/counties-centers.json", simplifyVector = TRUE)
+cc <- st_transform(st_as_sf(data.frame(lon = county_centers$lon, lat = county_centers$lat),
+                            coords = c("lon", "lat"), crs = 4269), 3814)
+cxy <- unname(st_coordinates(cc))[match(chr_ids[od], county_centers$ids), ]
+scan_summary <- function(result, ids, n = 5) {
+  lapply(head(result$clusters, n), function(k) list(
+    members = I(ids[k$locids]), llr = k$loglikrat, cases = k$cases, expected = k$expected, p = k$pvalue
+  ))
+}
+set.seed(2026)
+chr_scan <- scan.test(cxy, chr$v138_numerator[od], chr$v138_denominator[od], nsim = 999, alpha = 1, ubpop = 0.5)
+tract_pop <- base > 0
+set.seed(2026)
+tract_scan <- scan.test(xy[match(connected_ids, ids), ], events, base, nsim = 99, alpha = 1, ubpop = 0.1)
+out$scan <- list(
+  chr = list(ids = I(chr_ids[od]), xy = cxy, cases = chr$v138_numerator[od], population = chr$v138_denominator[od],
+             clusters = scan_summary(chr_scan, chr_ids[od])),
+  tracts = list(ids = I(connected_ids), clusters = scan_summary(tract_scan, connected_ids, 3))
+)
+
+out$packages <- lapply(setNames(nm = c("sf", "spdep", "smerc")), function(p) as.character(packageVersion(p)))
 
 jsonlite::write_json(out, "tests/stats-reference.json", digits = NA, auto_unbox = TRUE, dataframe = "rows")
 message("Wrote tests/stats-reference.json")

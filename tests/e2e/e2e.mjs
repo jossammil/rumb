@@ -432,6 +432,33 @@ await check("rates", async () => {
   await q.context().close();
 });
 
+await check("scan", async () => {
+  const ref = JSON.parse(await readFile("tests/stats-reference.json", "utf8")).scan.chr;
+  const p = await openPage();
+  await p.keyboard.press("n");
+  await p.click('[data-library="chr_counties_2025"]');
+  await waitText("#toast", "Added County Health Rankings", p);
+  await p.evaluate(() => window.rumb.app.setMeasure("v138_rawvalue"));
+  await p.selectOption("#method", "scan");
+  await p.waitForSelector("#scan-pop");
+  await p.selectOption("#scan-pop", "0.5");
+  await p.click("#analyze");
+  // The most likely cluster is smerc's: the same counties and log-likelihood ratio.
+  const first = ref.clusters[0];
+  await waitText("#inspect-panel", first.members.length + " areas", p);
+  await waitText("#inspect-panel", "LLR " + Number(first.llr.toFixed(2)), p);
+  await waitText("#inspect-panel", "33 areas without counts", p);
+  await waitText("#legend", "Spatial scan clusters", p);
+  const members = await p.evaluate(() =>
+    Object.entries(window.rumb.state.result.byId).filter(([, r]) => r.cluster === "K1").map(([id]) => id).sort(),
+  );
+  expect(JSON.stringify(members) === JSON.stringify([...first.members].sort()), "cluster members " + members);
+  await p.waitForFunction(() => window.rumb.map.querySourceFeatures("analysis").length > 0);
+  const bytes = await download("#save-results", p);
+  expect(bytes.toString().startsWith("GEOID_or_feature_ID,measure,cases,population,expected,cluster"), "scan CSV header");
+  await p.context().close();
+});
+
 await check("identity", async () => {
   const p = await openPage();
   const ids = ["lyr-tracts-fill", "lyr-tracts-outline", "anchor-areas", "anchor-points", "anchor-labels", "sel-line"];

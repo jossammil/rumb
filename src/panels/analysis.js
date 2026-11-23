@@ -17,6 +17,7 @@ const PANELS = {
   gistar: () => import("./methods/gistar.js"),
   bilisa: () => import("./methods/bilisa.js"),
   eblisa: () => import("./methods/eblisa.js"),
+  scan: () => import("./methods/scan.js"),
 };
 
 export function createAnalysis(app) {
@@ -90,8 +91,11 @@ export function createAnalysis(app) {
   /** The weights inputs for the chosen kind, and what the last run's weights were like. */
   function renderWeights() {
     const { state } = app,
-      rule = state.rule;
-    $("weights-params").hidden = !DISTANCE_KINDS.has(rule);
+      rule = state.rule,
+      scanning = state.method === "scan";
+    // A scan grows windows by distance; it has no neighbor weights.
+    $("rule").disabled = scanning;
+    $("weights-params").hidden = scanning || !DISTANCE_KINDS.has(rule);
     $("k-field").hidden = rule !== "knn";
     $("symmetric-field").hidden = rule !== "knn";
     $("band-field").hidden = rule !== "band" && rule !== "idw";
@@ -106,6 +110,23 @@ export function createAnalysis(app) {
       : DISTANCE_KINDS.has(rule)
         ? "Distances run between centers of population where the data has them, otherwise area centroids, in the region's projection."
         : "";
+  }
+
+  /** Each scan cluster's window as a circle around its center, in longitude and latitude. */
+  function scanShapes(clusters, points) {
+    const projection = app.tools.projection;
+    return clusters.flatMap((k) => {
+      const [x, y] = points[k.center],
+        r = Math.max(k.radius, 300);
+      const ring = Array.from({ length: 73 }, (_, i) => {
+        const t = (2 * Math.PI * (i % 72)) / 72;
+        return projection.inverse([x + r * Math.cos(t), y + r * Math.sin(t)]);
+      });
+      return [
+        { type: "Feature", properties: { rank: k.rank }, geometry: { type: "Polygon", coordinates: [ring] } },
+        { type: "Feature", properties: { rank: k.rank }, geometry: { type: "Point", coordinates: projection.inverse([x, y]) } },
+      ];
+    });
   }
 
   /**
@@ -138,7 +159,8 @@ export function createAnalysis(app) {
       const weights = { kind: state.rule, k: state.k, miles: state.band, power: state.power, symmetric: state.symmetric };
       const ids = new Set(items.map(featureId));
       let neighbors, points, from;
-      if (DISTANCE_KINDS.has(state.rule)) ({ points, from } = await locations(l, items));
+      const scanning = state.method === "scan";
+      if (scanning || DISTANCE_KINDS.has(state.rule)) ({ points, from } = await locations(l, items));
       else {
         // Reference and library polygons ship their neighbors; other layers compute them once.
         let graph = l.reference
@@ -179,6 +201,11 @@ export function createAnalysis(app) {
         await app.ws.ensureFields([state.yField]);
         extra.second = byId(state.yField);
       }
+      if (scanning) {
+        const pool = poolOf(app.fieldMeta(l, state.measure));
+        if (!pool?.denominator) throw new Error("A spatial scan needs a rate with counts: choose a measure with a numerator and a denominator.");
+        Object.assign(extra, { cases: byId(pool.numerator), population: byId(pool.denominator), ...state.scan });
+      }
       if (state.method === "eblisa") {
         const pool = poolOf(app.fieldMeta(l, state.measure));
         if (!pool?.denominator) throw new Error("EB-adjusted clusters need a rate with counts: choose a measure with a numerator and a denominator.");
@@ -201,12 +228,17 @@ export function createAnalysis(app) {
           fdr: state.fdr,
         },
         control.signal,
+        (f) => (button.textContent = "Scanning " + Math.round(f * 100) + "%"),
       );
       if (control.signal.aborted) return;
       app.timings.lastAnalysis = Math.round(performance.now() - started);
       app.timings.lastMethod = res.method === "gistar" ? "gi*" : res.method;
       app.statusbar?.timing();
-      if (from) res.weights.from = from;
+      if (from && res.weights) res.weights.from = from;
+      if (scanning) {
+        res.from = from;
+        res.circles = scanShapes(res.clusters, points);
+      }
       if (state.method === "bilisa") res.secondLabel = app.label(state.yField);
       app.store.set({ result: { ...res, studyName }, mode: "cluster", inspector: true });
       renderWeights();

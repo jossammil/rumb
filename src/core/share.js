@@ -15,7 +15,7 @@ import { WEIGHT_KINDS } from "../stats/neighbors.js";
 export const SHARE_LIMIT = 8000;
 const VIEW_KEYS = [
   "measure", "category", "palette", "classification", "count", "breaks",
-  "method", "inference", "yField", "rule", "k", "band", "power", "symmetric", "study", "permutations", "seed", "fdr",
+  "method", "inference", "yField", "scan", "rule", "k", "band", "power", "symmetric", "study", "permutations", "seed", "fdr",
 ];
 const LOOK_KEYS = ["color", "opacity", "size", "shape", "outline", "outlineColor", "hatch"];
 
@@ -140,6 +140,14 @@ export function readShare(data, { known, palettes, region }) {
         method: METHODS[w.method] ? w.method : undefined,
         inference: ["normal", "permutation"].includes(w.inference) ? w.inference : undefined,
         yField: str(w.yField),
+        scan:
+          w.scan && typeof w.scan === "object"
+            ? {
+                maxPop: [0.05, 0.1, 0.25, 0.5].includes(w.scan.maxPop) ? w.scan.maxPop : 0.25,
+                maxMiles: num(w.scan.maxMiles, 1, 300) ?? null,
+                direction: ["high", "low", "both"].includes(w.scan.direction) ? w.scan.direction : "high",
+              }
+            : undefined,
         rule: WEIGHT_KINDS.includes(w.rule) ? w.rule : undefined,
         k: num(w.k, 1, 30),
         band: num(w.band, 0.1, 200),

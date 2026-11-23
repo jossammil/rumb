@@ -6,7 +6,7 @@ import { formatValue, popupRows } from "../catalog/popup.js";
 import { featureId } from "../core/features.js";
 import { aggregate, coverageLabel, neighborsOf, poolOf } from "../stats/pool.js";
 import { clusters } from "../map/classify.js";
-import { methodOf } from "../stats/methods.js";
+import { basisOf, methodOf } from "../stats/methods.js";
 import { acsReliability, rateLimits, UNSTABLE_EVENTS } from "../stats/rates.js";
 import { $, fill, h, icon, s } from "../ui/dom.js";
 
@@ -297,14 +297,14 @@ export function createInspector(app) {
       "section",
       { class: "inspect-block" },
       h("div", { class: "inspection-head" }, h("h3", { text: method.title })),
-      h("p", { class: "subtle", text: result.studyName + " · " + (result.weights?.label || state.rule + " neighbors") }),
+      h("p", { class: "subtle", text: result.studyName + " · " + basisOf(result, state.rule) }),
       h("dl", { class: "metrics" }, method.summaryRows(result).map(([k, v]) => row(k, v))),
       h("div", { class: "segmented" }, mode("value", "Measure"), mode("cluster", method.modeLabel)),
       method.scatter && scatter(result, state.selected, (id) => app.selectFeature(id), method.scatterLabels),
       h(
         "p",
         { class: "subtle" },
-        result.permutations + " permutations · Seed " + result.seed,
+        result.permutations + " " + (method.trials || "permutations") + " · Seed " + result.seed,
         h("br"),
         method.ruleText ? method.ruleText(result) : (result.fdr ? "FDR-adjusted q" : "Unadjusted local p") + " ≤ " + result.alpha,
       ),

@@ -28,7 +28,7 @@ import { parseBreaks } from "./map/classify.js";
 import { entryStyle, kindOf } from "./map/layer-specs.js";
 import { initMap } from "./map/map.js";
 import { createAnalysis } from "./panels/analysis.js";
-import { methodOf } from "./stats/methods.js";
+import { basisOf, methodOf } from "./stats/methods.js";
 import { createCompare } from "./panels/compare.js";
 import { createFiles } from "./panels/files.js";
 import { findFeatures, openFind } from "./panels/find.js";
@@ -985,7 +985,7 @@ function wire(app) {
         others: app.style.legendOthers(),
         notes:
           (clustered
-            ? state.result.studyName + " · " + (state.result.weights?.label || state.rule) + " · " + method.rule(state.result) + " · "
+            ? state.result.studyName + " · " + basisOf(state.result, state.rule) + " · " + method.rule(state.result) + " · "
             : "") +
           [app.layer().meta?.credit, ...app.style.legendOthers().map((o) => o.credit), app.catalog.region.credit]
             .filter((c, i, all) => c && all.indexOf(c) === i)

@@ -302,6 +302,8 @@ export function createStyle(app) {
       });
     }
     renderOthers(legend, others);
+    // A scan's windows draw over the map while its clusters show.
+    app.atlas.setAnalysisShapes(clustered && method.id === "scan" ? state.result.circles : null);
     app.filter?.renderSummary();
     app.renderInspector();
   }

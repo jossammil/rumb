@@ -20,6 +20,7 @@ function ensureWorker() {
   worker.onmessage = ({ data }) => {
     const call = pending.get(data.id);
     if (!call) return;
+    if (data.progress != null) return call.onProgress?.(data.progress);
     pending.delete(data.id);
     if (data.ok) call.resolve(data.result);
     else call.reject(new Error(data.error));
@@ -32,7 +33,7 @@ function ensureWorker() {
 }
 
 /** Sends { type: "analyze" | "weights", ... } and resolves the worker's result. */
-export function callStats(request, signal) {
+export function callStats(request, signal, onProgress) {
   return new Promise((resolve, reject) => {
     const canceled = () => new DOMException("Analysis canceled", "AbortError");
     if (signal?.aborted) {
@@ -48,6 +49,7 @@ export function callStats(request, signal) {
     };
     signal?.addEventListener("abort", abort, { once: true });
     pending.set(id, {
+      onProgress,
       resolve: (value) => (done(), resolve(value)),
       reject: (error) => (done(), reject(error)),
     });

@@ -166,6 +166,10 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
     setFilterShape(features) {
       map.getSource("filter").setData(collection(features || []));
     },
+    /** Draws an analysis's shapes (a scan's windows and centers), or clears them. */
+    setAnalysisShapes(features) {
+      map.getSource("analysis")?.setData(collection(features || []));
+    },
     /** Draws a tool's shape: GeoJSON features (points, a line, a polygon). */
     setSketch(features) {
       map.getSource("sketch").setData(collection(features || []));

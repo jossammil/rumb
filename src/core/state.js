@@ -14,6 +14,7 @@ export const LAYER_VIEW_KEYS = [
   "method",
   "inference",
   "yField",
+  "scan",
   "rule",
   "k",
   "band",
@@ -53,6 +54,9 @@ export function defaults(catalog) {
     inference: "normal",
     // The second measure for bivariate clusters (its neighbors' values).
     yField: null,
+    // Spatial scan windows: the largest share of the population, an optional
+    // radius in miles, and whether to look for high rates, low or both.
+    scan: { maxPop: 0.25, maxMiles: null, direction: "high" },
     rule: "queen",
     k: 6,
     band: null,
