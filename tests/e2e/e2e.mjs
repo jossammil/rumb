@@ -487,6 +487,20 @@ await check("regression", async () => {
   await p.evaluate(() => window.rumb.app.setMeasure("res_places_diabetes"));
   await p.keyboard.press("h");
   await waitText("#inspect-panel", "Hot spot analysis", p);
+  // Spatial lag and error models by maximum likelihood, as spatialreg fits them.
+  await p.evaluate(() => window.rumb.app.setMeasure("places_diabetes"));
+  await p.selectOption("#method", "model");
+  await p.selectOption("#model-type", "lag");
+  await p.click("#analyze");
+  await waitText("#inspect-panel", "ρ (rho)" + ref.spatial.queen.lag.rho.toFixed(4), p);
+  await p.waitForSelector('[data-table^="Impacts"]');
+  await p.selectOption("#model-type", "error");
+  await p.click("#analyze");
+  await waitText("#inspect-panel", "λ (lambda)" + ref.spatial.queen.error.lambda.toFixed(4), p);
+  // Plain k nearest is not symmetric, so the model says so.
+  await p.selectOption("#rule", "knn");
+  await p.click("#analyze");
+  await waitText("#toast", "Spatial models need symmetric weights", p);
   await p.context().close();
 });
 

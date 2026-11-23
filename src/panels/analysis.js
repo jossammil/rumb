@@ -248,7 +248,11 @@ export function createAnalysis(app) {
         res.circles = scanShapes(res.clusters, points);
       }
       if (state.method === "bilisa") res.secondLabel = app.label(state.yField);
-      if (res.method === "model") res.coefficients.forEach((c) => (c.label = c.name === "(Intercept)" ? "Intercept" : app.label(c.name)));
+      if (res.method === "model") {
+        const name = (n) => (n === "(Intercept)" ? "Intercept" : app.label(n));
+        res.coefficients.forEach((c) => (c.label = name(c.name)));
+        res.impacts?.forEach((m) => (m.label = name(m.name)));
+      }
       // Model-based estimates (CDC PLACES) borrow strength from covariates, so their patterns are partly the model's.
       const modeled = [state.measure, state.method === "bilisa" && state.yField]
         .filter(Boolean)

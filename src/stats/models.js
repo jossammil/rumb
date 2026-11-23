@@ -5,9 +5,14 @@
 // eligible neighbor are left out and say why. Areas are classed by their
 // standardized residual for the map. Pure.
 import { ols, standardize } from "./regression.js";
+import { spatialModel, weightEigenvalues } from "./spatial-models.js";
 import { prepareUniverse } from "./stats.js";
 
-export const MODEL_TYPES = { ols: "Ordinary least squares" };
+export const MODEL_TYPES = {
+  ols: "Ordinary least squares",
+  lag: "Spatial lag (maximum likelihood)",
+  error: "Spatial error (maximum likelihood)",
+};
 
 /** Residual classes by standardized residual, as GeoDa and ArcGIS map them. */
 export function residualClass(z) {
@@ -60,7 +65,16 @@ export function fitModel(input) {
   const y = ids.map((id) => values[id]),
     X = ids.map((id) => [1, ...names.map((n) => covariates[n][id])]);
   const W = standardize(rows, w);
-  const fit = ols(X, y, { names: ["(Intercept)", ...names], W });
+  const olsFit = ols(X, y, { names: ["(Intercept)", ...names], W });
+  // A spatial model reports its own estimates; the OLS diagnostics stay beside them.
+  const fit =
+    type === "ols"
+      ? olsFit
+      : {
+          ...olsFit,
+          ...spatialModel(type, X, y, W, weightEigenvalues(rows, w), { names: ["(Intercept)", ...names], olsLogLik: olsFit.logLik }),
+          olsAic: olsFit.aic,
+        };
   ids.forEach((id, i) => {
     const z = fit.standardized[i];
     Object.assign(byId[id], {
@@ -85,7 +99,11 @@ export function fitModel(input) {
     fdr: false,
     methodNote:
       MODEL_TYPES[type] +
-      " with an intercept; standard errors from σ²(XᵀX)⁻¹; residual Moran's I with its exact moments under the regression and Lagrange multiplier tests over row-standardized " +
+      " with an intercept" +
+      (type === "ols"
+        ? "; standard errors from σ²(XᵀX)⁻¹"
+        : "; log|I − ρW| from the eigenvalues of W; asymptotic standard errors from the information matrix") +
+      "; OLS residual Moran's I with its exact moments and Lagrange multiplier tests over row-standardized " +
       weights.label +
       ".",
   };

@@ -360,6 +360,12 @@ METHODS.scan = {
   miles,
 };
 
+const MODEL_NAMES = {
+  ols: "Ordinary least squares",
+  lag: "Spatial lag (maximum likelihood)",
+  error: "Spatial error (maximum likelihood)",
+};
+
 // Regression residuals: standardized, in GeoDa's bands, on RdBu (red: the
 // measure is higher than the model predicts).
 const residualClasses = {
@@ -377,7 +383,7 @@ const testRow = (name, t) => (t ? [name, fixed(t.statistic, 3), String(t.df ?? "
 
 METHODS.model = {
   id: "model",
-  label: "Regression (OLS with spatial diagnostics)",
+  label: "Regression (OLS, spatial lag or spatial error)",
   title: "Regression",
   legendTitle: "Standardized residuals",
   modeLabel: "Residuals",
@@ -393,20 +399,30 @@ METHODS.model = {
     ["Standardized residual", fixed(record.standardized, 2)],
   ],
   summaryRows: (result) => [
+    ["Model", MODEL_NAMES[result.modelType || "ols"]],
     ["Areas", number(result.n, 0)],
-    ["R² · adjusted", fixed(result.r2, 3) + " · " + fixed(result.adjR2, 3)],
-    ["F", fixed(result.F.statistic, 2) + " (p " + pText(result.F.p) + ")"],
+    ...(result.parameter
+      ? [
+          [result.parameter.name, fixed(result.parameter.estimate, 4) + " (SE " + fixed(result.parameter.se, 4) + ", p " + pText(result.parameter.p) + ")"],
+          ["LR test against OLS", fixed(result.lr.statistic, 2) + " (p " + pText(result.lr.p) + ")"],
+          ["AIC · OLS AIC", fixed(result.aic, 2) + " · " + fixed(result.olsAic, 2)],
+          ["Model residual Moran’s I", fixed(result.residualMoran, 4)],
+        ]
+      : [
+          ["R² · adjusted", fixed(result.r2, 3) + " · " + fixed(result.adjR2, 3)],
+          ["F", fixed(result.F.statistic, 2) + " (p " + pText(result.F.p) + ")"],
+        ]),
     ["Log-likelihood · AIC", fixed(result.logLik, 2) + " · " + fixed(result.aic, 2)],
     ["Condition number", fixed(result.conditionNumber, 1) + (result.conditionNumber > 30 ? " (collinearity likely)" : "")],
     ...(result.spatial
-      ? [["Residual Moran’s I", fixed(result.spatial.moran.I, 4) + " (z " + fixed(result.spatial.moran.z, 2) + ", p " + pText(result.spatial.moran.p) + ")"]]
+      ? [[(result.parameter ? "OLS residual" : "Residual") + " Moran’s I", fixed(result.spatial.moran.I, 4) + " (z " + fixed(result.spatial.moran.z, 2) + ", p " + pText(result.spatial.moran.p) + ")"]]
       : []),
   ],
   /** Tables under the summary: [{ caption, head, rows }]. */
   details: (result) => [
     {
       caption: "Coefficients",
-      head: ["", "Estimate", "SE", "t", "p", "VIF"],
+      head: ["", "Estimate", "SE", result.parameter ? "z" : "t", "p", "VIF"],
       rows: result.coefficients.map((c, j) => [
         c.label || c.name,
         fixed(c.estimate, 4),
@@ -416,8 +432,17 @@ METHODS.model = {
         j && result.vif?.[j - 1] != null ? fixed(result.vif[j - 1], 2) : "",
       ]),
     },
+    ...(result.impacts
+      ? [
+          {
+            caption: "Impacts (average effect of a unit change)",
+            head: ["", "Direct", "Indirect", "Total"],
+            rows: result.impacts.map((m) => [m.label || m.name, fixed(m.direct, 4), fixed(m.indirect, 4), fixed(m.total, 4)]),
+          },
+        ]
+      : []),
     {
-      caption: "Diagnostics",
+      caption: result.parameter ? "OLS diagnostics" : "Diagnostics",
       head: ["Test", "Value", "df", "p"],
       rows: [
         testRow("Jarque–Bera (normality)", result.jarqueBera),

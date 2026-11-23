@@ -50,6 +50,12 @@ export function render(app, mount) {
       { class: "covariates", id: "covariates" },
       groups.map((g) => h("fieldset", null, h("legend", { text: g.label }), g.fields.map(box))),
     ),
-    h("p", { class: "subtle", id: "model-note", text: model.xs.length ? model.xs.length + " covariates chosen." : "Choose at least one covariate." }),
+    h("p", {
+      class: "subtle",
+      id: "model-note",
+      text:
+        (model.xs.length ? model.xs.length + " covariates chosen." : "Choose at least one covariate.") +
+        (model.type === "ols" ? "" : " Spatial models use the Neighbors setting below, which must be symmetric (not plain k nearest)."),
+    }),
   );
 }

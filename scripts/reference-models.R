@@ -91,6 +91,27 @@ out$ols <- list(
   queen = spatial(queen_nb), knn6 = spatial(knn_nb), knn6Ids = I(tract_ids)
 )
 
-out$packages <- lapply(setNames(nm = c("sf", "jsonlite", "spdep", "lmtest")), function(p) as.character(packageVersion(p)))
+# ---- spatial lag and spatial error models (maximum likelihood, eigenvalues) ---------------
+suppressPackageStartupMessages(library(spatialreg))
+xy_r <- st_coordinates(pts)
+band_nb <- dnearneigh(xy_r, 0, max(unlist(nbdists(knn2nb(knearneigh(xy_r, k = 1)), xy_r))) * (1 + 1e-9))
+spatial_fits <- function(nb) {
+  lw <- nb2listw(nb, style = "W")
+  lag <- lagsarlm(reformulate(covariates, outcome), data = r, listw = lw, method = "eigen", quiet = TRUE)
+  err <- errorsarlm(reformulate(covariates, outcome), data = r, listw = lw, method = "eigen", quiet = TRUE)
+  imp <- impacts(lag, listw = lw)
+  ls <- summary(lag)
+  es <- summary(err)
+  list(
+    lag = list(rho = unname(lag$rho), rhoSe = unname(lag$rho.se), coef = unname(coef(lag)[-1]), se = unname(lag$rest.se),
+               logLik = as.numeric(logLik(lag)), aic = AIC(lag), lr = as.numeric(ls$LR1$statistic), wald = as.numeric(ls$Wald1$statistic),
+               direct = unname(imp$direct), indirect = unname(imp$indirect), total = unname(imp$total)),
+    error = list(lambda = unname(err$lambda), lambdaSe = unname(err$lambda.se), coef = unname(coef(err)[-1]), se = unname(err$rest.se),
+                 logLik = as.numeric(logLik(err)), aic = AIC(err), lr = as.numeric(es$LR1$statistic))
+  )
+}
+out$spatial <- list(queen = spatial_fits(queen_nb), band = spatial_fits(band_nb))
+
+out$packages <- lapply(setNames(nm = c("sf", "jsonlite", "spdep", "lmtest", "spatialreg")), function(p) as.character(packageVersion(p)))
 jsonlite::write_json(out, "tests/models-reference.json", digits = NA, auto_unbox = TRUE, dataframe = "rows", matrix = "rowmajor")
 message("Wrote tests/models-reference.json")
