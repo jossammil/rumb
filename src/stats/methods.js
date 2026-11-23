@@ -176,6 +176,72 @@ METHODS.gistar = {
   reading: false,
 };
 
+const lisa = METHODS.lisa;
+
+METHODS.bilisa = {
+  ...lisa,
+  id: "bilisa",
+  label: "Bivariate clusters (a measure against neighbors' second measure)",
+  title: "Bivariate cluster analysis",
+  legendTitle: "Bivariate Local Moran clusters",
+  short: "bivariate clusters",
+  request: "bilisa",
+  file: "bivariate-clusters.csv",
+  featureRows: (record, result) => [
+    [result?.secondLabel || "Second measure", record.second == null ? "Unavailable" : number(record.second)],
+    ["Bivariate local I", fixed(record.localI)],
+    ["Permutation p", fixed(record.p)],
+    ["FDR q", fixed(record.q)],
+    ["Classification", clusters[record.cluster][0]],
+  ],
+  summaryRows: (result) => [
+    ["Second measure", result.secondLabel || ""],
+    ["Bivariate Moran’s I", fixed(result.globalI)],
+    ["Permutation p", fixed(result.globalP)],
+    ["Eligible areas", number(result.n, 0)],
+  ],
+  reportText: (result) =>
+    "Bivariate Moran's I " + fixed(result.globalI) + " (with neighbors' " + result.secondLabel + ") · p " +
+    fixed(result.globalP) + " · " + result.studyName,
+  scatterLabels: ["Standardized measure", "Neighbors' second measure"],
+  csvFields: [...lisa.csvFields.slice(0, 3), "second_measure", "second_value", ...lisa.csvFields.slice(3)],
+  csvRow: (id, r, result, state) => {
+    const row = lisa.csvRow(id, r, result, state);
+    return [...row.slice(0, 3), state.yField, r.second, ...row.slice(3)];
+  },
+  reading: false,
+};
+
+METHODS.eblisa = {
+  ...lisa,
+  id: "eblisa",
+  label: "Rate clusters, EB-adjusted (Local Moran)",
+  title: "EB rate cluster analysis",
+  legendTitle: "EB-adjusted Local Moran clusters",
+  short: "EB rate clusters",
+  request: "eblisa",
+  file: "eb-rate-clusters.csv",
+  featureRows: (record) => [
+    ["Raw rate", record.rate == null ? "Unavailable" : number(record.rate, 5)],
+    ["EB-standardized rate", fixed(record.value, 3)],
+    ...lisa.featureRows(record),
+  ],
+  summaryRows: (result) => [
+    ["EB Moran’s I", fixed(result.globalI)],
+    ["Permutation p", fixed(result.globalP)],
+    ["Pooled rate", result.eb ? number(result.eb.b, 6) : ""],
+    ["Eligible areas", number(result.n, 0)],
+  ],
+  reportText: (result) => "EB-adjusted Moran's I " + fixed(result.globalI) + " · p " + fixed(result.globalP) + " · " + result.studyName,
+  scatterLabels: ["EB-standardized rate", "Neighbor average"],
+  csvFields: [...lisa.csvFields.slice(0, 3), "raw_rate", ...lisa.csvFields.slice(3)],
+  csvRow: (id, r, result, state) => {
+    const row = lisa.csvRow(id, r, result, state);
+    return [...row.slice(0, 3), r.rate, ...row.slice(3)];
+  },
+  reading: false,
+};
+
 /** The methods in the order the menu lists them. */
 export const METHOD_LIST = Object.values(METHODS);
 

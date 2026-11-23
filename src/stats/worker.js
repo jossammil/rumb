@@ -7,7 +7,10 @@ self.onmessage = async ({ data }) => {
   try {
     let result;
     if (type === "analyze") result = await analyze(data);
-    else if (type === "gistar") {
+    else if (type === "bilisa" || type === "eblisa") {
+      const { bivariate, ebMoran } = await import("./variants.js");
+      result = await (type === "bilisa" ? bivariate(data) : ebMoran(data));
+    } else if (type === "gistar") {
       const { hotSpots } = await import("./hotspots.js");
       result = await hotSpots(data);
     } else if (type === "weights") {

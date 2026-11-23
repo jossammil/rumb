@@ -6,6 +6,7 @@ import { csvText } from "../data/csv.js";
 import { projectedIndex } from "../geo/filter.js";
 import { callStats } from "../stats/client.js";
 import { METHOD_LIST, methodId, methodOf } from "../stats/methods.js";
+import { poolOf } from "../stats/pool.js";
 import { centroid, DISTANCE_KINDS, summaryText } from "../stats/neighbors.js";
 import { $, icon, options, saveBlob } from "../ui/dom.js";
 
@@ -14,6 +15,8 @@ import { $, icon, options, saveBlob } from "../ui/dom.js";
 // method is chosen: id → () => import(...), whose module exports render(app, mount).
 const PANELS = {
   gistar: () => import("./methods/gistar.js"),
+  bilisa: () => import("./methods/bilisa.js"),
+  eblisa: () => import("./methods/eblisa.js"),
 };
 
 export function createAnalysis(app) {
@@ -169,6 +172,19 @@ export function createAnalysis(app) {
       const denominators = universe
         ? Object.fromEntries(items.map((f) => [featureId(f), f.properties[universe]]))
         : undefined;
+      const byId = (field) => Object.fromEntries(app.records().map((f) => [featureId(f), f.properties[field]]));
+      const extra = {};
+      if (state.method === "bilisa") {
+        if (!state.yField || state.yField === state.measure) throw new Error("Choose a second measure for bivariate clusters.");
+        await app.ws.ensureFields([state.yField]);
+        extra.second = byId(state.yField);
+      }
+      if (state.method === "eblisa") {
+        const pool = poolOf(app.fieldMeta(l, state.measure));
+        if (!pool?.denominator) throw new Error("EB-adjusted clusters need a rate with counts: choose a measure with a numerator and a denominator.");
+        extra.events = byId(pool.numerator);
+        extra.base = byId(pool.denominator);
+      }
       const res = await callStats(
         {
           type: methodOf({ method: state.method }).request,
@@ -177,6 +193,7 @@ export function createAnalysis(app) {
           points,
           weights,
           inference: state.inference,
+          ...extra,
           denominators,
           studyIds,
           permutations: state.permutations,
@@ -190,6 +207,7 @@ export function createAnalysis(app) {
       app.timings.lastMethod = res.method === "gistar" ? "gi*" : res.method;
       app.statusbar?.timing();
       if (from) res.weights.from = from;
+      if (state.method === "bilisa") res.secondLabel = app.label(state.yField);
       app.store.set({ result: { ...res, studyName }, mode: "cluster", inspector: true });
       renderWeights();
       $("settings").classList.remove("open");

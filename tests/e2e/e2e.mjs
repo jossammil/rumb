@@ -362,6 +362,29 @@ await check("hotspots", async () => {
   await p.context().close();
 });
 
+await check("bivariate", async () => {
+  const ref = JSON.parse(await readFile("tests/stats-reference.json", "utf8")).variants;
+  const p = await openPage();
+  await p.selectOption("#method", "bilisa");
+  await p.waitForSelector("#y-field");
+  await p.selectOption("#y-field", "child_poverty_pct");
+  await p.click("#analyze");
+  await waitText("#inspect-panel", "Bivariate Moran’s I" + ref.bivariate.globalI.toFixed(4), p);
+  await waitText("#inspect-panel", "Neighbors' second measure", p);
+  await waitText("#legend", "Bivariate Local Moran clusters", p);
+  // EB-adjusted clusters on the poverty rate's counts, as spdep::EBImoran.mc.
+  await p.selectOption("#method", "eblisa");
+  await waitText("#eb-note", "Rates from", p);
+  await p.click("#analyze");
+  await waitText("#inspect-panel", "EB Moran’s I" + ref.eb.I.toFixed(4), p);
+  await p.evaluate((id) => window.rumb.app.selectFeature(id), ref.eb.ids[0]);
+  await waitText("#inspect-panel", "EB-standardized rate" + ref.eb.z[0].toFixed(3), p);
+  // A measure without counts says why it cannot be used.
+  await p.evaluate(() => window.rumb.app.setMeasure("places_diabetes"));
+  await waitText("#eb-note", "This measure has no counts", p);
+  await p.context().close();
+});
+
 await check("identity", async () => {
   const p = await openPage();
   const ids = ["lyr-tracts-fill", "lyr-tracts-outline", "anchor-areas", "anchor-points", "anchor-labels", "sel-line"];

@@ -14,7 +14,7 @@ import { WEIGHT_KINDS } from "../stats/neighbors.js";
 export const SHARE_LIMIT = 8000;
 const VIEW_KEYS = [
   "measure", "category", "palette", "classification", "count", "breaks",
-  "method", "inference", "rule", "k", "band", "power", "symmetric", "study", "permutations", "seed", "fdr",
+  "method", "inference", "yField", "rule", "k", "band", "power", "symmetric", "study", "permutations", "seed", "fdr",
 ];
 const LOOK_KEYS = ["color", "opacity", "size", "shape", "outline", "outlineColor"];
 
@@ -137,6 +137,7 @@ export function readShare(data, { known, palettes, region }) {
         breaks: Array.isArray(w.breaks) ? w.breaks.filter(Number.isFinite).slice(0, 8) : undefined,
         method: METHODS[w.method] ? w.method : undefined,
         inference: ["normal", "permutation"].includes(w.inference) ? w.inference : undefined,
+        yField: str(w.yField),
         rule: WEIGHT_KINDS.includes(w.rule) ? w.rule : undefined,
         k: num(w.k, 1, 30),
         band: num(w.band, 0.1, 200),

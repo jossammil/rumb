@@ -130,6 +130,35 @@ out$hotspots <- list(
   idw1 = list(gi = gi(connected, v, inverse(connected, 1)))
 )
 
+# ---- LISA variants: bivariate Local Moran and EB-adjusted Moran ----------------------
+# Over the queen graph's connected tracts above: poverty against child poverty
+# (both present), and the EB-standardized poverty rate from its counts.
+qy <- tracts$child_poverty_pct[match(connected_ids, all_ids)]
+both <- is.finite(qy)
+bi_ids <- connected_ids[both]
+sub <- subset(queen, both)
+stopifnot(all(card(sub) > 0))
+bx <- qx[both]
+by <- qy[both]
+lw_sub <- nb2listw(sub, style = "W")
+zx <- as.numeric(scale(bx))
+zy <- as.numeric(scale(by))
+bv <- localmoran_bv(bx, by, lw_sub, nsim = 99, iseed = 1)
+events <- tracts$poverty_count[match(connected_ids, all_ids)]
+base <- tracts$poverty_universe[match(connected_ids, all_ids)]
+lw_q <- nb2listw(queen, style = "W")
+ebi <- EBImoran.mc(events, base, lw_q, nsim = 99)
+p <- events / base
+b <- sum(events) / sum(base)
+s2 <- sum(base * (p - b)^2) / sum(base)
+a <- s2 - b / (sum(base) / length(base))
+if (a < 0) a <- b / (sum(base) / length(base))
+out$variants <- list(
+  bivariate = list(ids = I(bi_ids), localI = as.numeric(bv[, "Ibvi"]),
+                   globalI = sum(zx * lag.listw(lw_sub, zy)) / sum(zx * zx)),
+  eb = list(ids = I(connected_ids), I = unname(ebi$statistic), a = a, b = b, z = (p - b) / sqrt(a + b / base))
+)
+
 out$packages <- list(sf = as.character(packageVersion("sf")), spdep = as.character(packageVersion("spdep")))
 
 jsonlite::write_json(out, "tests/stats-reference.json", digits = NA, auto_unbox = TRUE, dataframe = "rows")

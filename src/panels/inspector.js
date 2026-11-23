@@ -12,7 +12,7 @@ import { $, fill, h, icon, s } from "../ui/dom.js";
 const row = (key, val) => h("div", null, h("dt", { text: key }), h("dd", { text: String(val) }));
 
 /** The Moran scatterplot: standardized value against the neighbor average. */
-export function scatter(result, selected, onPick) {
+export function scatter(result, selected, onPick, [xLabel, yLabel] = ["Standardized measure", "Neighbor average"]) {
   const points = Object.entries(result.byId).filter(
     ([, r]) => Number.isFinite(r.z) && Number.isFinite(r.lag),
   );
@@ -42,8 +42,7 @@ export function scatter(result, selected, onPick) {
       class: "scatter",
       viewBox: "0 0 250 165",
       role: "img",
-      "aria-label":
-        "Moran scatterplot. Horizontal axis is the standardized measure. Vertical axis is the standardized neighbor average.",
+      "aria-label": "Moran scatterplot. Horizontal axis: " + xLabel + ". Vertical axis: " + yLabel + ".",
     },
     s("rect", { x: 26, y: 9, width: 199, height: 133, rx: 3, class: "plot-bg" }),
     s("path", { d: "M26 76h199M125 9v133", class: "plot-axis", "stroke-dasharray": "3 3" }),
@@ -63,8 +62,8 @@ export function scatter(result, selected, onPick) {
     s(
       "g",
       { "font-size": 9, class: "plot-text", "text-anchor": "middle" },
-      s("text", { x: 125, y: 158, text: "Standardized measure" }),
-      s("text", { transform: "translate(12 76) rotate(-90)", text: "Neighbor average" }),
+      s("text", { x: 125, y: 158, text: xLabel }),
+      s("text", { transform: "translate(12 76) rotate(-90)", text: yLabel }),
     ),
   );
 }
@@ -282,7 +281,7 @@ export function createInspector(app) {
       h("p", { class: "subtle", text: result.studyName + " · " + (result.weights?.label || state.rule + " neighbors") }),
       h("dl", { class: "metrics" }, method.summaryRows(result).map(([k, v]) => row(k, v))),
       h("div", { class: "segmented" }, mode("value", "Measure"), mode("cluster", method.modeLabel)),
-      method.scatter && scatter(result, state.selected, (id) => app.selectFeature(id)),
+      method.scatter && scatter(result, state.selected, (id) => app.selectFeature(id), method.scatterLabels),
       h(
         "p",
         { class: "subtle" },

@@ -13,6 +13,7 @@ export const LAYER_VIEW_KEYS = [
   "breaks",
   "method",
   "inference",
+  "yField",
   "rule",
   "k",
   "band",
@@ -50,6 +51,8 @@ export function defaults(catalog) {
     method: "lisa",
     // How hot spot p-values are found: the normal approximation or permutations.
     inference: "normal",
+    // The second measure for bivariate clusters (its neighbors' values).
+    yField: null,
     rule: "queen",
     k: 6,
     band: null,
