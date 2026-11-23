@@ -549,7 +549,7 @@ Build constants: `__RUMB_VERSION__`, `__RUMB_DEV__`, `__DUCKDB_FOLDER__`,
 - **A library layer:**
   1. Add or change its entry in `scripts/layers.json`: its URL, the fields
      to keep with labels and formats, its popup fields and its color.
-  2. Run `Rscript scripts/prepare-layers.R <cache-folder>`.
+  2. Run `Rscript scripts/prepare-layers.R` (`--pin` for a new or changed download, then review `scripts/sources/`).
   3. Run `npm test`; the library test checks every file and field.
 - **The R fixtures** for class breaks, the projection, filters, and counts and
   pooling: rerun `scripts/reference-classify.R`, `reference-geo.R`,

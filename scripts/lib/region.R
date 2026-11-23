@@ -4,7 +4,8 @@
 #   --out DIR       where the region's files go (default public/data/<id>)
 #   --cache DIR     downloads (default $RUMB_SOURCE_CACHE or .cache/sources)
 #   --pin           record what was downloaded instead of checking it
-# Downloads are pinned in scripts/sources/<id>.json: each source's SHA-256 (of
+# Downloads are pinned in scripts/sources/<id>.json (national files in
+# national.json): each source's SHA-256 (of
 # the file itself, or of the CSV inside a data.census.gov export, whose ZIP
 # wrapper changes between exports) and the counts read from it. Without --pin a
 # script stops when a download no longer matches, so a changed source is
@@ -31,11 +32,13 @@ region_context <- function(args = commandArgs(trailingOnly = TRUE)) {
     out = value("--out", file.path("public/data", r$id)),
     cache = value("--cache", Sys.getenv("RUMB_SOURCE_CACHE", ".cache/sources")),
     pin = "--pin" %in% args,
-    pins = file.path("scripts/sources", paste0(r$id, ".json"))
+    pins = file.path("scripts/sources", paste0(r$id, ".json")),
+    build = file.path(".cache/build", r$id)
   )
   dir.create(ctx$out, recursive = TRUE, showWarnings = FALSE)
   dir.create(file.path(ctx$cache, ctx$fips), recursive = TRUE, showWarnings = FALSE)
   dir.create(file.path(ctx$cache, "us"), recursive = TRUE, showWarnings = FALSE)
+  dir.create(ctx$build, recursive = TRUE, showWarnings = FALSE)
   ctx
 }
 
@@ -116,25 +119,28 @@ read_export <- function(ctx, zip, table, stage) {
 }
 
 # ---- Pins ----------------------------------------------------------------------
-pins_read <- function(ctx) {
-  if (file.exists(ctx$pins)) jsonlite::read_json(ctx$pins) else list(version = 1, region = ctx$id)
+pins_file <- function(ctx, national) if (national) "scripts/sources/national.json" else ctx$pins
+pins_read <- function(path, region) {
+  if (file.exists(path)) jsonlite::read_json(path) else list(version = 1, region = region)
 }
 
 # Checks (or, with --pin, records) one source: its URL, SHA-256 and any counts
-# read from it. Stops on a mismatch.
-pin <- function(ctx, key, url, path, counts = list()) {
+# read from it. Stops on a mismatch. National files (the same for every state)
+# are pinned once, in scripts/sources/national.json.
+pin <- function(ctx, key, url, path, counts = list(), national = FALSE) {
+  file <- pins_file(ctx, national)
   sha <- sha256(path)
-  pins <- pins_read(ctx)
+  pins <- pins_read(file, if (national) "us" else ctx$id)
   entry <- c(list(url = url, sha256 = sha), counts)
   if (ctx$pin) {
     pins[[key]] <- entry
     pins <- pins[c("version", "region", sort(setdiff(names(pins), c("version", "region"))))]
-    dir.create(dirname(ctx$pins), recursive = TRUE, showWarnings = FALSE)
-    jsonlite::write_json(pins, ctx$pins, auto_unbox = TRUE, pretty = TRUE)
+    dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
+    jsonlite::write_json(pins, file, auto_unbox = TRUE, pretty = TRUE)
     return(invisible(sha))
   }
   want <- pins[[key]]
-  if (is.null(want)) stop(key, " is not pinned for ", ctx$name, ". Run with --pin and review ", ctx$pins, ".")
+  if (is.null(want)) stop(key, " is not pinned in ", file, ". Run with --pin and review it.")
   for (field in names(entry)) {
     if (!identical(as.character(want[[field]]), as.character(entry[[field]])))
       stop(key, " for ", ctx$name, " changed: ", field, " is ", entry[[field]], ", pinned ", want[[field]],
@@ -165,6 +171,16 @@ contiguity <- function(geometry) {
 # Mississippi keeps its state plane system, so its files do not change.
 metric_crs <- function(ctx) {
   switch(ctx$fips, "28" = 3814, "02" = 3338, "15" = "ESRI:102007", 5070)
+}
+
+# Longitude and latitude as the region uses them. Alaska's Aleutians cross
+# 180°: its positive longitudes move west by 360°, so the state is one
+# west-to-east piece (MapLibre draws longitudes below -180° in place).
+region_lonlat <- function(x, ctx) {
+  if (ctx$fips != "02") return(x)
+  crs <- sf::st_crs(x)
+  g <- sf::st_shift_longitude(sf::st_geometry(x)) - c(360, 0)
+  sf::st_set_geometry(x, sf::st_set_crs(g, crs))
 }
 
 write_json_file <- function(x, path, digits = 15) {

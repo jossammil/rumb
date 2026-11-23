@@ -12,7 +12,7 @@ source("scripts/lib/region.R")
 ctx <- region_context()
 url <- "https://www2.census.gov/geo/tiger/GENZ2024/shp/cb_2024_us_state_500k.zip"
 zip <- cached(ctx, url, national = TRUE)
-pin(ctx, "cb_states", url, zip)
+pin(ctx, "cb_states", url, zip, national = TRUE)
 states <- st_read(paste0("/vsizip/", zip), quiet = TRUE)
 state <- states[states$STATEFP == ctx$fips, "NAME"]
 stopifnot(nrow(state) == 1)

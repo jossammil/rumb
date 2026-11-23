@@ -126,18 +126,25 @@ if (length(intersect(missing_places, populated)))
 places_cols <- list(places_pop18 = as.numeric(gsub(",", "", p$TotalPop18plus))[row])
 places_fields <- list(places_pop18 = list(label = "Adults 18 and over (2020 Census)", format = "integer", role = "meta"))
 places_measures <- character()
+not_published <- character()
 # Measures for a narrower population than all adults cannot be pooled by adult population.
 narrower <- c("TEETHLOST", "COLON_SCREEN", "MAMMOUSE", "ACCESS2", "BPMED", "HIGHCHOL")
 for (m in places$measures) {
   code <- m[[1]]
   key <- paste0("places_", tolower(code))
-  value <- as.numeric(p[[paste0(code, "_CrudePrev")]])[row]
+  estimate <- trimws(p[[paste0(code, "_CrudePrev")]])
+  # Some states' 2025 release lacks whole measures (Kentucky and Pennsylvania
+  # most of them, nine states the social-needs module): leave those out. A
+  # tract may also lack a single estimate; it stays missing.
+  if (all(estimate == "")) { not_published <- c(not_published, code); next }
+  value <- suppressWarnings(as.numeric(estimate))[row]
   interval <- p[[paste0(code, "_Crude95CI")]][row]
   parts <- regmatches(interval, regexec("^\\(\\s*([0-9.]+),\\s*([0-9.]+)\\s*\\)$", interval))
   lcl <- vapply(parts, function(x) if (length(x) == 3) as.numeric(x[2]) else NA_real_, numeric(1))
   ucl <- vapply(parts, function(x) if (length(x) == 3) as.numeric(x[3]) else NA_real_, numeric(1))
-  have <- !is.na(row)
-  stopifnot(all(is.finite(value[have])), all(lcl[have] <= value[have] & value[have] <= ucl[have]))
+  have <- !is.na(row) & !is.na(estimate[row]) & estimate[row] != ""
+  stopifnot(all(is.finite(value[have])), all(lcl[have] <= value[have] & value[have] <= ucl[have]),
+            all(is.na(value[!have])))
   places_cols[[key]] <- value
   places_cols[[paste0(key, "_lcl")]] <- lcl
   places_cols[[paste0(key, "_ucl")]] <- ucl
@@ -202,8 +209,10 @@ index <- list(
   ),
   sources = list(
     acs = list(title = acs$title, tables = acs_sources, top_or_bottom_coded = top_coded),
-    places = list(title = places$title, url = places$url, download = places$download, sha256 = sha256(places_csv),
-                  dictionary = places$dictionary, tracts_without_estimates = I(missing_places)),
+    places = Filter(Negate(is.null), list(title = places$title, url = places$url, download = places$download,
+                  sha256 = sha256(places_csv), dictionary = places$dictionary,
+                  tracts_without_estimates = I(missing_places),
+                  measures_not_published = if (length(not_published)) I(not_published))),
     centers = list(title = spec$centers$title, tracts = list(url = tc$url, sha256 = sha256(tc$path)),
                    counties = list(url = cc$url, sha256 = sha256(cc$path)))
   ),

@@ -10,7 +10,10 @@
 #     simplification may differ in the last digits across GDAL or mapshaper
 #     versions;
 #   - tracts.parquet columns must be equal and its geometries equal to the same
-#     tolerance.
+#     tolerance;
+#   - the layer library (layers/*.geojson, *.neighbors.json, library.json) is
+#     compared the same way; output checksums inside library.json are reported
+#     through the files themselves.
 # Exits with status 1 and lists the differences when they do not match.
 # R packages: jsonlite, arrow, sf.
 args <- commandArgs(trailingOnly = TRUE)
@@ -22,6 +25,8 @@ files <- c("tracts.geojson", "neighbors.json", "reference.json", "sources.json",
            "outline.geojson", "roads.geojson", "context.geojson",
            file.path("tables", c("index.json", "tracts-acs.json", "tracts-places.json",
                                  "tracts-centers.json", "counties-centers.json")))
+layers <- list.files(file.path(committed, "layers"), "[.]json$|[.]geojson$")
+files <- c(files, file.path("layers", layers))
 ignored <- c("packages", "assets")
 problems <- character()
 notes <- character()
