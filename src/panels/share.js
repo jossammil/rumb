@@ -72,6 +72,11 @@ export function createShare(app) {
   /** Puts a shared map on screen; keeps this device's imported data and query layers. */
   async function open(text) {
     const data = await decodeShare(text);
+    // A link for another region this build has reopens the app there.
+    if (data.r && data.r !== catalog.region.id && app.hasRegion(data.r)) {
+      app.openRegion(data.r, { hash: "state=" + text });
+      return;
+    }
     await ws.library().catch(() => null);
     // Density surfaces in the link are rebuilt here from their specs.
     const specs = generatedOf(data),

@@ -163,7 +163,8 @@ export function createWorkspace(catalog, { status = () => {}, onDatabase = () =>
   /** Centers of population for a layer ({ ids, lon, lat, population }), or null when none ship. */
   async function centers(layerId) {
     const index = await tables();
-    const entry = index.centers?.[layerId === ref.id ? "tracts" : layerId];
+    // The table index keys centers by layer id; the reference layer's is its id ("tracts").
+    const entry = index.centers?.[layerId];
     if (!entry) return null;
     if (!centerData.has(layerId)) centerData.set(layerId, await json(entry.file));
     return centerData.get(layerId);

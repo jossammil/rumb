@@ -24,6 +24,8 @@ import { accessFields, densityId, densitySpec, derivedSpec, modelFields } from "
 import { mapGeometry } from "./geo/spatial.js";
 import { accessMeasures } from "./stats/access.js";
 import { createStore } from "./core/store.js";
+import { chooseRegion, listed, projectRegion, regionHref, unknownRegion } from "./core/regions.js";
+import { load as loadPref, save as savePref } from "./core/storage.js";
 import { createWorkspace } from "./core/workspace.js";
 import { createOffline } from "./data/offline.js";
 import { exportMapImage } from "./map/export-png.js";
@@ -76,7 +78,10 @@ async function start() {
   applySettings();
   addIcons();
   status("Opening map…", "loading");
-  const catalog = await loadCatalog(fetchJSON);
+  const catalog = await loadCatalog(fetchJSON, (index) =>
+    chooseRegion(index, { search: location.search, stored: loadPref("region") }),
+  );
+  savePref("region", catalog.region.id);
   $("brand-region").textContent = catalog.region.id.toUpperCase();
   const ws = createWorkspace(catalog, {
     status: (m) => status(m, "loading"),
@@ -95,6 +100,13 @@ async function start() {
       return store.state;
     },
     notify: (message, options = {}) => toast(message, options === true ? { error: true } : options),
+    /** Whether the data index lists a region. */
+    hasRegion: (id) => listed(catalog.index, id),
+    /** Reloads the app in another region, with an optional #fragment and query additions. */
+    openRegion(id, { hash = "", extra } = {}) {
+      location.assign(regionHref(location.href, id, { index: catalog.index, hash, extra }));
+    },
+    projectRegion,
     fail: report,
     status,
     /** A field's label on the focus layer (or another layer). */
@@ -763,8 +775,12 @@ async function start() {
       }, () => {});
   });
   wire(app);
-  // A link with #state= opens its shared map once the first map is up.
+  const missing = unknownRegion(catalog.index, location.search);
+  if (missing) app.notify("No data for the region “" + missing + "” here; opened " + catalog.region.name + ".");
+  // A link with #state= opens its shared map once the first map is up, and a
+  // project opened in another region waits in the pending cache for this one.
   if (/^#state=/.test(location.hash)) app.loadShare().then((s) => s.fromAddress());
+  if (new URLSearchParams(location.search).has("restore")) app.files.restorePending().catch(report);
 
   // For debugging in the console, the e2e checks and scripts/benchmark-browser.mjs.
   window.rumb = {

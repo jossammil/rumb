@@ -54,6 +54,15 @@ export function createFiles(app) {
     await app.ws.library().catch(() => null);
     const next = await unpackProject(file, { table: app.ref.id, ...app.ws.projectFiles() });
     const saved = next.state;
+    // A project from another region reopens the app there and restores itself.
+    const region = app.projectRegion(saved);
+    if (region !== app.catalog.region.id) {
+      if (!app.hasRegion(region)) throw new Error("This project is for a region (" + region + ") this version of rumb does not have.");
+      if (!(await stashPending(file))) throw new Error("This project is for another region. Open that region first, then the project.");
+      app.status("Switching region…", "running");
+      app.openRegion(region, { extra: { restore: "1" } });
+      return;
+    }
     if (
       !Array.isArray(saved.layers) ||
       saved.layers.some((l) => !Array.isArray(l.collection?.features)) ||
@@ -82,5 +91,29 @@ export function createFiles(app) {
     app.notify("Project restored.");
   }
 
-  return { importFiles, saveProject, restoreProject };
+  // A project waiting for its region: kept in Cache Storage across the reload.
+  const PENDING = "rumb-pending",
+    PENDING_KEY = "pending-project";
+  async function stashPending(file) {
+    if (!globalThis.caches) return false;
+    const cache = await caches.open(PENDING);
+    await cache.put(PENDING_KEY, new Response(file, { headers: { "x-name": encodeURIComponent(file.name || "project.rumb") } }));
+    return true;
+  }
+  /** Restores the project a region switch left in the pending cache, then forgets it. */
+  async function restorePending() {
+    const url = new URL(location.href);
+    url.searchParams.delete("restore");
+    history.replaceState(null, "", url.pathname + url.search + url.hash);
+    if (!globalThis.caches) return;
+    const cache = await caches.open(PENDING);
+    const res = await cache.match(PENDING_KEY);
+    if (!res) return;
+    await cache.delete(PENDING_KEY);
+    const name = decodeURIComponent(res.headers.get("x-name") || "project.rumb");
+    const file = new File([await res.blob()], name);
+    await app.perform(null, () => restoreProject(file));
+  }
+
+  return { importFiles, saveProject, restoreProject, restorePending };
 }

@@ -362,9 +362,15 @@ await check("hotspots", async () => {
   await p.check("#fdr");
   await p.click("#analyze");
   await waitText("#inspect-panel", "Conditional permutations, FDR-adjusted", p);
-  const bins = await p.evaluate(() =>
-    window.rumb.map.querySourceFeatures("lyr-tracts").some((f) => /^[HC]9/.test(f.properties.__rumb_class)),
-  );
+  // The map's source updates after the inspector; wait for its features.
+  const bins = await p
+    .waitForFunction(
+      () => window.rumb.map.querySourceFeatures("lyr-tracts").some((f) => /^[HC]9/.test(f.properties.__rumb_class)),
+      null,
+      { timeout: 10000 },
+    )
+    .then(() => true, () => false);
+  if (!bins) console.log("      classes on the map: " + JSON.stringify(await p.evaluate(() => [...new Set(window.rumb.map.querySourceFeatures("lyr-tracts").map((f) => f.properties.__rumb_class))].slice(0, 12))));
   expect(bins, "hot spot bins on the map");
   await p.context().close();
 });
@@ -1104,6 +1110,52 @@ await check("share", async () => {
   await waitText('[data-count="fire_stations_2020"]', "88 of", q);
   expect(!sent.some((u) => /state=/.test(u)), "the shared state reached a server");
   await ctx.close();
+  await p.context().close();
+});
+
+await check("regions", async () => {
+  // ?r= opens another region, and the app remembers it for the next visit.
+  const p = await openPage();
+  await p.goto(base + "?r=de");
+  await ready(p);
+  await waitText("#foot-status", "262 features", p);
+  expect((await p.textContent("#brand-region")).trim() === "DE", "brand shows DE");
+  expect((await p.evaluate(() => window.rumb.app.catalog.region.name)) === "Delaware", "Delaware catalog");
+  await p.goto(base);
+  await ready(p);
+  await waitText("#foot-status", "262 features", p);
+  await p.goto(base + "?r=zz");
+  await ready(p);
+  await waitText("#toast", "No data for the region", p);
+  // A Delaware link opened where Mississippi is open reopens the app in Delaware.
+  await p.click('[data-palette="Viridis"]');
+  await p.keyboard.press("u");
+  await p.locator("#share-link").waitFor();
+  const url = (await p.inputValue("#share-link")).replace(/^https?:\/\/[^/]+/, origin);
+  const plain = url.replace(/[?&]r=de/, "").replace(/\?(?=#)/, "");
+  expect(!plain.includes("r=de") && plain.includes("#state="), "link without ?r=: " + plain);
+  const q = await openPage();
+  await waitText("#foot-status", "878 features", q);
+  await q.goto(plain);
+  await waitText("#toast", "Opened a shared map", q);
+  await waitText("#foot-status", "262 features", q);
+  const got = await q.evaluate(() => ({ region: window.rumb.app.catalog.region.id, palette: window.rumb.state.palette, search: location.search }));
+  expect(got.region === "de" && got.palette === "Viridis" && got.search.includes("r=de"), JSON.stringify(got));
+  // A Delaware project opened in Mississippi switches region, then restores.
+  const saved = await download("#save-project", q);
+  const m = await openPage();
+  await waitText("#foot-status", "878 features", m);
+  await m.setInputFiles("#project-picker", { name: "delaware.rumb", mimeType: "application/zip", buffer: saved });
+  await waitText("#toast", /project restored/i, m);
+  const after = await m.evaluate(async () => ({
+    region: window.rumb.app.catalog.region.id,
+    palette: window.rumb.state.palette,
+    search: location.search,
+    pending: (await (await caches.open("rumb-pending")).keys()).length,
+  }));
+  expect(after.region === "de" && after.palette === "Viridis" && !after.search.includes("restore") && after.pending === 0, JSON.stringify(after));
+  await m.context().close();
+  await q.context().close();
   await p.context().close();
 });
 
