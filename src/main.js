@@ -33,6 +33,8 @@ import { createStyle } from "./panels/style.js";
 import { createTools } from "./panels/tools.js";
 import { createFilter } from "./panels/filter.js";
 import { parseCoordinate } from "./geo/coords.js";
+import { countPoints } from "./geo/counts.js";
+import { projectedIndex } from "./geo/filter.js";
 import { formatPosition } from "./core/settings.js";
 import { createWorkbench } from "./panels/workbench.js";
 import { $, addIcons, h, on, report, toast } from "./ui/dom.js";
@@ -86,9 +88,10 @@ async function start() {
     fail: report,
     status,
     /** A field's label on the focus layer (or another layer). */
-    label: (field, l = app.layer()) => fieldLabel(catalog, field, l?.meta),
+    label: (field, l = app.layer()) => l?.extraFields?.[field]?.label || fieldLabel(catalog, field, l?.meta),
     /** Catalog metadata for a field of a layer: library fields, or the reference's own. */
     fieldMeta(l, field) {
+      if (l?.extraFields?.[field]) return l.extraFields[field];
       if (l?.meta) return l.meta.fields?.[field];
       return l?.referenceFields ? fieldInfo(catalog, field) : undefined;
     },
@@ -97,19 +100,16 @@ async function start() {
       if (l?.meta) return { labelField: l.meta.labelField, groupField: l.meta.placeField, idField: null };
       return { labelField: ws.ref.labelField, groupField: ws.ref.groupField, idField: ws.ref.idField };
     },
-    fieldList: (l) => ws.fieldList(l),
+    fieldList: (l) => [...ws.fieldList(l), ...(l?.countFields || [])],
     allLayers: () => [ws.referenceView(), ...store.state.layers],
-    /** A layer by id: the reference layer, a query layer or a loaded library layer. */
+    /**
+     * A layer by id: the reference layer, a query layer or a loaded library
+     * layer, with point counts added when its stack entry asks for them.
+     */
     layerById(id) {
-      if (id === ws.ref.id) return ws.referenceView();
-      const query = store.state.layers.find((l) => l.id === id);
-      if (query) return query;
-      const meta = ws.meta(id),
-        collection = ws.layerCollection(id);
-      if (!meta || !collection) return undefined;
-      if (libraryViews.get(id)?.collection !== collection)
-        libraryViews.set(id, { id, name: meta.name, collection, library: true, meta });
-      return libraryViews.get(id);
+      const base = baseLayer(id),
+        counts = store.state.stack.find((e) => e.id === id)?.counts;
+      return base && counts?.length ? withCounts(base, counts) : base;
     },
     /** The focus layer: the one the style panel, inspector and analysis act on. */
     layer: () => app.layerById(store.state.active),
@@ -229,8 +229,25 @@ async function start() {
     showLayer: (id) => focusLayer(id, { fit: true }),
     selectFeature(id) {
       if (!app.values.has(String(id))) return;
-      store.set({ selected: String(id), inspector: true });
+      store.set({ selected: String(id), picks: [], inspector: true });
       app.renderInspector();
+      app.filter?.render();
+    },
+    /** Adds a feature to the selection, or takes it out (Shift-click). */
+    togglePick(id) {
+      id = String(id);
+      if (!app.values.has(id)) return;
+      const { selected, picks } = store.state;
+      const all = [...new Set([selected, ...picks].filter(Boolean))];
+      const next = all.includes(id) ? all.filter((x) => x !== id) : [...all, id];
+      store.set({ selected: next.at(-1) || null, picks: next, inspector: true });
+      app.renderAll();
+    },
+    /** Selects many features of the focus layer at once (those a filter keeps, say). */
+    selectMany(ids) {
+      const list = [...ids].map(String).filter((id) => app.values.has(id)).slice(0, 2000);
+      store.set({ selected: list[0] || null, picks: list, inspector: true });
+      app.renderAll();
     },
     setMeasure(field) {
       app.analysis.clearResults();
@@ -329,6 +346,69 @@ async function start() {
     if (fit) app.atlas.fit(l.collection);
   }
   const libraryViews = new Map();
+  /** A layer without point counts. */
+  function baseLayer(id) {
+    if (id === ws.ref.id) return ws.referenceView();
+    const query = store.state.layers.find((l) => l.id === id);
+    if (query) return query;
+    const meta = ws.meta(id),
+      collection = ws.layerCollection(id);
+    if (!meta || !collection) return undefined;
+    if (libraryViews.get(id)?.collection !== collection)
+      libraryViews.set(id, { id, name: meta.name, collection, library: true, meta });
+    return libraryViews.get(id);
+  }
+  /**
+   * A polygon layer with fields counting the points of other layers inside
+   * each area (count_<layer>), and rates per 10,000 people when the layer has
+   * a population field (rate_<layer>). Cached until the inputs change.
+   */
+  const countViews = new Map();
+  function withCounts(view, pointIds) {
+    const points = pointIds.map(baseLayer).filter((p) => p && app.kindOf(p) === "point");
+    if (!points.length || app.kindOf(view) === "point") return view;
+    const hit = countViews.get(view.id);
+    if (hit && hit.base === view.collection && hit.points.length === points.length && hit.points.every((p, i) => p === points[i].collection))
+      return hit.view;
+    const index = (c) => projectedIndex(c, app.tools.projection, featureId);
+    const population = view.meta?.populationField;
+    const extraFields = {},
+      countFields = [],
+      perArea = view.collection.features.map(() => ({}));
+    const ids = view.collection.features.map(featureId);
+    for (const p of points) {
+      const counts = countPoints(index(view.collection), index(p.collection));
+      const field = "count_" + p.id;
+      extraFields[field] = { label: p.name + " (count)", format: "integer", pool: { kind: "count", numerator: field } };
+      countFields.push(field);
+      ids.forEach((id, i) => (perArea[i][field] = counts.get(id) ?? 0));
+      if (population) {
+        const rate = "rate_" + p.id;
+        extraFields[rate] = {
+          label: p.name + " per 10,000 people",
+          format: "rate",
+          pool: { kind: "ratio", numerator: field, denominator: population, scale: 10000 },
+        };
+        countFields.push(rate);
+        view.collection.features.forEach((f, i) => {
+          const pop = f.properties?.[population];
+          perArea[i][rate] = pop > 0 ? (perArea[i][field] / pop) * 10000 : null;
+        });
+      }
+    }
+    if (points.length > 1) {
+      extraFields.count_points = { label: "All counted points", format: "integer", pool: { kind: "count", numerator: "count_points" } };
+      countFields.push("count_points");
+      perArea.forEach((x) => (x.count_points = points.reduce((n, p) => n + x["count_" + p.id], 0)));
+    }
+    const collection = {
+      type: "FeatureCollection",
+      features: view.collection.features.map((f, i) => ({ ...f, properties: { ...f.properties, ...perArea[i] } })),
+    };
+    const counted = { ...view, collection, extraFields, countFields, countedFrom: points.map((p) => p.name) };
+    countViews.set(view.id, { base: view.collection, points: points.map((p) => p.collection), view: counted });
+    return counted;
+  }
 
   /** A popup for a feature of a layer that is not the focus, with a way to focus it. */
   function showPopup(layerId, id, lngLat) {
@@ -371,12 +451,13 @@ async function start() {
   app.atlas = initMap({
     region: catalog.region,
     regionPath: catalog.path,
-    onSelect: ({ layer, id, lngLat }) => {
+    onSelect: ({ layer, id, lngLat, additive }) => {
       if (layer === "cmp") return app.compare.toggle(id);
       // The topmost feature wins: the focus layer's opens the inspector; any other a popup.
       app.atlas.closePopup();
-      if (layer === store.state.active) app.selectFeature(id);
-      else showPopup(layer, id, lngLat);
+      if (layer !== store.state.active) showPopup(layer, id, lngLat);
+      else if (additive) app.togglePick(id);
+      else app.selectFeature(id);
     },
     onPointer: (lngLat) => app.statusbar?.position(lngLat),
   });
@@ -437,6 +518,23 @@ async function start() {
   };
 }
 
+/** Counts the map's shown point layers in each area of the focus layer, or stops counting. */
+function toggleCounts(app) {
+  const { state } = app,
+    entry = state.stack.find((e) => e.id === state.active);
+  if (app.kindOf(app.layer()) === "point") throw new Error("Make a polygon layer the focus to count points in its areas.");
+  if (entry?.counts?.length) {
+    app.store.set({ stack: state.stack.map((e) => (e.id === state.active ? { ...e, counts: [] } : e)) });
+    if (/^(count|rate)_/.test(state.measure)) app.store.set({ measure: app.fieldList(app.layer())[0] || "" });
+    return app.renderAll();
+  }
+  const points = state.stack.filter((e) => e.visible && e.id !== state.active && app.kindOf(app.layerById(e.id)) === "point");
+  if (!points.length) throw new Error("Add a point layer to the map first (N), then count its points here.");
+  app.store.set({ stack: state.stack.map((e) => (e.id === state.active ? { ...e, counts: points.map((p) => p.id) } : e)) });
+  app.setMeasure("count_" + points.at(-1).id);
+  app.notify("Counted " + points.map((p) => app.layerById(p.id).name).join(", ") + " in each area.");
+}
+
 /** Moves the focus to the next shown layer below (-1) or above (+1) in the stack. */
 function stepFocus(app, delta) {
   const shown = app.state.stack.filter((e) => e.visible);
@@ -479,8 +577,8 @@ function wire(app) {
     "zoom-in": () => inMap() && app.atlas.map.zoomIn(),
     "zoom-out": () => inMap() && app.atlas.map.zoomOut(),
     "clear-selection": () => {
-      store.set({ selected: null, inspector: !!app.state.result });
-      app.renderInspector();
+      store.set({ selected: null, picks: [], inspector: !!app.state.result });
+      app.renderAll();
     },
     "run-analysis": () => {
       if (app.state.view !== "map") app.setView("map");
@@ -526,6 +624,7 @@ function wire(app) {
       app.filter.drawArea();
     },
     "filter-clear": () => app.filter.clear(),
+    "count-points": () => toggleCounts(app),
     "layer-down": () => stepFocus(app, -1),
     "layer-up": () => stepFocus(app, 1),
   });
@@ -657,6 +756,7 @@ function wire(app) {
     app.renderAll();
   });
   on("filter-clear", "click", () => app.filter.clear());
+  on("count-points", "click", () => runCommand("count-points"));
   on("look-reset", "click", () => {
     const { stack, active } = store.state;
     store.set({ stack: stack.map((e) => (e.id === active ? { id: e.id, visible: e.visible } : e)) });

@@ -639,6 +639,47 @@ await check("filters", async () => {
   await p.context().close();
 });
 
+await check("pooled", async () => {
+  const ref = JSON.parse(await readFile("tests/counts-reference.json", "utf8"));
+  const p = await openPage();
+  const add = async (id, name) => {
+    await p.keyboard.press("n");
+    await p.click(`[data-library="${id}"]`);
+    await waitText("#toast", "Added " + name, p);
+  };
+  await add("chr_counties_2025", "County Health Rankings");
+  // One county pooled with its neighbors, then a second county added with Shift.
+  await p.evaluate((id) => window.rumb.app.selectFeature(id), ref.selected);
+  await waitText("#inspect-panel", "Pooled with neighbors", p);
+  const pct = (v) => (Math.round(v * 10) / 10).toFixed(1).replace(/\.0$/, "") + "%";
+  const cells = () => p.$$eval('[data-pool="v085_rawvalue"] td', (tds) => tds.map((td) => td.textContent));
+  await p.waitForFunction(() => document.querySelectorAll('[data-pool="v085_rawvalue"] td').length === 3);
+  const want = ["selected", "neighbors", "total"].map((k) => pct(ref.pooled.v085_rawvalue[k].value));
+  expect((await cells()).join() === want.join(), "pooled uninsured " + (await cells()) + " vs " + want);
+  await p.evaluate(() => window.rumb.app.togglePick("28121"));
+  await waitText("#inspect-panel", "2 areas selected", p);
+  await p.waitForFunction(
+    () => new Set(window.rumb.map.querySourceFeatures("selection").filter((f) => f.properties.role === "selected").map((f) => f.properties.id)).size === 2,
+  );
+  // Q counts the fire stations in each county, as GEOS does.
+  await add("fire_stations_2020", "Fire stations");
+  await p.click('[data-layer="chr_counties_2025"]');
+  await p.keyboard.press("q");
+  await waitText("#legend", "Fire stations (count)", p);
+  const counted = await p.evaluate(() =>
+    Object.fromEntries(window.rumb.app.layer().collection.features.map((f) => [f.id, f.properties.count_fire_stations_2020])),
+  );
+  expect(JSON.stringify(counted) === JSON.stringify(ref.counties), "county counts");
+  expect(await p.evaluate(() => window.rumb.app.fieldList(window.rumb.app.layer()).includes("rate_fire_stations_2020")), "rate per 10,000");
+  // A filter's features can become the selection.
+  await p.evaluate(() => window.rumb.app.filter.set({ kind: "radius", center: [-90.18, 32.3], miles: 25 }));
+  await p.click("#filter-select");
+  await waitText("#inspect-panel", "areas selected", p);
+  await p.keyboard.press("q");
+  await p.waitForFunction(() => !window.rumb.app.layer().countFields);
+  await p.context().close();
+});
+
 // ---- compare -----------------------------------------------------------------
 await check("compare", async () => {
   const p = await openPage();

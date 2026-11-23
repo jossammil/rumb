@@ -18,6 +18,7 @@ import {
 } from "../map/classify.js";
 import { mapColors } from "../map/basemap-style.js";
 import { classItems, renderLegend, renderOthers } from "../map/legend.js";
+import { poolOf } from "../stats/pool.js";
 import { $, h, options } from "../ui/dom.js";
 
 export function createStyle(app) {
@@ -55,6 +56,13 @@ export function createStyle(app) {
     );
     measure.value = state.category ? "category:" + state.category : state.measure || "";
     measure.disabled = !fields.length && !cats.length;
+    // Polygon layers can count the map's point layers in each area.
+    const entry = state.stack.find((e) => e.id === l.id);
+    const pointsShown = state.stack.some((e) => e.visible && e.id !== l.id && app.kindOf(app.layerById(e.id)) === "point");
+    $("count-points").hidden = kind === "point" || (!pointsShown && !entry?.counts?.length);
+    $("count-points").textContent = entry?.counts?.length
+      ? "Stop counting " + (l.countedFrom || []).join(", ")
+      : "Count points in each area";
     const classed = !!state.measure && !state.category;
     $("classes-row").hidden = $("palette-row").hidden = !classed;
     renderLook(l, kind);
@@ -123,8 +131,12 @@ export function createStyle(app) {
   function colorize(l, view) {
     const features = l.collection.features,
       category = view.category,
-      measure = category ? "" : view.measure,
-      data = features.map((f) => f.properties?.[measure]);
+      measure = category ? "" : view.measure;
+    // Values a source suppressed (flag 2) read as unavailable, and the legend says so.
+    const flag = measure ? poolOf(app.fieldMeta(l, measure))?.flag : null;
+    const isSuppressed = (f) => !!flag && f.properties?.[flag] === 2;
+    const data = features.map((f) => (isSuppressed(f) ? null : f.properties?.[measure]));
+    const suppressed = flag ? features.filter(isSuppressed).length : 0;
     const cuts = measure ? classify(data, view.count, view.classification, { breaks: view.breaks }) : [],
       colors = ramp(view.palette, cuts.length + 1);
     const cats = category ? categories(features.map((f) => f.properties?.[category])) : null;
@@ -132,9 +144,9 @@ export function createStyle(app) {
     const { na, ns } = neutralColors();
     const clusterColor = (key) => (key === "NS" ? ns : key === "NA" ? na : clusters[key][1]);
     const uniform = uniformOf(l);
-    const annotated = features.map((f) => {
+    const annotated = features.map((f, i) => {
       const id = featureId(f),
-        v = f.properties?.[measure];
+        v = data[i];
       let color = cats
         ? cats.colorOf(f.properties?.[category]) || na
         : !measure
@@ -145,7 +157,7 @@ export function createStyle(app) {
       if (clustered) color = clusterColor(view.result.byId[id]?.cluster ?? "NA");
       return { ...f, properties: { ...f.properties, __rumb_id: id, __rumb_color: color } };
     });
-    return { annotated, data, cuts, colors, cats, measure, clustered, clusterColor, uniform, na };
+    return { annotated, data, cuts, colors, cats, measure, clustered, clusterColor, uniform, na, suppressed };
   }
 
   /** A compact legend entry for a shown layer that is not the focus. */
@@ -185,7 +197,7 @@ export function createStyle(app) {
     const l = app.layer();
     values.clear();
     for (const f of l.collection.features) values.set(featureId(f), f);
-    const { data, cuts, colors, cats, clustered, clusterColor, uniform, na } = focus || colorize(l, state);
+    const { data, cuts, colors, cats, clustered, clusterColor, uniform, na, suppressed } = focus || colorize(l, state);
     lastCuts = cuts;
 
     const legend = $("legend");
@@ -221,6 +233,7 @@ export function createStyle(app) {
           ? valid.reduce(([lo, hi], v) => [Math.min(lo, v), Math.max(hi, v)], [Infinity, -Infinity])
           : null,
         missing: data.length - valid.length,
+        missingNote: suppressed ? suppressed + " suppressed by the source" : "",
         action,
       });
     }

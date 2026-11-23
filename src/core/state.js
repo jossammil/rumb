@@ -17,6 +17,7 @@ export const LAYER_VIEW_KEYS = [
   "seed",
   "fdr",
   "selected",
+  "picks",
   "result",
   "mode",
   "inspector",
@@ -42,6 +43,8 @@ export function defaults(catalog) {
     seed: 12345,
     fdr: false,
     selected: null,
+    // More selected features (Shift-click), for pooled measures and buffers.
+    picks: [],
     result: null,
     mode: "value",
     inspector: false,

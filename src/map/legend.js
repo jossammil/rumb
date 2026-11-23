@@ -28,7 +28,7 @@ const chip = (color) => h("i", { class: "chip", style: { background: color } });
  * missing: count | null }. kind "categories": { title, items }.
  * `action` adds a button under the legend: { label, run }.
  */
-export function renderLegend(el, { kind, title, items, extents, unit = "", missing, action }) {
+export function renderLegend(el, { kind, title, items, extents, unit = "", missing, missingNote, action }) {
   const shown = items.filter((x) => !x.missing);
   const parts = [h("div", { class: "legend-title", text: title })];
   if (kind === "categories") {
@@ -58,7 +58,14 @@ export function renderLegend(el, { kind, title, items, extents, unit = "", missi
       );
     const na = items.find((x) => x.missing);
     if (missing != null && na)
-      parts.push(h("div", { class: "legend-note" }, chip(na.color), number(missing) + " unavailable"));
+      parts.push(
+        h(
+          "div",
+          { class: "legend-note" },
+          chip(na.color),
+          number(missing) + " unavailable" + (missingNote ? " (" + missingNote + ")" : ""),
+        ),
+      );
     if (shown.length > 1)
       parts.push(
         h(

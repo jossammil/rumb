@@ -2,7 +2,9 @@
 // of error, the plain-language reading of its cluster, and the analysis
 // summary with the Moran scatterplot.
 import { number } from "../catalog/format.js";
-import { popupRows } from "../catalog/popup.js";
+import { formatValue, popupRows } from "../catalog/popup.js";
+import { featureId } from "../core/features.js";
+import { aggregate, coverageLabel, neighborsOf, poolOf } from "../stats/pool.js";
 import { clusters } from "../map/classify.js";
 import { $, fill, h, icon, s } from "../ui/dom.js";
 
@@ -76,23 +78,79 @@ const MEANING = {
 export function createInspector(app) {
   const pane = $("inspect-panel");
 
-  /** Outlines the selection and its neighbors; returns the neighbor IDs. */
+  /** The selected ids: the inspected feature and any others picked with Shift. */
+  const selection = () => [...new Set([...(app.state.picks || []), app.state.selected].filter(Boolean).map(String))];
+  /** The focus layer's neighbor graph for the current rule, once loaded. */
+  function graphOf(l) {
+    const { state } = app;
+    return l.reference
+      ? app.ws.neighborData?.[state.rule]
+      : l.library
+        ? app.ws.layerNeighbors(l.id)?.[state.rule]
+        : app.ws.graphs.get(l.id + "-" + state.rule);
+  }
+
+  /** Outlines the selection and dashes its neighbors; returns the inspected feature's neighbors. */
   function applyNeighbors() {
     const { state } = app;
-    const id = state.selected;
-    if (!id) {
+    const id = state.selected,
+      ids = selection();
+    if (!ids.length) {
       app.atlas.select({ layer: state.active });
       return null;
     }
-    const l = app.layer(),
-      graph = l.reference
-        ? app.ws.neighborData?.[state.rule]
-        : l.library
-          ? app.ws.layerNeighbors(l.id)?.[state.rule]
-          : app.ws.graphs.get(l.id + "-" + state.rule);
+    const graph = graphOf(app.layer());
     const adjacent = state.result?.byId?.[id]?.neighbors ?? graph?.[id];
-    app.atlas.select({ layer: state.active, ids: id, neighbors: adjacent || [] });
+    const dashed = ids.length > 1 ? neighborsOf(ids, graph) : adjacent || [];
+    app.atlas.select({ layer: state.active, ids, neighbors: dashed });
     return adjacent;
+  }
+
+  /**
+   * Pooled measures over the selected areas, their neighbors and both
+   * (map_pdo's Selected / Neighbors / Total), for fields that pool.
+   */
+  function selectionBlock(l) {
+    const { state } = app,
+      ids = selection();
+    if (!ids.length || app.kindOf(l) === "point") return null;
+    const fields = app.fieldList(l).filter((f) => poolOf(app.fieldMeta(l, f)));
+    if (!fields.length) return null;
+    const ordered = [state.measure, ...fields].filter((f, i, all) => fields.includes(f) && all.indexOf(f) === i);
+    const props = new Map(l.collection.features.map((f) => [featureId(f), f.properties]));
+    const graph = graphOf(l);
+    const neighbors = graph ? neighborsOf(ids, graph) : [];
+    const sets = [
+      ["Selected", ids],
+      ["Neighbors", neighbors],
+      ["Total", [...ids, ...neighbors]],
+    ].filter(([, list], i) => i === 0 || graph);
+    const rowOf = (field) => {
+      const info = app.fieldMeta(l, field),
+        pool = poolOf(info);
+      const cells = sets.map(([, list]) => {
+        const agg = aggregate(list.map((id) => props.get(id)).filter(Boolean), pool);
+        return h("td", { title: "Coverage " + coverageLabel(agg), text: agg.value == null ? "—" : formatValue(agg.value, { format: info.format || "number", unit: info.unit }) });
+      });
+      return h("tr", { "data-pool": field }, h("th", { scope: "row", text: app.label(field, l) }), cells);
+    };
+    const head = h("tr", null, h("th"), sets.map(([name, list]) => h("th", { scope: "col", text: name + " (" + list.length + ")" })));
+    const first = ordered.slice(0, 4),
+      rest = ordered.slice(4);
+    return h(
+      "section",
+      { class: "inspect-block selection-block" },
+      h("div", { class: "inspection-head" }, h("h3", { text: ids.length === 1 ? "Pooled with neighbors" : ids.length + " areas selected" })),
+      h("p", { class: "subtle", text: "Sums of counts, then the rate. Shift-click areas to add or remove them." }),
+      h("table", { class: "pool-table" }, h("thead", null, head), h("tbody", null, first.map(rowOf))),
+      rest.length &&
+        h(
+          "details",
+          { class: "pool-more" },
+          h("summary", { text: rest.length + " more measures" }),
+          h("table", { class: "pool-table" }, h("tbody", null, rest.map(rowOf))),
+        ),
+    );
   }
 
   function featureBlock({ feature, id, adjacent }) {
@@ -259,6 +317,7 @@ export function createInspector(app) {
         icon("close", 14),
       ),
       feature && featureBlock({ feature, id: state.selected, adjacent }),
+      selectionBlock(app.layer()),
       state.result && analysisBlock(),
     );
     // Reference-layer and library neighbors load on first selection.

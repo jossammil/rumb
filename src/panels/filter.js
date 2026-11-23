@@ -297,6 +297,13 @@ export function createFilter(app) {
       out,
       h("p", { class: "filter-what", text: describeFilter(filter, where) }),
       h("dl", { class: "metrics" }, rows),
+      kept.size > 0 &&
+        h("button", {
+          class: "small-btn",
+          id: "filter-select",
+          text: "Select these " + number(kept.size, 0) + " in " + l.name,
+          onclick: () => app.selectMany([...kept].sort((a, b) => a[1] - b[1]).map(([id]) => id)),
+        }),
       nearest.length && h("p", { class: "stack-note", text: filter.kind === "polygon" ? "In the area: " + l.name : "Nearest: " + l.name }),
       nearest,
     );
