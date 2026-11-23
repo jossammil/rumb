@@ -82,6 +82,8 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
   let order = [];
   let comparing = false;
   let popupNow = null;
+  let orderKey = "",
+    roadsAt = "above";
   const cmpById = new Map();
   /** MapLibre layer id → rumb layer id, for the layers a click can pick. */
   const pickable = new Map([["cmp-fill", "cmp"]]);
@@ -90,12 +92,17 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
     const l = layers.get(id);
     return layerSpecs(id, l.kind, mapColors(), l.style);
   };
+  // Visibility is set only where it changes: every style change costs a redraw.
+  const shown = new Map();
+  const show = (id, on) => {
+    const value = on ? "visible" : "none";
+    if (shown.get(id) === value) return;
+    shown.set(id, value);
+    map.setLayoutProperty(id, "visibility", value);
+  };
   function applyVisibility() {
-    for (const [id, l] of layers)
-      for (const s of l.specs)
-        map.setLayoutProperty(s.id, "visibility", l.visible && !comparing ? "visible" : "none");
-    for (const id of ["cmp-fill", "cmp-outline"])
-      map.setLayoutProperty(id, "visibility", comparing ? "visible" : "none");
+    for (const [, l] of layers) for (const s of l.specs) show(s.id, l.visible && !comparing);
+    for (const id of ["cmp-fill", "cmp-outline"]) show(id, comparing);
   }
   function interactiveLayers() {
     if (comparing) return ["cmp-fill"];
@@ -196,6 +203,7 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
         if (s.interactive) pickable.set(s.id, id);
       }
       order.push(id);
+      orderKey = "";
       applyVisibility();
     },
     removeLayer(id) {
@@ -204,10 +212,12 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
       for (const s of l.specs) {
         if (map.getLayer(s.id)) map.removeLayer(s.id);
         pickable.delete(s.id);
+        shown.delete(s.id);
       }
       map.removeSource(sourceId(id));
       layers.delete(id);
       order = order.filter((x) => x !== id);
+      orderKey = "";
     },
     has: (id) => layers.has(id),
     /** Features must carry properties.__rumb_id and __rumb_color. */
@@ -226,11 +236,15 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
       l.specs = specsFor(id);
       if (specShape(l.specs) !== before) {
         for (const layer of map.getStyle().layers)
-          if (layer.source === sourceId(id)) map.removeLayer(layer.id);
+          if (layer.source === sourceId(id)) {
+            map.removeLayer(layer.id);
+            shown.delete(layer.id);
+          }
         for (const s of l.specs) {
           map.addLayer(s.spec, ANCHORS[s.band]);
           if (s.interactive) pickable.set(s.id, id);
         }
+        orderKey = "";
         api.syncStack(order);
         applyVisibility();
         return;
@@ -248,9 +262,13 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
       l.visible = visible;
       applyVisibility();
     },
-    /** Puts layers in stack order (bottom → top) within each band. */
+    /** Puts layers in stack order (bottom → top) within each band; nothing moves when the order holds. */
     syncStack(ids) {
-      order = ids.filter((id) => layers.has(id));
+      const next = ids.filter((id) => layers.has(id));
+      const key = next.map((id) => specShape(layers.get(id).specs)).join("|");
+      if (key === orderKey) return;
+      orderKey = key;
+      order = next;
       for (const id of order) for (const s of layers.get(id).specs) map.moveLayer(s.id, ANCHORS[s.band]);
     },
     /** Shows Compare's areas (features with __rumb_id and __rumb_color) instead of the stack, or null to leave. */
@@ -289,6 +307,8 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
     },
     /** Draws the roads above area fills ("above") or below them ("below"). */
     setRoads(position) {
+      if (position === roadsAt) return;
+      roadsAt = position;
       for (const id of ["roads-secondary", "roads-primary"])
         if (map.getLayer(id)) map.moveLayer(id, position === "below" ? "cmp-fill" : "graticule");
     },

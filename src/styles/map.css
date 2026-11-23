@@ -412,3 +412,15 @@
   font-size: 0.74rem;
   cursor: pointer;
 }
+
+/* On phones a tool's readout docks along the bottom, over the legend, while it is in use. */
+@media (max-width: 760px) {
+  #tool-card {
+    top: auto;
+    bottom: 34px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    z-index: 4;
+  }
+}

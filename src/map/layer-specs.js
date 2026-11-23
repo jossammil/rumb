@@ -32,6 +32,7 @@ export const DEFAULT_STYLE = {
   pointStrokeWidth: 1,
   shape: "circle",
   label: null, // a field name to label features with
+  faded: false, // true while a filter dims what it leaves out (data-driven opacity)
 };
 
 /** The MapLibre look for a stack entry's choices ({ opacity, size, shape, outline, outlineColor }, label). */
@@ -54,7 +55,7 @@ export function entryStyle(entry, kind) {
 
 const zoomed = (stops) => ["interpolate", ["linear"], ["zoom"], ...stops];
 /** An opacity that fades for features a filter leaves out (properties.__rumb_out). */
-const fade = (value, by = 0.16) => ["case", ["==", ["get", "__rumb_out"], true], value * by, value];
+const fadeOut = (value, by = 0.16) => ["case", ["==", ["get", "__rumb_out"], true], value * by, value];
 const is = (type) => ["==", ["geometry-type"], type];
 /** Shape images are 24 px with a half-size of 8 (map/shapes.js). */
 const SHAPE_HALF = 8;
@@ -65,6 +66,9 @@ const SHAPE_HALF = 8;
  */
 export function layerSpecs(id, kind, colors, style = {}) {
   const st = { ...DEFAULT_STYLE, ...style };
+  // Opacity reads each feature's __rumb_out only while a filter is on; plain
+  // numbers otherwise keep drawing cheap.
+  const fade = (value, by) => (st.faded ? fadeOut(value, by) : value);
   const source = sourceId(id);
   const color = ["get", "__rumb_color"];
   const mixed = kind === "mixed";

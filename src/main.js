@@ -33,8 +33,7 @@ import { describeLayer, openLibrary, renderLayers } from "./panels/layers.js";
 import { createStyle } from "./panels/style.js";
 import { createTools } from "./panels/tools.js";
 import { createFilter } from "./panels/filter.js";
-import { createShare } from "./panels/share.js";
-import { openExport } from "./panels/exports.js";
+
 import { parseCoordinate } from "./geo/coords.js";
 import { countPoints } from "./geo/counts.js";
 import { projectedIndex } from "./geo/filter.js";
@@ -139,7 +138,7 @@ async function start() {
         const l = app.layerById(e.id);
         if (!l) continue;
         const kind = app.kindOf(l),
-          style = entryStyle(e, kind);
+          style = { ...entryStyle(e, kind), faded: !!store.state.filter && store.state.filterMode !== "hide" };
         if (!app.atlas.has(e.id)) app.atlas.addLayer(e.id, kind, style);
         else if (JSON.stringify(app.atlas.styleOf(e.id)) !== JSON.stringify(style)) app.atlas.setStyle(e.id, style);
         app.atlas.setVisible(e.id, e.visible);
@@ -475,7 +474,11 @@ async function start() {
   app.statusbar = createStatusbar(app);
   app.tools = createTools(app);
   app.filter = createFilter(app);
-  app.share = createShare(app);
+  // Sharing loads when used, or when the address holds a shared map.
+  const share = () => import("./panels/share.js").then((m) => (app.share ??= m.createShare(app)));
+  if (/^#state=/.test(location.hash)) share();
+  window.addEventListener("hashchange", () => /^#state=/.test(location.hash) && share().then((s) => s.fromAddress()));
+  app.loadShare = share;
   const offline = createOffline({
     status,
     notify: app.notify,
@@ -502,7 +505,7 @@ async function start() {
   });
   wire(app);
   // A link with #state= opens its shared map once the first map is up.
-  app.share.fromAddress();
+  if (/^#state=/.test(location.hash)) app.loadShare().then((s) => s.fromAddress());
 
   // For debugging in the console, the e2e checks and scripts/benchmark-browser.mjs.
   window.rumb = {
@@ -631,8 +634,8 @@ function wire(app) {
     },
     "filter-clear": () => app.filter.clear(),
     "count-points": () => toggleCounts(app),
-    share: () => app.perform(null, app.share.copyLink),
-    "export-data": () => openExport(app),
+    share: () => app.perform(null, async () => (await app.loadShare()).copyLink()),
+    "export-data": () => import("./panels/exports.js").then((m) => m.openExport(app)),
     report: () =>
       app.perform(null, async () => {
         if (app.state.view !== "map") app.setView("map");

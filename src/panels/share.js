@@ -108,7 +108,5 @@ export function createShare(app) {
     const text = shareFromHash(location.hash);
     if (text) await app.perform(null, () => open(text));
   }
-  window.addEventListener("hashchange", fromAddress);
-
   return { copyLink, open, fromAddress };
 }
