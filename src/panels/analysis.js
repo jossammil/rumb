@@ -66,7 +66,8 @@ export function createAnalysis(app) {
     }))
       $(id).value = String(value);
     $("fdr").checked = state.fdr;
-    button.disabled = !fields.length || running != null || !records.every(isPolygon);
+    button.disabled =
+      !fields.length || !state.measure || !!state.category || running != null || !records.every(isPolygon);
     button.title = button.disabled ? "Choose a polygon layer with a numeric measure." : "";
   }
 

@@ -2,6 +2,7 @@
 // of error, the plain-language reading of its cluster, and the analysis
 // summary with the Moran scatterplot.
 import { number } from "../catalog/format.js";
+import { popupRows } from "../catalog/popup.js";
 import { clusters } from "../map/classify.js";
 import { $, fill, h, icon, s } from "../ui/dom.js";
 
@@ -124,6 +125,10 @@ export function createInspector(app) {
       metrics.push(
         row(info.universeLabel || app.label(info.universe), number(props[info.universe], 0)),
       );
+    // Library layers list their catalog fields too.
+    if (l.meta)
+      for (const r of popupRows(l.meta, props, { skip: [fields.labelField, measure] }))
+        metrics.push(row(r.label, r.text));
     if (adjacent)
       metrics.push(row(state.result ? "Eligible neighbors" : "Adjacent areas", adjacent.length));
     if (record) {
@@ -171,9 +176,15 @@ export function createInspector(app) {
         { class: "inspection-head" },
         h("h3", { text: props[fields.labelField] ?? props.name ?? props.NAME ?? "Feature " + id }),
       ),
-      h("p", { class: "subtle", text: [group, (fields.idField && props[fields.idField]) ?? id].filter(Boolean).join(" · ") }),
-      h("div", { class: "score", text: value }),
-      h("div", { class: "subtle", text: app.label(measure) }),
+      // Library points are numbered by source row, which means nothing to a reader.
+      h("p", {
+        class: "subtle",
+        text: [group, (fields.idField && props[fields.idField]) ?? (l.library && /^\d+$/.test(id) ? null : id)]
+          .filter(Boolean)
+          .join(" · "),
+      }),
+      measure && h("div", { class: "score", text: value }),
+      measure && h("div", { class: "subtle", text: app.label(measure) }),
       h("dl", { class: "metrics" }, metrics),
       reading,
     );

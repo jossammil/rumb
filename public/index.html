@@ -78,8 +78,8 @@
         </section>
         <section class="side-section" id="sec-style">
           <h2><i data-icon="sliders"></i>Map style<kbd>S</kbd></h2>
-          <label for="measure">Measure</label><select id="measure"></select>
-          <div class="two-fields">
+          <label for="measure">Color by</label><select id="measure"></select>
+          <div class="two-fields" id="classes-row">
             <div>
               <label for="classification">Classification</label
               ><select id="classification">
@@ -98,8 +98,34 @@
               </select>
             </div>
           </div>
-          <label>Color palette</label>
-          <div id="palettes" role="group" aria-label="Color palette"></div>
+          <div id="palette-row">
+            <label>Color palette</label>
+            <div id="palettes" role="group" aria-label="Color palette"></div>
+          </div>
+          <details class="look" id="look">
+            <summary>Layer look</summary>
+            <div class="look-grid">
+              <label for="look-color" data-look="single">Color</label
+              ><input type="color" id="look-color" data-look="single" />
+              <label for="look-opacity">Opacity</label
+              ><input type="range" id="look-opacity" min="0.1" max="1" step="0.05" />
+              <label for="look-size" data-look="point line">Size</label
+              ><input type="range" id="look-size" min="1" max="15" step="1" data-look="point line" />
+              <label for="look-shape" data-look="point">Shape</label
+              ><select id="look-shape" data-look="point">
+                <option value="circle">Circle</option>
+                <option value="square">Square</option>
+                <option value="triangle">Triangle</option>
+                <option value="diamond">Diamond</option>
+              </select>
+              <label for="look-outline" data-look="polygon">Outline</label
+              ><input type="range" id="look-outline" min="0" max="5" step="0.25" data-look="polygon" />
+              <label for="look-outline-color" data-look="polygon">Outline color</label
+              ><input type="color" id="look-outline-color" data-look="polygon" />
+              <label for="look-label">Labels</label><select id="look-label"></select>
+            </div>
+            <button class="plain-btn" id="look-reset">Reset look</button>
+          </details>
         </section>
         <section class="side-section analysis-section" id="sec-analyze">
           <h2><i data-icon="cluster"></i>Spatial analysis<kbd>A</kbd></h2>

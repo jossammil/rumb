@@ -222,3 +222,89 @@ test("map layers for a stacked layer, by kind and band", async () => {
     "lyr-a-fill", "lyr-a-outline", "lyr-c-fill", "lyr-c-outline", "lyr-b-point",
   ]);
 });
+
+test("popups list a layer's catalog fields, formatted", async () => {
+  const { popupRows, formatValue, featureTitle } = await import("../src/catalog/popup.js");
+  const meta = {
+    labelField: "name",
+    popupFields: ["name", "rate", "income", "beds", "site", "phone", "empty"],
+    fields: {
+      name: { label: "Name" },
+      rate: { label: "Uninsured", format: "percent", unit: "%" },
+      income: { label: "Income", format: "currency" },
+      beds: { label: "Beds", format: "integer" },
+      site: { label: "Website", format: "url" },
+      phone: { label: "Phone", format: "phone" },
+      empty: { label: "Empty" },
+    },
+  };
+  const props = { name: "A", rate: 15.4056, income: 44385, beds: 120, site: "http://x.org", phone: "(601) 555-1234", empty: null };
+  const rows = popupRows(meta, props, { skip: ["name"] });
+  assert.deepEqual(
+    rows.map((r) => [r.label, r.text, r.href]),
+    [
+      ["Uninsured", "15.4%", null],
+      ["Income", "$44,385", null],
+      ["Beds", "120", null],
+      ["Website", "http://x.org", "http://x.org"],
+      ["Phone", "(601) 555-1234", "tel:6015551234"],
+    ],
+  );
+  // Layers without popup fields list their first fields, skipping bookkeeping.
+  assert.deepEqual(
+    popupRows(null, { __rumb_id: "1", a_b: 2, c: "x" }).map((r) => r.label),
+    ["a b", "c"],
+  );
+  assert.equal(formatValue(NaN), null);
+  assert.equal(featureTitle({ NAME: "B" }, "7", "name"), "B");
+  assert.equal(featureTitle({}, "7", "name"), "Feature 7");
+});
+
+test("category colors and the fields that can carry them", async () => {
+  const { categories, categoryFields, OTHER_COLOR, QUALITATIVE } = await import("../src/map/classify.js");
+  const c = categories(["b", "a", "b", "c", null, "b", "a"]);
+  assert.deepEqual(c.items.map((x) => [x.value, x.count]), [["b", 3], ["a", 2], ["c", 1]]);
+  assert.equal(c.colorOf("b"), QUALITATIVE[0]);
+  assert.equal(c.colorOf(null), null);
+  const many = categories("abcdefghij".split(""));
+  assert.equal(many.items.length, 8);
+  assert.deepEqual(many.items.at(-1), { value: "Other", color: OTHER_COLOR, count: 3, other: true });
+  assert.equal(many.colorOf("j"), OTHER_COLOR);
+  const features = [
+    { properties: { type: "x", name: "1", n: 1 } },
+    { properties: { type: "y", name: "2", n: 2 } },
+    { properties: { type: "x", name: "3", n: 3 } },
+  ];
+  assert.deepEqual(categoryFields(features, 2), ["type"]);
+});
+
+test("point shapes are distance fields centred in their image", async () => {
+  const { shapeDistance, shapeImage, SHAPES, SIZE } = await import("../src/map/shapes.js");
+  for (const shape of SHAPES) {
+    assert.ok(shapeDistance(shape, 0, 0) < 0, shape + " centre is inside");
+    for (const [x, y] of [[11, 0], [-11, 0], [0, 11], [0, -11]])
+      assert.ok(shapeDistance(shape, x, y) > 0, `${shape} (${x}, ${y}) is outside`);
+    const img = shapeImage(shape);
+    assert.equal(img.data.length, (SIZE * 2) ** 2 * 4);
+    const alpha = (col, row) => img.data[(row * SIZE * 2 + col) * 4 + 3];
+    assert.ok(alpha(SIZE, SIZE) > 191 && alpha(0, 0) < 191, shape);
+  }
+});
+
+test("a layer's look becomes MapLibre paint, shapes and labels", async () => {
+  const { entryStyle, layerSpecs, specShape } = await import("../src/map/layer-specs.js");
+  const colors = { outline: "#000", pointStroke: "#fff", label: "#ccc", halo: "#111" };
+  const entry = { id: "x", style: { opacity: 0.5, size: 9, shape: "triangle", outline: 2 }, label: "name" };
+  const points = layerSpecs("x", "point", colors, entryStyle(entry, "point"));
+  assert.deepEqual(points.map((s) => s.id + ":" + s.spec.type), ["lyr-x-shape:symbol", "lyr-x-label:symbol"]);
+  assert.equal(points[0].spec.layout["icon-size"], 9 / 8);
+  assert.equal(points[0].spec.paint["icon-opacity"], 0.5);
+  assert.equal(points[1].band, "label");
+  const areas = layerSpecs("x", "polygon", colors, entryStyle(entry, "polygon"));
+  assert.equal(areas[0].spec.paint["fill-opacity"], 0.5);
+  assert.equal(areas[1].spec.paint["line-width"], 2);
+  // Changing only a number keeps the layers; a shape or label rebuilds them.
+  const plain = layerSpecs("x", "point", colors, entryStyle({ style: { size: 4 } }, "point"));
+  assert.equal(specShape(plain), specShape(layerSpecs("x", "point", colors)));
+  assert.notEqual(specShape(plain), specShape(points));
+});

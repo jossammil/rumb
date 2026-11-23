@@ -16,21 +16,50 @@ export const sourceId = (id) => "lyr-" + id;
 /** Geometry kinds: a catalog layer says what it holds; query layers may mix. */
 export const KINDS = ["polygon", "point", "line", "mixed"];
 
-/** The look every layer starts with (the reference layer's look before stacking). */
+/**
+ * A layer's look. Stack entries store the reader's choices (core/stack.js);
+ * these are the MapLibre-facing values, and the defaults reproduce the
+ * reference layer's original look.
+ */
 export const DEFAULT_STYLE = {
   fillOpacity: 0.94,
   outlineOpacity: 0.68,
+  outlineWidth: null, // null: thin, growing with zoom
+  outlineColor: null, // null: the theme's outline color
   lineWidth: 3,
   pointRadius: 5,
+  pointOpacity: 1,
   pointStrokeWidth: 1,
+  shape: "circle",
+  label: null, // a field name to label features with
 };
+
+/** The MapLibre look for a stack entry's choices ({ opacity, size, shape, outline, outlineColor }, label). */
+export function entryStyle(entry, kind) {
+  const look = entry?.style || {},
+    out = { label: entry?.label || null };
+  if (look.opacity != null) {
+    out.fillOpacity = look.opacity;
+    out.pointOpacity = look.opacity;
+  }
+  if (look.size != null) {
+    out.pointRadius = look.size;
+    if (kind === "line") out.lineWidth = look.size;
+  }
+  if (look.shape) out.shape = look.shape;
+  if (look.outline != null) out.outlineWidth = look.outline;
+  if (look.outlineColor) out.outlineColor = look.outlineColor;
+  return out;
+}
 
 const zoomed = (stops) => ["interpolate", ["linear"], ["zoom"], ...stops];
 const is = (type) => ["==", ["geometry-type"], type];
+/** Shape images are 24 px with a half-size of 8 (map/shapes.js). */
+const SHAPE_HALF = 8;
 
 /**
  * [{ id, band, interactive, spec }] for a rumb layer of a given kind, with
- * theme colors { outline, pointStroke } and a style (DEFAULT_STYLE keys).
+ * theme colors { outline, pointStroke, label, halo } and a style (DEFAULT_STYLE keys).
  */
 export function layerSpecs(id, kind, colors, style = {}) {
   const st = { ...DEFAULT_STYLE, ...style };
@@ -50,9 +79,9 @@ export function layerSpecs(id, kind, colors, style = {}) {
       type: "line",
       ...(mixed && { filter: is("Polygon") }),
       paint: {
-        "line-color": colors.outline,
-        "line-opacity": st.outlineOpacity,
-        "line-width": zoomed([4, 0.35, 7, 0.75, 11, 1.4]),
+        "line-color": st.outlineColor || colors.outline,
+        "line-opacity": st.outlineWidth == null ? st.outlineOpacity : 0.9,
+        "line-width": st.outlineWidth == null ? zoomed([4, 0.35, 7, 0.75, 11, 1.4]) : st.outlineWidth,
       },
     });
   }
@@ -61,21 +90,65 @@ export function layerSpecs(id, kind, colors, style = {}) {
       type: "line",
       ...(mixed && { filter: is("LineString") }),
       layout: { "line-join": "round", "line-cap": "round" },
-      paint: { "line-color": color, "line-width": st.lineWidth },
+      paint: { "line-color": color, "line-width": st.lineWidth, "line-opacity": st.pointOpacity },
     });
-  if (kind === "point" || mixed)
-    add("point", "point", true, {
-      type: "circle",
-      ...(mixed && { filter: is("Point") }),
-      paint: {
-        "circle-radius": st.pointRadius,
-        "circle-color": color,
-        "circle-stroke-color": colors.pointStroke,
-        "circle-stroke-width": st.pointStrokeWidth,
+  if (kind === "point" || mixed) {
+    const filter = mixed ? { filter: is("Point") } : {};
+    if (st.shape === "circle" || !st.shape)
+      add("point", "point", true, {
+        type: "circle",
+        ...filter,
+        paint: {
+          "circle-radius": st.pointRadius,
+          "circle-color": color,
+          "circle-opacity": st.pointOpacity,
+          "circle-stroke-color": colors.pointStroke,
+          "circle-stroke-width": st.pointStrokeWidth,
+          "circle-stroke-opacity": st.pointOpacity,
+        },
+      });
+    else
+      // A different id from the circle layer: MapLibre keeps per-id symbol state,
+      // so a layer id must never change type.
+      add("shape", "point", true, {
+        type: "symbol",
+        ...filter,
+        layout: {
+          "icon-image": "rumb-shape-" + st.shape,
+          "icon-size": st.pointRadius / SHAPE_HALF,
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+        },
+        paint: {
+          "icon-color": color,
+          "icon-opacity": st.pointOpacity,
+          "icon-halo-color": colors.pointStroke,
+          "icon-halo-width": st.pointStrokeWidth,
+        },
+      });
+  }
+  if (st.label) {
+    const points = kind === "point";
+    add("label", "label", false, {
+      type: "symbol",
+      minzoom: points ? 8 : 5,
+      layout: {
+        "text-field": ["to-string", ["get", st.label]],
+        "text-font": ["Arial"],
+        "text-size": 11,
+        "text-padding": 3,
+        "text-max-width": 9,
+        "text-optional": true,
+        ...(points && { "text-offset": [0, 0.9], "text-anchor": "top" }),
       },
+      paint: { "text-color": colors.label, "text-halo-color": colors.halo, "text-halo-width": 1.3 },
     });
+  }
   return out;
 }
+
+/** A signature of a layer's MapLibre layers: ids and types; when it changes they are rebuilt. */
+export const specShape = (specs) => specs.map((s) => s.id + ":" + s.spec.type).join(",");
 
 /** The kind a GeoJSON feature collection needs: one geometry family, or "mixed". */
 export function kindOf(features) {

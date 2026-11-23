@@ -4,7 +4,8 @@
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { buildStyle, graticuleLines, mapColors, themedPaint } from "./basemap-style.js";
-import { ANCHORS, layerSpecs, sourceId } from "./layer-specs.js";
+import { ANCHORS, layerSpecs, sourceId, specShape } from "./layer-specs.js";
+import { addShapeImages } from "./shapes.js";
 
 function extent(collection) {
   const bounds = new maplibregl.LngLatBounds();
@@ -65,7 +66,10 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
   });
 
   const ready = new Promise((resolve, reject) => {
-    map.once("load", resolve);
+    map.once("load", () => {
+      addShapeImages(map);
+      resolve();
+    });
     const fail = (e) => {
       if (/WebGL.*(fail|support)/i.test(String(e.error))) reject(e.error);
     };
@@ -77,6 +81,7 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
   const layers = new Map();
   let order = [];
   let comparing = false;
+  let popupNow = null;
   const cmpById = new Map();
   /** MapLibre layer id → rumb layer id, for the layers a click can pick. */
   const pickable = new Map([["cmp-fill", "cmp"]]);
@@ -135,6 +140,19 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
     map,
     ready,
     fit,
+    /** Opens a popup holding `content` (an element) at a position; closes any other. */
+    popup(lngLat, content) {
+      popupNow?.remove();
+      popupNow = new maplibregl.Popup({ closeButton: true, maxWidth: "300px", className: "rumb-popup" })
+        .setLngLat(lngLat)
+        .setDOMContent(content)
+        .addTo(map);
+      return popupNow;
+    },
+    closePopup() {
+      popupNow?.remove();
+      popupNow = null;
+    },
     /** Adds a layer's source and MapLibre layers (once); kind from layer-specs KINDS. */
     addLayer(id, kind, style = {}) {
       if (layers.has(id)) return;
@@ -168,15 +186,31 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
       l.byId = new Map(features.map((f) => [String(f.properties.__rumb_id), f]));
       map.getSource(sourceId(id)).setData(collection(features));
     },
-    /** Changes a layer's look (DEFAULT_STYLE keys). */
+    /** Changes a layer's look (DEFAULT_STYLE keys); layers are rebuilt when a shape or label comes or goes. */
     setStyle(id, style) {
       const l = layers.get(id);
       if (!l) return;
+      const before = specShape(l.specs);
       l.style = style;
       l.specs = specsFor(id);
-      for (const s of l.specs)
+      if (specShape(l.specs) !== before) {
+        for (const layer of map.getStyle().layers)
+          if (layer.source === sourceId(id)) map.removeLayer(layer.id);
+        for (const s of l.specs) {
+          map.addLayer(s.spec, ANCHORS[s.band]);
+          if (s.interactive) pickable.set(s.id, id);
+        }
+        api.syncStack(order);
+        applyVisibility();
+        return;
+      }
+      for (const s of l.specs) {
         for (const [prop, value] of Object.entries(s.spec.paint || {})) map.setPaintProperty(s.id, prop, value);
+        for (const [prop, value] of Object.entries(s.spec.layout || {})) map.setLayoutProperty(s.id, prop, value);
+      }
     },
+    /** The style a layer was last given. */
+    styleOf: (id) => layers.get(id)?.style,
     setVisible(id, visible) {
       const l = layers.get(id);
       if (!l) return;

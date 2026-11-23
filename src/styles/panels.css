@@ -608,3 +608,39 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* Layer look: color, opacity, size, shape, outline and labels of the focus layer. */
+.look {
+  margin-top: 12px;
+}
+.look summary {
+  cursor: pointer;
+  color: var(--text2);
+  font: 600 0.72rem/1.6 var(--mono-font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.look-grid {
+  display: grid;
+  grid-template-columns: minmax(70px, auto) 1fr;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 8px 0 4px;
+}
+.look-grid label {
+  margin: 0;
+}
+.look-grid input[type="color"] {
+  width: 100%;
+  height: 26px;
+  padding: 0 2px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg1);
+}
+.look-grid input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.look-grid [hidden] {
+  display: none;
+}

@@ -6,6 +6,7 @@ import { normalizeStack, stackEntry } from "./stack.js";
 /** Settings each map layer remembers when you switch away from it and back. */
 export const LAYER_VIEW_KEYS = [
   "measure",
+  "category",
   "palette",
   "classification",
   "count",
@@ -27,6 +28,8 @@ export function defaults(catalog) {
     region: catalog.region.id,
     active: ref.id,
     measure: ref.measures[0],
+    // A text field to color by instead of a measure (null: color by the measure).
+    category: null,
     palette: "Lagoon",
     classification: "quantile",
     count: 5,

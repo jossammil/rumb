@@ -73,3 +73,35 @@ export function renderLegend(el, { kind, title, items, extents, unit = "", missi
     parts.push(h("button", { class: "plain-btn", text: action.label, onclick: action.run }));
   el.replaceChildren(...parts);
 }
+
+/** A small symbol for a layer kind: a dot, a bar or a square in the given colors. */
+export function kindSymbol(kind, colors) {
+  return h(
+    "span",
+    { class: "legend-symbol " + kind },
+    colors.slice(0, 5).map((c) => h("i", { style: { background: c } })),
+  );
+}
+
+/**
+ * Adds the other shown layers under a legend, one compact row each:
+ * [{ name, kind, colors, note }], top of the stack first.
+ */
+export function renderOthers(el, sections) {
+  if (!sections.length) return;
+  el.append(
+    h(
+      "div",
+      { class: "legend-others" },
+      sections.map((x) =>
+        h(
+          "div",
+          { class: "legend-other" },
+          kindSymbol(x.kind, x.colors),
+          h("span", { text: x.name }),
+          x.note && h("small", { text: x.note }),
+        ),
+      ),
+    ),
+  );
+}

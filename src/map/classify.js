@@ -11,6 +11,42 @@ export const palettes = {
   Cividis: ["#00204d", "#2a406c", "#575c6d", "#7c7b78", "#a69d75", "#d3c164", "#ffea46"],
 };
 
+/**
+ * Category colors: Okabe and Ito's eight colors, distinguishable with the
+ * common color-vision deficiencies. Grey is kept for "Other".
+ */
+export const QUALITATIVE = ["#e69f00", "#56b4e9", "#009e73", "#f0e442", "#0072b2", "#d55e00", "#cc79a7", "#b9b1a5"];
+export const OTHER_COLOR = "#7d7d7d";
+
+/**
+ * Colors for a text field's values: the most frequent first, up to seven,
+ * then "Other". Returns { items: [{ value, color, count }], colorOf(value) }.
+ */
+export function categories(values, max = 7) {
+  const counts = new Map();
+  for (const v of values) if (v != null && v !== "") counts.set(String(v), (counts.get(String(v)) || 0) + 1);
+  const ranked = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const kept = ranked.length > max + 1 ? ranked.slice(0, max) : ranked.slice(0, max + 1);
+  const color = new Map(kept.map(([value], i) => [value, QUALITATIVE[i % QUALITATIVE.length]]));
+  const items = kept.map(([value, count]) => ({ value, color: color.get(value), count }));
+  const other = ranked.slice(kept.length).reduce((n, [, c]) => n + c, 0);
+  if (other) items.push({ value: "Other", color: OTHER_COLOR, count: other, other: true });
+  return { items, colorOf: (v) => (v == null || v === "" ? null : color.get(String(v)) || OTHER_COLOR) };
+}
+
+/** Text fields with a handful of distinct values (2 to 24), good for coloring by category. */
+export function categoryFields(features, limit = 24) {
+  const seen = new Map();
+  for (const f of features)
+    for (const [k, v] of Object.entries(f.properties || {})) {
+      if (typeof v !== "string" || k.startsWith("__")) continue;
+      const set = seen.get(k) || new Set();
+      if (set.size <= limit) set.add(v);
+      seen.set(k, set);
+    }
+  return [...seen].filter(([, set]) => set.size >= 2 && set.size <= limit).map(([k]) => k);
+}
+
 /** The single color of a layer with no measure. (Missing values and "not
  * significant" use theme colors: neutralColors() in basemap-style.js.) */
 export const UNIFORM_COLOR = "#397d70";

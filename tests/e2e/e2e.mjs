@@ -67,7 +67,7 @@ async function openPage(viewport = { width: 1440, height: 960 }) {
   const ctx = await browser.newContext({ viewport, acceptDownloads: true });
   const p = await ctx.newPage();
   p.setDefaultTimeout(35000);
-  p.on("pageerror", (e) => errors.push(e.message));
+  p.on("pageerror", (e) => errors.push(e.message + " @ " + (e.stack || "").split("\n").slice(1, 3).join(" ").trim()));
   p.on("request", (r) => {
     const u = new URL(r.url());
     if (/^https?:$/.test(u.protocol) && u.origin !== origin) external.add(u.origin);
@@ -234,7 +234,7 @@ await check("boot", async () => {
   });
   page = await ctx.newPage();
   page.setDefaultTimeout(35000);
-  page.on("pageerror", (e) => errors.push(e.message));
+  page.on("pageerror", (e) => errors.push(e.message + " @ " + (e.stack || "").split("\n").slice(1, 3).join(" ").trim()));
   page.on("request", (r) => {
     requests.push(r.url());
     const u = new URL(r.url());
@@ -244,7 +244,9 @@ await check("boot", async () => {
   await page.goto(base);
   await waitText("#foot-status", "878 features");
   await ready(page);
-  await page.waitForFunction(() => document.querySelector("#measure")?.options.length === 2);
+  await page.waitForFunction(
+    () => document.querySelectorAll('#measure optgroup[label="Measure"] option').length === 2,
+  );
   expect(
     !requests.some((u) => /duckdb|geoda-lisa.*wasm/.test(u)),
     "analytics downloaded before the first map",
@@ -442,6 +444,58 @@ await check("layers", async () => {
   await shot("layers", q);
   await p.context().close();
   await q.context().close();
+});
+
+await check("symbology", async () => {
+  const p = await openPage();
+  const add = async (id, name) => {
+    await p.keyboard.press("n");
+    await p.click(`[data-library="${id}"]`);
+    await waitText("#toast", "Added " + name, p);
+  };
+  await add("law_enforcement_2017", "Law enforcement sites");
+  // Color by category: the catalog's type field comes first.
+  await p.selectOption("#measure", "category:type");
+  await waitText("#legend", "Police station", p);
+  // Shape, size and labels rebuild the layer as symbols.
+  await p.click("#look summary");
+  await p.selectOption("#look-shape", "triangle");
+  await p.locator("#look-size").fill("9");
+  await p.locator("#look-size").dispatchEvent("change");
+  await p.selectOption("#look-label", "name");
+  const built = await p.evaluate(() => {
+    const m = window.rumb.map;
+    return [
+      m.getLayer("lyr-law_enforcement_2017-shape")?.type,
+      m.getLayoutProperty("lyr-law_enforcement_2017-shape", "icon-image"),
+      m.getLayoutProperty("lyr-law_enforcement_2017-shape", "icon-size"),
+      !!m.getLayer("lyr-law_enforcement_2017-label"),
+    ].join();
+  });
+  expect(built === "symbol,rumb-shape-triangle,1.125,true", "shape and labels " + built);
+  // Fire stations go on top; then the tracts take the focus back.
+  await add("fire_stations_2020", "Fire stations");
+  await p.click('[data-layer="tracts"]');
+  await waitText("#legend .legend-others", "Fire stations", p);
+  await waitText("#legend .legend-others", "Law enforcement sites", p);
+  // A click on a fire station (not the focus) opens its popup; it can take the focus.
+  const station = await p.evaluate(() => {
+    const f = window.rumb.app.layerById("fire_stations_2020").collection.features[0];
+    window.rumb.map.jumpTo({ center: f.geometry.coordinates, zoom: 13 });
+    return f.properties.name;
+  });
+  await p.waitForTimeout(600);
+  const box = await p.locator("#map").boundingBox();
+  await p.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await waitText(".map-popup", station, p);
+  await p.click(".map-popup button");
+  await p.waitForFunction(() => window.rumb.state.active === "fire_stations_2020" && window.rumb.state.selected === "1");
+  await waitText("#inspect-panel", station, p);
+  // The PNG lists the other shown layers.
+  const png = await download("#export-map", p);
+  expect(png.length > 10000, "map image");
+  await shot("symbology", p);
+  await p.context().close();
 });
 
 // ---- compare -----------------------------------------------------------------
@@ -679,7 +733,7 @@ await check("offline", async () => {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 850 }, serviceWorkers: "allow" });
   const p = await ctx.newPage();
   p.setDefaultTimeout(60000);
-  p.on("pageerror", (e) => errors.push(e.message));
+  p.on("pageerror", (e) => errors.push(e.message + " @ " + (e.stack || "").split("\n").slice(1, 3).join(" ").trim()));
   await p.goto(base);
   await ready(p);
   const controlled = await p

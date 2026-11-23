@@ -9,6 +9,7 @@ import "./styles/panels.css";
 import "./styles/themes.css";
 import { fieldInfo, fieldLabel, loadCatalog } from "./catalog/catalog.js";
 import { number } from "./catalog/format.js";
+import { featureTitle, popupRows } from "./catalog/popup.js";
 import { bindCommands, COMMANDS } from "./core/commands.js";
 import { featureId } from "./core/features.js";
 import { drawnIds, moveLayer, setVisible, stackEntry, withLayer, withoutLayer } from "./core/stack.js";
@@ -19,7 +20,7 @@ import { createStore } from "./core/store.js";
 import { createWorkspace } from "./core/workspace.js";
 import { createOffline } from "./data/offline.js";
 import { exportMapImage } from "./map/export-png.js";
-import { kindOf } from "./map/layer-specs.js";
+import { entryStyle, kindOf } from "./map/layer-specs.js";
 import { initMap } from "./map/map.js";
 import { createAnalysis } from "./panels/analysis.js";
 import { createCompare } from "./panels/compare.js";
@@ -29,7 +30,7 @@ import { createInspector } from "./panels/inspector.js";
 import { describeLayer, openLibrary, renderLayers } from "./panels/layers.js";
 import { createStyle } from "./panels/style.js";
 import { createWorkbench } from "./panels/workbench.js";
-import { $, addIcons, on, report, toast } from "./ui/dom.js";
+import { $, addIcons, h, on, report, toast } from "./ui/dom.js";
 import { setupDrop } from "./ui/drop.js";
 import { openHelp } from "./ui/help.js";
 import { createPalette, rankItems } from "./ui/palette.js";
@@ -107,6 +108,20 @@ async function start() {
     },
     /** The focus layer: the one the style panel, inspector and analysis act on. */
     layer: () => app.layerById(store.state.active),
+    /** A layer's geometry kind: "polygon", "point", "line" or "mixed". */
+    kindOf: (l) => l.meta?.geometry || (l.id === ws.ref.id ? "polygon" : kindOf(l.collection.features)),
+    /** Changes the focus layer's stack entry (its look or label) and redraws. */
+    setLook(patch) {
+      const { stack, active } = store.state;
+      store.set({
+        stack: stack.map((e) =>
+          e.id === active
+            ? { ...e, ...("label" in patch ? { label: patch.label } : {}), style: { ...e.style, ...patch.style } }
+            : e,
+        ),
+      });
+      renderAll();
+    },
     /** Makes the map's layers match state.stack (sources, order, visibility). */
     syncMap() {
       const { stack } = store.state;
@@ -115,8 +130,10 @@ async function start() {
       for (const e of stack) {
         const l = app.layerById(e.id);
         if (!l) continue;
-        if (!app.atlas.has(e.id))
-          app.atlas.addLayer(e.id, l.meta?.geometry || (l.id === ws.ref.id ? "polygon" : kindOf(l.collection.features)));
+        const kind = app.kindOf(l),
+          style = entryStyle(e, kind);
+        if (!app.atlas.has(e.id)) app.atlas.addLayer(e.id, kind, style);
+        else if (JSON.stringify(app.atlas.styleOf(e.id)) !== JSON.stringify(style)) app.atlas.setStyle(e.id, style);
         app.atlas.setVisible(e.id, e.visible);
         app.mapped.add(e.id);
       }
@@ -307,14 +324,53 @@ async function start() {
   }
   const libraryViews = new Map();
 
+  /** A popup for a feature of a layer that is not the focus, with a way to focus it. */
+  function showPopup(layerId, id, lngLat) {
+    const l = app.layerById(layerId);
+    const f = l?.collection.features.find((x) => featureId(x) === id);
+    if (!f) return;
+    const fields = app.searchFields(l),
+      props = f.properties || {};
+    const meta = l.meta || (l.id === ws.ref.id || l.referenceFields ? ws.ref : null);
+    const rows = popupRows(meta, props, { skip: [fields.labelField] });
+    app.atlas.popup(
+      lngLat,
+      h(
+        "div",
+        { class: "map-popup", "data-popup": layerId },
+        h("h3", { text: featureTitle(props, id, fields.labelField) }),
+        h("p", { class: "subtle", text: [l.name, l.meta?.vintage].filter(Boolean).join(" · ") }),
+        rows.length &&
+          h(
+            "dl",
+            null,
+            rows.map((r) => [
+              h("dt", { text: r.label }),
+              h("dd", null, r.href ? h("a", { href: r.href, target: "_blank", rel: "noopener", text: r.text }) : r.text),
+            ]),
+          ),
+        h("button", {
+          class: "plain-btn",
+          text: "Focus this layer",
+          onclick: () => {
+            app.atlas.closePopup();
+            focusLayer(layerId);
+            app.selectFeature(id);
+          },
+        }),
+      ),
+    );
+  }
+
   app.atlas = initMap({
     region: catalog.region,
     regionPath: catalog.path,
-    onSelect: ({ layer, id, hits }) => {
+    onSelect: ({ layer, id, lngLat }) => {
       if (layer === "cmp") return app.compare.toggle(id);
-      // The focus layer's feature under the cursor, even when another layer is on top.
-      const own = hits.find((x) => x.layer === store.state.active);
-      if (own) app.selectFeature(own.id);
+      // The topmost feature wins: the focus layer's opens the inspector; any other a popup.
+      app.atlas.closePopup();
+      if (layer === store.state.active) app.selectFeature(id);
+      else showPopup(layer, id, lngLat);
     },
     onPointer: (lngLat) => app.statusbar?.position(lngLat),
   });
@@ -533,7 +589,32 @@ function wire(app) {
   });
   on("save-project", "click", () => app.perform($("save-project"), app.files.saveProject));
   on("analyze", "click", () => app.analysis.run());
-  on("measure", "change", (ev) => app.setMeasure(ev.target.value));
+  on("measure", "change", (ev) => {
+    const value = ev.target.value;
+    if (value.startsWith("category:")) {
+      app.analysis.clearResults();
+      store.set({ category: value.slice("category:".length) });
+      app.renderAll();
+    } else {
+      store.set({ category: null });
+      app.setMeasure(value);
+    }
+  });
+  // The focus layer's look; a color applies to single-color layers.
+  const look = (id, key, cast = (v) => v) =>
+    on(id, "change", (ev) => app.setLook({ style: { [key]: cast(ev.target.value) } }));
+  look("look-color", "color");
+  look("look-opacity", "opacity", Number);
+  look("look-size", "size", Number);
+  look("look-shape", "shape");
+  look("look-outline", "outline", Number);
+  look("look-outline-color", "outlineColor");
+  on("look-label", "change", (ev) => app.setLook({ label: ev.target.value || null }));
+  on("look-reset", "click", () => {
+    const { stack, active } = store.state;
+    store.set({ stack: stack.map((e) => (e.id === active ? { id: e.id, visible: e.visible } : e)) });
+    app.renderAll();
+  });
   const controls = [
     ["classification", "classification", String],
     ["class-count", "count", Number],
@@ -568,14 +649,18 @@ function wire(app) {
         title: $("map-title").textContent,
         subtitle:
           (state.mode === "cluster" ? "Local Moran clusters · " : "") +
-          app.label(state.measure) +
+          (state.category ? app.label(state.category) : state.measure ? app.label(state.measure) : app.layer().name) +
           " · " +
           $("map-subtitle").textContent,
         legend: app.style.legendItems(),
+        others: app.style.legendOthers(),
         notes:
           (clustered
             ? state.result.studyName + " · " + state.rule + " · " + (state.fdr ? "FDR q" : "p") + " ≤ 0.05 · "
-            : "") + app.catalog.region.credit,
+            : "") +
+          [app.layer().meta?.credit, ...app.style.legendOthers().map((o) => o.credit), app.catalog.region.credit]
+            .filter((c, i, all) => c && all.indexOf(c) === i)
+            .join(" · "),
       });
     }),
   );
