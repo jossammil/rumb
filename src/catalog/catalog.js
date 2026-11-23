@@ -81,6 +81,25 @@ export function validateLibrary(library, catalog) {
   return library;
 }
 
+// Tables: attribute tables that join to the reference layer by id (ACS profile
+// covariates, CDC PLACES), plus centers of population for distance work. They
+// are listed in data/<region>/tables/index.json, written by
+// scripts/prepare-tables.R, and read only when a field or method needs them.
+
+/** Throws with a readable message when the table index lacks what the app needs. */
+export function validateTables(index) {
+  const fail = (what) => {
+    throw new Error("The table index is missing " + what + ".");
+  };
+  if (!Array.isArray(index?.tables)) fail("its table list");
+  for (const table of index.tables) {
+    if (!table.id || !table.name || !table.file) fail("a table's id, name or file");
+    if (!Array.isArray(table.measures) || !table.fields) fail(table.id + "'s measures");
+    for (const field of table.measures) if (!table.fields[field]) fail(table.id + "'s field " + field);
+  }
+  return { centers: {}, ...index };
+}
+
 /** Catalog or library metadata for a layer id, or undefined. */
 export function layerMeta(catalog, library, id) {
   const ref = referenceLayer(catalog);

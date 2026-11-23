@@ -327,3 +327,50 @@ test("exported features carry their fields, look and distance", async () => {
   assert.equal(exportFeatures(features, { idOf: (f) => String(f.id) }).length, 2);
   assert.equal(exportName("fire stations/2020", "filtered"), "fire_stations_2020-filtered");
 });
+
+test("the tract tables join to every tract and describe each field", async () => {
+  const { validateTables } = await import("../src/catalog/catalog.js");
+  const ref = referenceLayer(catalog);
+  const index = validateTables(read("../public/data/ms/" + ref.tables));
+  const tracts = read("../public/data/ms/tracts.geojson").features.map((f) => f.properties.GEOID);
+  const sha = (buf) => createHash("sha256").update(buf).digest("hex");
+  for (const table of index.tables) {
+    assert.ok(table.file.startsWith("tables/"), table.id);
+    const text = readFileSync(new URL("../public/data/ms/" + table.file, import.meta.url));
+    assert.equal(sha(text), index.assets[table.file.slice("tables/".length)].sha256, table.id + " checksum");
+    const data = JSON.parse(text);
+    assert.deepEqual(data.ids, tracts, table.id + " rows follow the tracts");
+    for (const [name, values] of Object.entries(data.columns)) {
+      assert.equal(values.length, tracts.length, name);
+      assert.ok(table.fields[name], table.id + " describes " + name);
+      assert.ok(values.every((v) => v === null || Number.isFinite(v)), name + " is numeric");
+    }
+    for (const measure of table.measures) {
+      const info = table.fields[measure];
+      for (const key of ["moe", "count", "universe", "lcl", "ucl"])
+        if (info[key]) assert.ok(data.columns[info[key]], measure + "." + key);
+      if (info.pool) assert.ok(data.columns[info.pool.weight], measure + " pools by a weight it ships");
+      // Table fields never shadow the reference layer's own.
+      assert.ok(!ref.fields[measure], measure);
+    }
+  }
+  const places = index.tables.find((t) => t.id === "places");
+  assert.ok(places.modelBased, "PLACES estimates are marked model-based");
+  assert.equal(read("../public/data/ms/" + places.file).columns.places_diabetes.filter((v) => v === null).length, 8);
+  const [west, south, east, north] = catalog.region.bounds.flat();
+  for (const [layer, entry] of Object.entries(index.centers)) {
+    const c = read("../public/data/ms/" + entry.file);
+    assert.equal(c.ids.length, layer === "tracts" ? 878 : 82, layer);
+    c.lon.forEach((x, i) => assert.ok(x > west && x < east && c.lat[i] > south && c.lat[i] < north, layer + " " + c.ids[i]));
+  }
+});
+
+test("a state names the fields its views and comparisons use", async () => {
+  const { stateFields } = await import("../src/core/state.js");
+  const state = {
+    measure: "acs_uninsured_pct",
+    layerViews: { chr: { measure: "v138_rawvalue" }, other: { measure: "" } },
+    comparisons: { tracts: { components: [{ field: "places_diabetes" }, { field: "poverty_pct" }] } },
+  };
+  assert.deepEqual(stateFields(state), ["acs_uninsured_pct", "v138_rawvalue", "places_diabetes", "poverty_pct"]);
+});

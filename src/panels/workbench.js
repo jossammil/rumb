@@ -54,7 +54,13 @@ export function createWorkbench(app) {
       iconName && icon(iconName, 16),
       text,
     );
-  const tables = () => [ref.id, ...app.ws.inputs.keys()];
+  // The reference layer, its attribute tables (once the database has them) and imports.
+  const attributeTables = () => (app.ws.databaseOpen ? app.ws.sqlTables() : []);
+  const tables = () => [ref.id, ...attributeTables().map((t) => t.name), ...app.ws.inputs.keys()];
+  const tableTitle = (t) =>
+    t === ref.id
+      ? app.catalog.region.name + " " + (ref.nouns || "features")
+      : attributeTables().find((x) => x.name === t)?.title || app.ws.inputs.get(t)?.name || t;
   const idText = () => app.catalog.region.name + " " + noun + " " + ref.idField;
 
   function showTables() {
@@ -75,9 +81,7 @@ export function createWorkbench(app) {
             "span",
             { class: "layer-text" },
             h("strong", { text: t }),
-            h("small", {
-              text: t === ref.id ? app.catalog.region.name + " " + (ref.nouns || "features") : app.ws.inputs.get(t).name,
-            }),
+            h("small", { text: tableTitle(t) }),
           ),
         ),
       ),
@@ -260,7 +264,7 @@ export function createWorkbench(app) {
           table,
           h("p", {
             text:
-              (custom ? app.ws.inputs.get(table)?.name : ref.summary || ref.name) +
+              (custom ? tableTitle(table) : ref.summary || ref.name) +
               " · " +
               number(info.rows, 0) +
               " rows · " +

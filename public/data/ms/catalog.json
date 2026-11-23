@@ -45,6 +45,7 @@
         "neighbors": "neighbors.json",
         "sources": "sources.json"
       },
+      "tables": "tables/index.json",
       "idField": "GEOID",
       "idLabel": "11-character tract GEOID",
       "labelField": "name",

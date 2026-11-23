@@ -259,11 +259,14 @@ await check("boot", async () => {
     const first = window.rumb.timings.firstMap;
     return performance
       .getEntriesByType("resource")
-      .filter((e) => /roads\.geojson|\/layers\//.test(e.name))
+      .filter((e) => /roads\.geojson|\/layers\/|\/tables\//.test(e.name))
       .every((e) => e.startTime >= first - 1);
   });
-  expect(late, "roads or layer files were requested before the first map");
+  expect(late, "roads, layer or table files were requested before the first map");
   expect(!requests.some((u) => /\/layers\//.test(u)), "add-on layers loaded without being asked for");
+  // The table index follows the first map; its values wait until a field needs them.
+  await page.waitForSelector('#measure optgroup[label="CDC PLACES 2025 (model-based)"]', { state: "attached" });
+  expect(!requests.some((u) => /tables\/tracts-(acs|places)/.test(u)), "table values loaded without being asked for");
   await page.waitForTimeout(500);
   await shot("map");
 });
@@ -286,6 +289,178 @@ await check("clusters", async () => {
   await page.waitForTimeout(500);
   await shot("clusters");
   await download("#export-map");
+});
+
+await check("weights", async () => {
+  const ref = JSON.parse(await readFile("tests/stats-reference.json", "utf8")).weights.moran;
+  const p = await openPage();
+  const run = async (expected) => {
+    await p.click("#analyze");
+    await waitText("#inspect-panel", expected.toFixed(4), p);
+  };
+  // k nearest between 2020 centers of population, as spdep finds them.
+  await p.selectOption("#rule", "knn");
+  await p.waitForSelector("#k", { state: "visible" });
+  await run(ref.knn6);
+  await waitText("#weights-note", "6 neighbors each · no islands · from 2020 centers of population", p);
+  await p.check("#symmetric");
+  await run(ref.knn6sym);
+  await p.selectOption("#rule", "band");
+  await run(ref.connected);
+  await waitText("#weights-note", "Every area within 14.8 mi", p);
+  await p.fill("#band", "25");
+  await p.press("#band", "Enter");
+  await run(ref.band25);
+  await p.selectOption("#rule", "idw");
+  await p.selectOption("#power", "2");
+  await p.fill("#band", "");
+  await p.press("#band", "Enter");
+  await run(ref.idw2);
+  await p.click("#find-feature");
+  await p.fill("#find-term", ids[0]);
+  await p.locator("#find-results button").first().click();
+  await waitText("#inspect-panel", "Eligible neighbors", p);
+  // The weights travel in a share link.
+  await p.evaluate(() => window.rumb.runCommand("share"));
+  await p.locator("#share-link").waitFor();
+  const url = await p.inputValue("#share-link");
+  await p.context().close();
+  const q = await openPage();
+  await q.goto(url.replace(/^https?:\/\/[^/]+/, origin));
+  await ready(q);
+  await waitText("#toast", "Opened a shared map", q);
+  const kept = await q.evaluate(() => [window.rumb.state.rule, window.rumb.state.power, window.rumb.state.band].join());
+  expect(kept === "idw,2,", "shared weights " + kept);
+  await q.context().close();
+});
+
+await check("hotspots", async () => {
+  const hs = JSON.parse(await readFile("tests/stats-reference.json", "utf8")).hotspots.queen;
+  const { pnorm } = await import("../../src/stats/dist.js");
+  const hot = hs.gi.filter((z) => z > 0 && 2 * pnorm(-Math.abs(z)) <= 0.1).length;
+  const p = await openPage();
+  // H switches the method to Gi* and runs it on the focus measure.
+  await p.keyboard.press("h");
+  await waitText("#inspect-panel", "Hot spot analysis", p);
+  await waitText("#legend", "Gi* hot and cold spots", p);
+  const shown = await p.$eval("#inspect-panel", (el) => el.textContent.match(/Hot spots(\d+)/)?.[1]);
+  expect(Number(shown) === hot, "hot spots " + shown + " vs " + hot);
+  await p.evaluate((id) => window.rumb.app.selectFeature(id), hs.ids[0]);
+  await waitText("#inspect-panel", "Gi* z-score" + hs.gi[0].toFixed(3), p);
+  const bytes = await download("#save-results", p);
+  expect(bytes.toString().startsWith("GEOID_or_feature_ID,measure,value,Gi_star_z"), "hot spot CSV header");
+  // Permutation inference with FDR runs too.
+  await p.selectOption("#gi-inference", "permutation");
+  await p.click("#inference summary");
+  await p.check("#fdr");
+  await p.click("#analyze");
+  await waitText("#inspect-panel", "Conditional permutations, FDR-adjusted", p);
+  const bins = await p.evaluate(() =>
+    window.rumb.map.querySourceFeatures("lyr-tracts").some((f) => /^[HC]9/.test(f.properties.__rumb_class)),
+  );
+  expect(bins, "hot spot bins on the map");
+  await p.context().close();
+});
+
+await check("bivariate", async () => {
+  const ref = JSON.parse(await readFile("tests/stats-reference.json", "utf8")).variants;
+  const p = await openPage();
+  await p.selectOption("#method", "bilisa");
+  await p.waitForSelector("#y-field");
+  await p.selectOption("#y-field", "child_poverty_pct");
+  await p.click("#analyze");
+  await waitText("#inspect-panel", "Bivariate Moran’s I" + ref.bivariate.globalI.toFixed(4), p);
+  await waitText("#inspect-panel", "Neighbors' second measure", p);
+  await waitText("#legend", "Bivariate Local Moran clusters", p);
+  // EB-adjusted clusters on the poverty rate's counts, as spdep::EBImoran.mc.
+  await p.selectOption("#method", "eblisa");
+  await waitText("#eb-note", "Rates from", p);
+  await p.click("#analyze");
+  await waitText("#inspect-panel", "EB Moran’s I" + ref.eb.I.toFixed(4), p);
+  await p.evaluate((id) => window.rumb.app.selectFeature(id), ref.eb.ids[0]);
+  await waitText("#inspect-panel", "EB-standardized rate" + ref.eb.z[0].toFixed(3), p);
+  // A measure without counts says why it cannot be used.
+  await p.evaluate(() => window.rumb.app.setMeasure("places_diabetes"));
+  await waitText("#eb-note", "This measure has no counts", p);
+  // Results on model-based estimates carry a caution.
+  await p.selectOption("#method", "gistar");
+  await p.click("#analyze");
+  await waitText("#analysis-caution", "Model-based estimates (Diagnosed diabetes)", p);
+  await p.context().close();
+});
+
+await check("rates", async () => {
+  const ref = JSON.parse(await readFile("tests/stats-reference.json", "utf8")).rates.chr;
+  const chr = JSON.parse(await dataFile("layers/chr_counties_2025.geojson")).features;
+  const small = chr.filter((f) => Number.isFinite(f.properties.v138_rawvalue) && f.properties.v138_numerator < 20).length;
+  const p = await openPage();
+  await p.keyboard.press("n");
+  await p.click('[data-library="chr_counties_2025"]');
+  await waitText("#toast", "Added County Health Rankings", p);
+  await p.evaluate(() => window.rumb.app.setMeasure("v138_rawvalue"));
+  await p.click("#smooth-rate");
+  await p.selectOption("#smooth-measure", "v138_rawvalue");
+  await p.click("#smooth-go");
+  await waitText("#legend", "Drug overdose deaths (per 100,000): empirical Bayes", p);
+  // Empirical Bayes rates as spdep::EBest finds them, per 100,000.
+  const eb = await p.evaluate(() =>
+    Object.fromEntries(window.rumb.app.layer().collection.features.map((f) => [f.id, f.properties.eb_v138_rawvalue])),
+  );
+  const off = ref.ids.filter((id, i) => Math.abs(eb[id] - ref.eb[i] * 1e5) > 1e-6 * ref.eb[i] * 1e5);
+  expect(!off.length, "EB rates differ for " + off.join(", "));
+  expect(await p.evaluate(() => window.rumb.app.fieldList(window.rumb.app.layer()).includes("seb_v138_rawvalue")), "spatial EB field");
+  // Hatching marks rates on fewer than 20 deaths.
+  await p.evaluate(() => window.rumb.app.setMeasure("v138_rawvalue"));
+  await p.check("#look-hatch");
+  await p.waitForSelector("[data-hatched]");
+  const hatched = await p.$eval("[data-hatched]", (el) => Number(el.dataset.hatched));
+  expect(hatched === small, "hatched " + hatched + " vs " + small);
+  await p.evaluate((id) => window.rumb.app.selectFeature(id), ref.ids[0]);
+  await waitText("#inspect-panel", "95% limits (exact Poisson)", p);
+  // The smoothed fields and the hatch travel in a share link.
+  await p.evaluate(() => window.rumb.runCommand("share"));
+  await p.locator("#share-link").waitFor();
+  const url = await p.inputValue("#share-link");
+  await p.context().close();
+  const q = await openPage();
+  await q.goto(url.replace(/^https?:\/\/[^/]+/, origin));
+  await ready(q);
+  await waitText("#toast", "Opened a shared map", q);
+  await q.waitForSelector("[data-hatched]");
+  const kept = await q.evaluate(() => {
+    const e = window.rumb.state.stack.find((x) => x.id === "chr_counties_2025");
+    const l = window.rumb.app.layerById("chr_counties_2025");
+    return [e.derived?.[0]?.methods?.join("+"), e.style?.hatch, l.collection.features.some((f) => Number.isFinite(f.properties.eb_v138_rawvalue))].join();
+  });
+  expect(kept === "eb+seb+ci,true,true", "shared smoothing " + kept);
+  await q.context().close();
+});
+
+await check("scan", async () => {
+  const ref = JSON.parse(await readFile("tests/stats-reference.json", "utf8")).scan.chr;
+  const p = await openPage();
+  await p.keyboard.press("n");
+  await p.click('[data-library="chr_counties_2025"]');
+  await waitText("#toast", "Added County Health Rankings", p);
+  await p.evaluate(() => window.rumb.app.setMeasure("v138_rawvalue"));
+  await p.selectOption("#method", "scan");
+  await p.waitForSelector("#scan-pop");
+  await p.selectOption("#scan-pop", "0.5");
+  await p.click("#analyze");
+  // The most likely cluster is smerc's: the same counties and log-likelihood ratio.
+  const first = ref.clusters[0];
+  await waitText("#inspect-panel", first.members.length + " areas", p);
+  await waitText("#inspect-panel", "LLR " + Number(first.llr.toFixed(2)), p);
+  await waitText("#inspect-panel", "33 areas without counts", p);
+  await waitText("#legend", "Spatial scan clusters", p);
+  const members = await p.evaluate(() =>
+    Object.entries(window.rumb.state.result.byId).filter(([, r]) => r.cluster === "K1").map(([id]) => id).sort(),
+  );
+  expect(JSON.stringify(members) === JSON.stringify([...first.members].sort()), "cluster members " + members);
+  await p.waitForFunction(() => window.rumb.map.querySourceFeatures("analysis").length > 0);
+  const bytes = await download("#save-results", p);
+  expect(bytes.toString().startsWith("GEOID_or_feature_ID,measure,cases,population,expected,cluster"), "scan CSV header");
+  await p.context().close();
 });
 
 await check("identity", async () => {
@@ -680,6 +855,53 @@ await check("pooled", async () => {
   await p.context().close();
 });
 
+await check("tables", async () => {
+  const places = JSON.parse(await dataFile("tables/tracts-places.json"));
+  const p = await openPage();
+  await p.waitForSelector('#measure optgroup[label="ACS 2020–2024 profile"] option[value="acs_uninsured_pct"]', { state: "attached" });
+  await p.selectOption("#measure", "places_diabetes");
+  await waitText("#legend", "Diagnosed diabetes", p);
+  const drawn = await p.evaluate(() =>
+    window.rumb.app.layer().collection.features.filter((f) => Number.isFinite(f.properties.places_diabetes)).length,
+  );
+  expect(drawn === 870, "PLACES values on " + drawn + " tracts");
+  await p.evaluate((id) => window.rumb.app.selectFeature(id), ids[0]);
+  await waitText("#inspect-panel", "95% confidence interval", p);
+  await waitText("#inspect-panel", "Model-based", p);
+  // Two tracts pool as an adult-population-weighted mean.
+  await p.evaluate((list) => window.rumb.app.selectMany(list), [ids[0], ids[1]]);
+  const i = [0, 1].map((k) => places.ids.indexOf(ids[k]));
+  const w = i.map((k) => places.columns.places_pop18[k]),
+    v = i.map((k) => places.columns.places_diabetes[k]);
+  const want = ((v[0] * w[0] + v[1] * w[1]) / (w[0] + w[1])).toFixed(1).replace(/\.0$/, "") + "%";
+  await p.waitForFunction(() => document.querySelector('[data-pool="places_diabetes"] td'));
+  const got = await p.$eval('[data-pool="places_diabetes"] td', (td) => td.textContent);
+  expect(got === want, "pooled diabetes " + got + " vs " + want);
+  // SQL sees the tables as views keyed by GEOID.
+  await p.evaluate(() => window.rumb.app.store.set({ sql: "SELECT count(*) AS n, round(avg(acs_uninsured_pct), 3) AS u FROM tract_acs JOIN tracts USING (GEOID)" }));
+  await p.evaluate(() => window.rumb.app.setView("sql"));
+  await p.click("#run-query");
+  await waitText("#work-content", "878", p);
+  await p.context().close();
+  // A shared link with a table field reads that table before drawing.
+  const q = await openPage();
+  await q.evaluate(async () => {
+    await window.rumb.app.setMeasure("acs_no_vehicle_pct");
+  });
+  await q.keyboard.press("u");
+  await q.locator("#share-link").waitFor();
+  const url = await q.inputValue("#share-link");
+  await q.context().close();
+  const r = await openPage();
+  await r.goto(url.replace(/^https?:\/\/[^/]+/, origin));
+  await ready(r);
+  await waitText("#toast", "Opened a shared map", r);
+  await waitText("#legend", "Households with no vehicle", r);
+  const restored = await r.evaluate(() => window.rumb.app.layer().collection.features.some((f) => Number.isFinite(f.properties.acs_no_vehicle_pct)));
+  expect(restored, "shared table field has values");
+  await r.context().close();
+});
+
 await check("share", async () => {
   const p = await openPage();
   await p.keyboard.press("n");
@@ -1055,6 +1277,16 @@ await check("offline", async () => {
   await p.keyboard.press("1");
   await p.click("#analyze");
   await waitText("#inspect-panel", "0.2768", p);
+  // Tract tables, hot spots on distance weights from the centers, and smoothing.
+  await p.evaluate(() => window.rumb.app.setMeasure("acs_uninsured_pct"));
+  await waitText("#legend", "No health insurance", p);
+  await p.selectOption("#rule", "knn");
+  await p.keyboard.press("h");
+  await waitText("#inspect-panel", "Hot spot analysis", p);
+  await waitText("#weights-note", "from 2020 centers of population", p);
+  await p.click("#smooth-rate");
+  await p.click("#smooth-go");
+  await waitText("#legend", "No health insurance: empirical Bayes", p);
   // The library, its layers, the roads, filters and the report work offline too.
   await p.keyboard.press("n");
   await p.click('[data-library="fire_stations_2020"]');

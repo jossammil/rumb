@@ -16,7 +16,10 @@ import { featureId } from "./core/features.js";
 import { drawnIds, moveLayer, setVisible, stackEntry, withLayer, withoutLayer } from "./core/stack.js";
 import { isTyping, SHORTCUTS, shortcutFor } from "./core/keys.js";
 import { THEMES } from "./core/settings.js";
-import { defaults, LAYER_VIEW_KEYS, layerViewDefaults } from "./core/state.js";
+import { defaults, LAYER_VIEW_KEYS, layerViewDefaults, stateFields } from "./core/state.js";
+import { callStats } from "./stats/client.js";
+import { poolOf } from "./stats/pool.js";
+import { RATE_METHODS, rateFields, rateSpec } from "./stats/rates.js";
 import { createStore } from "./core/store.js";
 import { createWorkspace } from "./core/workspace.js";
 import { createOffline } from "./data/offline.js";
@@ -25,6 +28,7 @@ import { parseBreaks } from "./map/classify.js";
 import { entryStyle, kindOf } from "./map/layer-specs.js";
 import { initMap } from "./map/map.js";
 import { createAnalysis } from "./panels/analysis.js";
+import { basisOf, methodOf } from "./stats/methods.js";
 import { createCompare } from "./panels/compare.js";
 import { createFiles } from "./panels/files.js";
 import { findFeatures, openFind } from "./panels/find.js";
@@ -50,7 +54,8 @@ const VERSION = __RUMB_VERSION__;
 const STATE_LABEL = { ready: "READY", loading: "LOAD", running: "RUN", error: "ERR" };
 const timings = {};
 let locked = false,
-  ready = false;
+  ready = false,
+  tableIndex = null;
 
 function status(message, kind = "ready") {
   $("foot-status").textContent = message;
@@ -90,28 +95,81 @@ async function start() {
     fail: report,
     status,
     /** A field's label on the focus layer (or another layer). */
-    label: (field, l = app.layer()) => l?.extraFields?.[field]?.label || fieldLabel(catalog, field, l?.meta),
+    label: (field, l = app.layer()) =>
+      l?.extraFields?.[field]?.label ||
+      (l?.referenceFields && ws.tableField(field)?.label) ||
+      fieldLabel(catalog, field, l?.meta),
     /** Catalog metadata for a field of a layer: library fields, or the reference's own. */
     fieldMeta(l, field) {
       if (l?.extraFields?.[field]) return l.extraFields[field];
       if (l?.meta) return l.meta.fields?.[field];
-      return l?.referenceFields ? fieldInfo(catalog, field) : undefined;
+      return l?.referenceFields ? fieldInfo(catalog, field) || ws.tableField(field) : undefined;
+    },
+    /**
+     * A layer's fields in the measure picker's groups: its own (and point
+     * counts) under "Measure", then one group per attribute table.
+     */
+    fieldGroups(l) {
+      const own = [...(l.id === ws.ref.id ? ws.ref.measures : ws.fieldList(l)), ...(l?.countFields || [])];
+      const groups = [{ label: "Measure", fields: own }];
+      if (l.id === ws.ref.id)
+        for (const t of app.tableList()) groups.push({ label: t.group || t.name, fields: t.measures });
+      groups.push({ label: "Derived", fields: l?.derivedFields || [] });
+      return groups.filter((g) => g.fields.length);
+    },
+    /** The reference layer's attribute tables, once their index is read. */
+    tableList: () => tableIndex?.tables || [],
+    /** Loads the tables any field in the state comes from (after a restore or a shared link). */
+    async ensureTables(state = store.state) {
+      if (!ws.ref.tables) return;
+      tableIndex = await ws.tables().catch(() => null);
+      await ws.ensureFields(stateFields(state));
     },
     /** Fields that name, group and identify a layer's features (search, inspector, study areas). */
     searchFields(l) {
       if (l?.meta) return { labelField: l.meta.labelField, groupField: l.meta.placeField, idField: null };
       return { labelField: ws.ref.labelField, groupField: ws.ref.groupField, idField: ws.ref.idField };
     },
-    fieldList: (l) => [...ws.fieldList(l), ...(l?.countFields || [])],
+    fieldList: (l) => [...ws.fieldList(l), ...(l?.countFields || []), ...(l?.derivedFields || [])],
     allLayers: () => [ws.referenceView(), ...store.state.layers],
     /**
      * A layer by id: the reference layer, a query layer or a loaded library
      * layer, with point counts added when its stack entry asks for them.
      */
     layerById(id) {
-      const base = baseLayer(id),
-        counts = store.state.stack.find((e) => e.id === id)?.counts;
-      return base && counts?.length ? withCounts(base, counts) : base;
+      const counted = countedLayer(id),
+        derived = store.state.stack.find((e) => e.id === id)?.derived;
+      return counted && derived?.length ? withDerived(counted, derived) : counted;
+    },
+    /**
+     * Computes the derived rate fields the stack asks for that are not ready
+     * yet (they may need a table or the neighbor graph), then redraws.
+     */
+    async ensureDerived() {
+      let changed = false;
+      for (const e of store.state.stack)
+        for (const raw of e.derived || []) {
+          const spec = rateSpec(raw);
+          if (!spec) continue;
+          await ws.ensureFields([spec.measure]);
+          const view = countedLayer(e.id);
+          if (!view || derivedOf(view, spec)) continue;
+          const info = app.fieldMeta(view, spec.measure),
+            pool = poolOf(info);
+          if (!pool?.denominator) continue;
+          await ws.ensureFields([pool.numerator, pool.denominator]);
+          const fresh = countedLayer(e.id);
+          const spatial = spec.methods.some((m) => RATE_METHODS[m].spatial) && app.kindOf(fresh) !== "point";
+          const rows = spatial ? await contiguityRows(fresh) : null;
+          derivedStore(fresh.collection).set(JSON.stringify(spec), rateFields(fresh.collection.features, spec, {
+            info,
+            pool,
+            label: app.label(spec.measure, fresh),
+            rows,
+          }));
+          changed = true;
+        }
+      if (changed && ready) renderAll();
     },
     /** The focus layer: the one the style panel, inspector and analysis act on. */
     layer: () => app.layerById(store.state.active),
@@ -251,7 +309,12 @@ async function start() {
       store.set({ selected: list[0] || null, picks: list, inspector: true });
       app.renderAll();
     },
-    setMeasure(field) {
+    /** Maps a field, first reading the table it comes from when needed. */
+    async setMeasure(field) {
+      if (ws.missingFields([field]).length) {
+        status("Reading " + ws.tableOf(field).name + "…", "loading");
+        await ws.ensureFields([field]).catch(report);
+      }
       app.analysis.clearResults();
       store.set({ measure: field });
       renderAll();
@@ -267,6 +330,12 @@ async function start() {
   function renderAll() {
     const l = app.layer(),
       fields = app.fieldList(l);
+    // A table field picked before its table was read (a layer's saved view, say).
+    if (ws.missingFields([store.state.measure]).length)
+      ws.ensureFields([store.state.measure]).then(renderAll, report);
+    // Derived rates the stack names that are not computed yet.
+    if (store.state.stack.some((e) => (e.derived || []).some((d) => !derivedOf(countedLayer(e.id) || {}, rateSpec(d) || {}))))
+      app.ensureDerived().catch(report);
     renderLayers(app);
     app.style.renderControls(fields);
     app.filter.render();
@@ -348,6 +417,57 @@ async function start() {
     if (fit) app.atlas.fit(l.collection);
   }
   const libraryViews = new Map();
+  /** A layer with its point counts, without derived rates. */
+  function countedLayer(id) {
+    const base = baseLayer(id),
+      counts = store.state.stack.find((e) => e.id === id)?.counts;
+    return base && counts?.length ? withCounts(base, counts) : base;
+  }
+  // Derived rate fields (stats/rates.js) by collection and spec; computed by
+  // ensureDerived, read here synchronously.
+  const derivedValues = new WeakMap(),
+    derivedViews = new Map();
+  const derivedStore = (collection) => {
+    if (!derivedValues.has(collection)) derivedValues.set(collection, new Map());
+    return derivedValues.get(collection);
+  };
+  const derivedOf = (view, spec) => derivedValues.get(view.collection)?.get(JSON.stringify(spec));
+  /** A layer with the derived rate fields its stack entry asks for, once computed. */
+  function withDerived(view, specs) {
+    const parts = specs.map(rateSpec).filter(Boolean).map((s) => derivedOf(view, s)).filter(Boolean);
+    if (!parts.length) return view;
+    const key = JSON.stringify(specs),
+      hit = derivedViews.get(view.id);
+    if (hit && hit.base === view.collection && hit.key === key && hit.parts.every((p, i) => p === parts[i])) return hit.view;
+    const fields = parts.flatMap((p) => p.fields);
+    const collection = {
+      type: "FeatureCollection",
+      features: view.collection.features.map((f, i) => ({
+        ...f,
+        properties: { ...f.properties, ...Object.fromEntries(parts.flatMap((p) => p.fields.map((n) => [n, p.values[n][i]]))) },
+      })),
+    };
+    const extraFields = Object.assign({}, view.extraFields, ...parts.map((p) => p.extraFields));
+    const derived = { ...view, collection, extraFields, derivedFields: fields };
+    derivedViews.set(view.id, { base: view.collection, key, parts, view: derived });
+    return derived;
+  }
+  /** Queen contiguity as neighbor indices by feature, for spatial smoothing. */
+  async function contiguityRows(view) {
+    const graph = view.reference
+      ? (await ws.neighbors()).queen
+      : view.library && view.meta?.neighbors
+        ? (await ws.loadLayerNeighbors(view.id)).queen
+        : ws.graphs.get(view.id + "-queen") ||
+          (await callStats({ type: "weights", features: view.collection.features, rule: "queen" }).then((g) => {
+            ws.graphs.set(view.id + "-queen", g);
+            return g;
+          }));
+    const index = new Map(view.collection.features.map((f, i) => [featureId(f), i]));
+    return view.collection.features.map((f) =>
+      (graph[featureId(f)] || []).filter((id) => index.has(id)).map((id) => index.get(id)),
+    );
+  }
   /** A layer without point counts. */
   function baseLayer(id) {
     if (id === ws.ref.id) return ws.referenceView();
@@ -502,6 +622,12 @@ async function start() {
       performance.mark("rumb-first-map");
       timings.firstMap = Math.round(performance.now());
     }
+    // The table index (field names and labels, not values) follows the first map.
+    if (ws.ref.tables)
+      ws.tables().then((index) => {
+        tableIndex = index;
+        if (store.state.view === "map" && app.layer().id === ws.ref.id) app.style.renderControls(app.fieldList(app.layer()));
+      }, () => {});
   });
   wire(app);
   // A link with #state= opens its shared map once the first map is up.
@@ -591,6 +717,19 @@ function wire(app) {
     },
     "run-analysis": () => {
       if (app.state.view !== "map") app.setView("map");
+      if (!$("analyze").disabled) app.analysis.run();
+    },
+    "smooth-rate": () => {
+      if (app.state.view !== "map") app.setView("map");
+      import("./panels/smooth.js").then((m) => m.openSmooth(app), report);
+    },
+    "hot-spots": () => {
+      if (app.state.view !== "map") app.setView("map");
+      if (app.state.method !== "gistar") {
+        app.analysis.clearResults();
+        store.set({ method: "gistar" });
+        app.renderAll();
+      }
       if (!$("analyze").disabled) app.analysis.run();
     },
     "export-stats": () => app.state.result && app.analysis.exportStats(),
@@ -774,6 +913,8 @@ function wire(app) {
   });
   on("filter-clear", "click", () => app.filter.clear());
   on("count-points", "click", () => runCommand("count-points"));
+  on("smooth-rate", "click", () => runCommand("smooth-rate"));
+  on("look-hatch", "change", (ev) => app.setLook({ style: { hatch: ev.target.checked || undefined } }));
   on("share-map", "click", () => runCommand("share"));
   on("look-reset", "click", () => {
     const { stack, active } = store.state;
@@ -783,19 +924,25 @@ function wire(app) {
   const controls = [
     ["classification", "classification", String],
     ["class-count", "count", Number],
+    ["method", "method", String],
     ["rule", "rule", String],
+    ["k", "k", (v) => Math.min(30, Math.max(1, Math.round(Number(v) || 6)))],
+    ["band", "band", (v) => (Number(v) >= 0.1 ? Math.min(200, Number(v)) : null)],
+    ["power", "power", Number],
     ["study", "study", String],
     ["permutations", "permutations", Number],
     ["seed", "seed", Number],
   ];
   for (const [id, key, cast] of controls)
     on(id, "change", (ev) => {
+      // Read the control first: clearing a result redraws the analysis controls.
+      const value = cast(ev.target.value);
       // Classes only restyle the map; analysis settings invalidate a result.
       if (key !== "classification" && key !== "count") app.analysis.clearResults();
       // Manual breaks start from the breaks on the map, rounded.
       if (key === "classification" && ev.target.value === "manual" && !app.state.breaks?.length)
         store.set({ breaks: app.style.cuts().map((c) => Number(c.toPrecision(3))) });
-      store.set({ [key]: cast(ev.target.value) });
+      store.set({ [key]: value });
       app.renderAll();
     });
   on("manual-breaks", "change", (ev) => {
@@ -805,8 +952,15 @@ function wire(app) {
     app.renderAll();
   });
   on("fdr", "change", (ev) => {
+    const fdr = ev.target.checked;
     app.analysis.clearResults();
-    store.set({ fdr: ev.target.checked });
+    store.set({ fdr });
+    app.renderAll();
+  });
+  on("symmetric", "change", (ev) => {
+    const symmetric = ev.target.checked;
+    app.analysis.clearResults();
+    store.set({ symmetric });
     app.renderAll();
   });
   on("zoom-in", "click", () => app.atlas.map.zoomIn());
@@ -818,11 +972,12 @@ function wire(app) {
     app.perform($("export-map"), () => {
       const { state } = app;
       if (state.view === "compare") return app.compare.image();
-      const clustered = state.result && state.mode === "cluster";
+      const clustered = state.result && state.mode === "cluster",
+        method = methodOf(state.result);
       return exportMapImage(app.atlas.map, {
         title: $("map-title").textContent,
         subtitle:
-          (state.mode === "cluster" ? "Local Moran clusters · " : "") +
+          (clustered ? method.legendTitle + " · " : "") +
           (state.category ? app.label(state.category) : state.measure ? app.label(state.measure) : app.layer().name) +
           " · " +
           $("map-subtitle").textContent,
@@ -830,7 +985,7 @@ function wire(app) {
         others: app.style.legendOthers(),
         notes:
           (clustered
-            ? state.result.studyName + " · " + state.rule + " · " + (state.fdr ? "FDR q" : "p") + " ≤ 0.05 · "
+            ? state.result.studyName + " · " + basisOf(state.result, state.rule) + " · " + method.rule(state.result) + " · "
             : "") +
           [app.layer().meta?.credit, ...app.style.legendOthers().map((o) => o.credit), app.catalog.region.credit]
             .filter((c, i, all) => c && all.indexOf(c) === i)

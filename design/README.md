@@ -86,3 +86,12 @@ published.
 - A procedural boot screen: a contour field drawn by WebGL2, with an honest
   load log.
 - GPU layers (deck.gl) for large point sets.
+- `stage-stats-a`: spatial statistics, part A. The parity screens, then:
+  - a CDC PLACES tract estimate with its 95% interval in the inspector;
+  - Gi* hot and cold spots of the uninsured share on 6 nearest neighbors;
+  - bivariate clusters (poverty against neighbors' diabetes) and
+    EB-adjusted rate clusters;
+  - child poverty around Jackson with unreliable ACS estimates hatched;
+  - the "Smooth a rate" dialog and an empirical Bayes rate;
+  - the spatial scan's most likely cluster of overdose deaths, on a desktop
+    and a phone.

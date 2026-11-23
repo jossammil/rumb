@@ -92,6 +92,8 @@ export function createShare(app) {
     app.analysis.cancel();
     store.replace(next);
     await app.loadStack();
+    await app.ensureTables();
+    await app.ensureDerived();
     // A measure the layer does not have falls back to its first one.
     const fields = app.fieldList(app.layer());
     if (store.state.measure && !fields.includes(store.state.measure)) store.set({ measure: fields[0] || "" });

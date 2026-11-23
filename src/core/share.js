@@ -7,11 +7,17 @@
 // Format: "1." + base64url(deflate-raw(JSON)), or "0." + base64url(JSON)
 // where the browser cannot compress. Pure apart from CompressionStream.
 import { normalizeFilter } from "../geo/filter.js";
+import { METHODS } from "../stats/methods.js";
+import { rateSpec } from "../stats/rates.js";
+import { WEIGHT_KINDS } from "../stats/neighbors.js";
 
 /** Longest link part rumb writes (characters after #state=). */
 export const SHARE_LIMIT = 8000;
-const VIEW_KEYS = ["measure", "category", "palette", "classification", "count", "breaks", "rule", "study", "permutations", "seed", "fdr"];
-const LOOK_KEYS = ["color", "opacity", "size", "shape", "outline", "outlineColor"];
+const VIEW_KEYS = [
+  "measure", "category", "palette", "classification", "count", "breaks",
+  "method", "inference", "yField", "scan", "rule", "k", "band", "power", "symmetric", "study", "permutations", "seed", "fdr",
+];
+const LOOK_KEYS = ["color", "opacity", "size", "shape", "outline", "outlineColor", "hatch"];
 
 const toBase64Url = (bytes) => {
   let binary = "";
@@ -54,6 +60,7 @@ export function shareState(state, { camera, isShared, reference }) {
       if (Object.keys(look).length) out.st = look;
       if (e.label) out.l = e.label;
       if (e.counts?.length) out.n = e.counts.filter(isShared);
+      if (e.derived?.length) out.dv = e.derived.map((d) => [d.measure, d.methods]);
       return out;
     }),
     w: own ? pick(state, VIEW_KEYS) : pick(state.layerViews?.[focus], VIEW_KEYS),
@@ -130,7 +137,22 @@ export function readShare(data, { known, palettes, region }) {
         classification: ["quantile", "equal", "jenks", "sd", "manual"].includes(w.classification) ? w.classification : undefined,
         count: num(w.count, 2, 9),
         breaks: Array.isArray(w.breaks) ? w.breaks.filter(Number.isFinite).slice(0, 8) : undefined,
-        rule: ["queen", "rook"].includes(w.rule) ? w.rule : undefined,
+        method: METHODS[w.method] ? w.method : undefined,
+        inference: ["normal", "permutation"].includes(w.inference) ? w.inference : undefined,
+        yField: str(w.yField),
+        scan:
+          w.scan && typeof w.scan === "object"
+            ? {
+                maxPop: [0.05, 0.1, 0.25, 0.5].includes(w.scan.maxPop) ? w.scan.maxPop : 0.25,
+                maxMiles: num(w.scan.maxMiles, 1, 300) ?? null,
+                direction: ["high", "low", "both"].includes(w.scan.direction) ? w.scan.direction : "high",
+              }
+            : undefined,
+        rule: WEIGHT_KINDS.includes(w.rule) ? w.rule : undefined,
+        k: num(w.k, 1, 30),
+        band: num(w.band, 0.1, 200),
+        power: [1, 2].includes(w.power) ? w.power : undefined,
+        symmetric: typeof w.symmetric === "boolean" ? w.symmetric : undefined,
         study: str(w.study, 200),
         permutations: num(w.permutations, 99, 9999),
         seed: num(w.seed, 0, 2 ** 31),
@@ -153,6 +175,7 @@ export function readShare(data, { known, palettes, region }) {
         shape: ["circle", "square", "triangle", "diamond"].includes(st.shape) ? st.shape : undefined,
         outline: num(st.outline, 0, 5),
         outlineColor: color(st.outlineColor),
+        hatch: st.hatch === true ? true : undefined,
       }),
     );
     stack.push({
@@ -161,6 +184,12 @@ export function readShare(data, { known, palettes, region }) {
       ...(Object.keys(style).length && { style }),
       ...(str(e.l) && { label: e.l }),
       ...(Array.isArray(e.n) && { counts: e.n.filter((x) => typeof x === "string" && known(x)) }),
+      ...(Array.isArray(e.dv) && {
+        derived: e.dv
+          .slice(0, 12)
+          .map((d) => Array.isArray(d) && rateSpec({ kind: "rate", measure: str(d[0]), methods: Array.isArray(d[1]) ? d[1] : [] }))
+          .filter(Boolean),
+      }),
     });
   }
   const active = known(data.a) ? data.a : stack[0]?.id;

@@ -69,6 +69,8 @@ export function themedPaint(c) {
     "filter-fill": { "fill-color": c.accent },
     "filter-line": { "line-color": c.accent },
     "filter-center": { "circle-color": c.accent, "circle-stroke-color": c.halo },
+    "analysis-line": { "line-color": c.label },
+    "analysis-center": { "circle-color": c.label, "circle-stroke-color": c.halo },
     "sketch-fill": { "fill-color": c.accent },
     "sketch-line": { "line-color": c.accent },
     "sketch-points": { "circle-color": c.accent, "circle-stroke-color": c.halo },
@@ -104,6 +106,7 @@ export function buildStyle(region, regionPath, c = mapColors()) {
       selection: src(empty),
       sketch: src(empty),
       filter: src(empty),
+      analysis: src(empty),
       locate: src(empty),
     },
     layers: [
@@ -211,6 +214,21 @@ export function buildStyle(region, regionPath, c = mapColors()) {
         source: "filter",
         filter: ["==", ["geometry-type"], "Point"],
         paint: { ...paint["filter-center"], "circle-radius": 4, "circle-stroke-width": 1.5 },
+      },
+      // An analysis's shapes, such as a scan's cluster windows.
+      {
+        id: "analysis-line",
+        type: "line",
+        source: "analysis",
+        filter: ["==", ["geometry-type"], "Polygon"],
+        paint: { ...paint["analysis-line"], "line-width": 1.8, "line-dasharray": [3, 2] },
+      },
+      {
+        id: "analysis-center",
+        type: "circle",
+        source: "analysis",
+        filter: ["==", ["geometry-type"], "Point"],
+        paint: { ...paint["analysis-center"], "circle-radius": 3.5, "circle-stroke-width": 1.5 },
       },
       // Field tools: a measured or drawn shape, and a position (yours or one typed).
       {

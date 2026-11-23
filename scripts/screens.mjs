@@ -1,9 +1,10 @@
 // Review screenshots for design/screens/<stage>/: every theme on the cluster
 // map, then Compare, SQL, the palette and a phone; then stacked library
 // layers, a filter, a pooled selection, natural breaks, measuring and a
-// 320px phone, as numbered JPEGs. Not a test; run after `npm run build` when
-// the look changes:
-//   node scripts/screens.mjs parity
+// 320px phone; then the statistics (tract tables, hot spots, bivariate and
+// EB clusters, hatching, smoothing and the scan), as numbered JPEGs. Not a
+// test; run after `npm run build` when the look changes:
+//   node scripts/screens.mjs stats-a
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -109,6 +110,68 @@ await page.evaluate(() => window.rumb.app.tools.stop());
 await page.setViewportSize({ width: 320, height: 720 });
 await page.waitForTimeout(500);
 await shot("phone-320");
+
+// Statistics: tract tables, weights, hot spots, variants, smoothing, hatching and the scan.
+await page.setViewportSize({ width: 1440, height: 900 });
+const runAnalysis = async (text) => {
+  await page.click("#analyze");
+  await page.locator("#inspect-panel", { hasText: text }).waitFor({ timeout: 60000 });
+  await page.waitForTimeout(600);
+};
+await page.evaluate(() => window.rumb.map.jumpTo({ center: [-89.7, 32.6], zoom: 6.4 }));
+await page.evaluate(() => window.rumb.app.setMeasure("places_diabetes"));
+await page.click('[data-palette="Lagoon"]');
+await page.selectOption("#classification", "quantile");
+await page.selectOption("#class-count", "5");
+await page.evaluate(() => window.rumb.app.selectFeature("28049010100"));
+await page.waitForTimeout(800);
+await shot("places-table");
+await page.evaluate(() => window.rumb.app.setMeasure("acs_uninsured_pct"));
+await page.selectOption("#rule", "knn");
+await page.evaluate(() => window.rumb.runCommand("clear-selection"));
+await page.keyboard.press("h");
+await page.locator("#inspect-panel", { hasText: "Hot spot analysis" }).waitFor();
+await page.waitForTimeout(800);
+await shot("hot-spots-knn");
+await page.evaluate(() => window.rumb.app.setMeasure("poverty_pct"));
+await page.selectOption("#method", "bilisa");
+await page.selectOption("#y-field", "places_diabetes");
+await runAnalysis("Bivariate Moran");
+await shot("bivariate-clusters");
+await page.selectOption("#method", "eblisa");
+await page.selectOption("#rule", "queen");
+await runAnalysis("EB Moran");
+await shot("eb-clusters");
+await page.evaluate(() => {
+  window.rumb.app.store.set({ mode: "value" });
+  window.rumb.app.setMeasure("child_poverty_pct");
+});
+await page.check("#look-hatch");
+await page.evaluate(() => window.rumb.map.jumpTo({ center: [-90.2, 32.33], zoom: 9.2 }));
+await page.waitForTimeout(800);
+await shot("hatched-acs");
+await page.uncheck("#look-hatch");
+await page.evaluate(() => {
+  window.rumb.app.toggleLayer("chr_counties_2025");
+  window.rumb.map.jumpTo({ center: [-89.7, 32.6], zoom: 6.4 });
+});
+await page.click('[data-layer="chr_counties_2025"]');
+await page.evaluate(() => window.rumb.app.setMeasure("v138_rawvalue"));
+await page.click("#smooth-rate");
+await page.selectOption("#smooth-measure", "v138_rawvalue");
+await shot("smooth-dialog");
+await page.click("#smooth-go");
+await page.locator("#legend", { hasText: "empirical Bayes" }).waitFor();
+await page.waitForTimeout(600);
+await shot("smoothed-rate");
+await page.evaluate(() => window.rumb.app.setMeasure("v138_rawvalue"));
+await page.selectOption("#method", "scan");
+await page.selectOption("#scan-pop", "0.5");
+await runAnalysis("Most likely");
+await shot("scan-clusters");
+await page.setViewportSize({ width: 390, height: 844 });
+await page.waitForTimeout(600);
+await shot("scan-phone");
 await browser.close();
 server.kill();
 console.log(`Wrote ${n} screenshots to ${dir}/`);

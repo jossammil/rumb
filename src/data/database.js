@@ -276,6 +276,24 @@ export async function openDatabase({ reference }) {
       throw error;
     }
   }
+  /**
+   * Registers a columnar attribute table ({ ids, columns }) as a view, keyed
+   * by idName, so SQL can join it to the reference layer.
+   */
+  async function addTable(name, data, idName) {
+    if (sources.has(name)) return inspect(name);
+    const names = Object.keys(data.columns);
+    const lines = [[idName, ...names].join(",")];
+    data.ids.forEach((id, i) => lines.push([id, ...names.map((n) => data.columns[n][i] ?? "")].join(",")));
+    const path = "table_" + ++nextFile + ".csv";
+    await engine.registerFileBuffer(path, new TextEncoder().encode(lines.join("\n")));
+    const from =
+      "read_csv(" + sqlString(path) + ", header=true, sample_size=-1, types={" + sqlString(idName) + ": 'VARCHAR'})";
+    await conn.query("CREATE TEMP VIEW " + ident(name) + " AS SELECT * FROM " + from);
+    const columns = await describe("SELECT * FROM " + ident(name));
+    sources.set(name, { path, columns, geometry: null, rows: data.ids.length });
+    return inspect(name);
+  }
   async function importFile(file, preferredName) {
     const base = tableName(file.name || "layer");
     let name = preferredName || base;
@@ -556,6 +574,7 @@ export async function openDatabase({ reference }) {
     return {
       inspect: serial(inspect),
       importFile: serial(importFile),
+      addTable: serial(addTable),
       query: serial(query),
       mapQuery: serial(mapQuery),
       joinSQL,

@@ -1,7 +1,7 @@
 // The open workspace's data: the region catalog, its reference files (fetched
 // once and kept as Blobs so a project can bundle them), imported files, the
 // DuckDB connection and neighbor graphs. No DOM here beyond fetch, File and Blob.
-import { loadLibrary, referenceLayer } from "../catalog/catalog.js";
+import { loadLibrary, referenceLayer, validateTables } from "../catalog/catalog.js";
 import { numericFields } from "./features.js";
 
 export function createWorkspace(catalog, { status = () => {}, onDatabase = () => {} } = {}) {
@@ -17,6 +17,15 @@ export function createWorkspace(catalog, { status = () => {}, onDatabase = () =>
   let libraryPromise = null;
   const layerData = new Map(),
     layerGraphs = new Map();
+  // Attribute tables that join to the reference layer by id (ACS profile, CDC
+  // PLACES) and centers of population, listed in tables/index.json and read on
+  // first use. `merged` is the reference collection with the loaded tables'
+  // columns added to its features' properties.
+  let tableIndexPromise = null,
+    tableIndex = null,
+    merged = null;
+  const tableColumns = new Map(),
+    centerData = new Map();
 
   async function asset(name) {
     if (blobs[name]) return blobs[name];
@@ -56,6 +65,14 @@ export function createWorkspace(catalog, { status = () => {}, onDatabase = () =>
       await engine.close();
       throw error;
     }
+    // Attribute tables join by id in SQL too. Without them (offline before they
+    // were saved), the database still opens.
+    try {
+      for (const t of sqlTables(await tables())) {
+        await loadTable(t.id);
+        await engine.addTable(t.name, tableColumns.get(t.id), ref.idField);
+      }
+    } catch {}
     return engine;
   }
   function db() {
@@ -75,6 +92,71 @@ export function createWorkspace(catalog, { status = () => {}, onDatabase = () =>
       );
     }
     return databasePromise;
+  }
+
+  /** SQL view names for the attribute tables: tract_acs, tract_places. */
+  const sqlTables = (index) =>
+    (index?.tables || []).map((t) => ({ id: t.id, name: (ref.noun || "feature") + "_" + t.id, title: t.name }));
+  /** The table index ({ tables, centers }), read once; empty when the region has none. */
+  function tables() {
+    tableIndexPromise ??= (ref.tables ? json(ref.tables) : Promise.resolve({ tables: [], centers: {} })).then(
+      (index) => (tableIndex = validateTables(index)),
+      (error) => {
+        tableIndexPromise = null;
+        throw error;
+      },
+    );
+    return tableIndexPromise;
+  }
+  const tableOf = (field) =>
+    tableIndex?.tables.find((t) => t.fields[field] || t.measures.includes(field));
+  /** Reads a table's columns and adds them to the reference features. */
+  async function loadTable(id) {
+    const index = await tables();
+    const table = index.tables.find((t) => t.id === id);
+    if (!table) throw new Error("This region has no table called " + id + ".");
+    if (!tableColumns.has(id)) {
+      const data = await json(table.file);
+      if (!Array.isArray(data.ids) || !data.columns) throw new Error(table.name + " is not a table file.");
+      tableColumns.set(id, data);
+      merged = null;
+    }
+    return table;
+  }
+  /** Loads whatever tables the given fields come from. Unknown fields are left alone. */
+  async function ensureFields(fields) {
+    const wanted = [...new Set(fields.filter(Boolean))];
+    if (!wanted.length || !ref.tables) return;
+    await tables();
+    for (const id of new Set(wanted.map((f) => tableOf(f)?.id).filter(Boolean))) await loadTable(id);
+  }
+  /** The reference features with every loaded table's columns as properties. */
+  function referenceCollection() {
+    if (!display || !tableColumns.size) return display;
+    if (merged?.base === display && merged.count === tableColumns.size) return merged.collection;
+    const extra = display.features.map(() => ({}));
+    const position = new Map(display.features.map((f, i) => [String(f.properties?.[ref.idField] ?? f.id), i]));
+    for (const data of tableColumns.values()) {
+      const rows = data.ids.map((id) => position.get(String(id)));
+      for (const [name, values] of Object.entries(data.columns))
+        rows.forEach((i, k) => {
+          if (i != null) extra[i][name] = values[k];
+        });
+    }
+    const collection = {
+      ...display,
+      features: display.features.map((f, i) => ({ ...f, properties: { ...f.properties, ...extra[i] } })),
+    };
+    merged = { base: display, count: tableColumns.size, collection };
+    return collection;
+  }
+  /** Centers of population for a layer ({ ids, lon, lat, population }), or null when none ship. */
+  async function centers(layerId) {
+    const index = await tables();
+    const entry = index.centers?.[layerId === ref.id ? "tracts" : layerId];
+    if (!entry) return null;
+    if (!centerData.has(layerId)) centerData.set(layerId, await json(entry.file));
+    return centerData.get(layerId);
   }
 
   /** The library of add-on layers, read once on first use. */
@@ -116,6 +198,7 @@ export function createWorkspace(catalog, { status = () => {}, onDatabase = () =>
     required: [ref.files.display, ref.files.parquet, ref.files.neighbors, ref.files.sources].filter(Boolean),
     optional: (state) => [
       ref.compare?.reference,
+      ...(tableColumns.size ? [ref.tables, ...[...tableColumns.keys()].map((id) => tableIndex.tables.find((t) => t.id === id).file)] : []),
       ...(state?.stack || []).flatMap((e) => {
         const meta = libraryMeta(e.id, libraryNow);
         return meta ? [meta.file, meta.neighbors] : [];
@@ -136,6 +219,23 @@ export function createWorkspace(catalog, { status = () => {}, onDatabase = () =>
     library: () => library().then((lib) => (libraryNow = lib)),
     loadLayer,
     loadLayerNeighbors,
+    /** The table index: a promise of { tables, centers }. */
+    tables,
+    /** The attribute tables' SQL views ({ id, name, title }), once the index is read. */
+    sqlTables: () => sqlTables(tableIndex),
+    loadTable,
+    ensureFields,
+    centers,
+    /** The table metadata a reference field comes from, once the index is read. */
+    tableOf,
+    /** A table field's metadata, or undefined. */
+    tableField: (field) => tableOf(field)?.fields[field],
+    /** Table fields named here whose values are not loaded yet. */
+    missingFields: (fields) =>
+      fields.filter((f) => {
+        const t = f && tableOf(f);
+        return t && !tableColumns.has(t.id);
+      }),
     /** A library layer's neighbor graph ({ queen, rook }) once loaded, or undefined. */
     layerNeighbors: (id) => layerGraphs.get(id) ?? undefined,
     /** A loaded library layer's features, or undefined. */
@@ -161,7 +261,7 @@ export function createWorkspace(catalog, { status = () => {}, onDatabase = () =>
       return {
         id: ref.id,
         name: ref.name,
-        collection: display,
+        collection: referenceCollection(),
         builtIn: true,
         reference: true,
         referenceFields: true,
@@ -169,7 +269,7 @@ export function createWorkspace(catalog, { status = () => {}, onDatabase = () =>
     },
     /** Fields that can color a layer. */
     fieldList(layer) {
-      if (layer.id === ref.id) return ref.measures;
+      if (layer.id === ref.id) return [...ref.measures, ...(tableIndex?.tables.flatMap((t) => t.measures) || [])];
       if (layer.library) return layer.meta.measures;
       return numericFields(layer.collection.features);
     },
@@ -190,6 +290,7 @@ export function createWorkspace(catalog, { status = () => {}, onDatabase = () =>
           graphs.clear();
           layerData.clear();
           layerGraphs.clear();
+          merged = null;
           blobs = { ...base };
           display = geo;
           neighborData = graph;

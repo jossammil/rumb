@@ -11,7 +11,15 @@ export const LAYER_VIEW_KEYS = [
   "classification",
   "count",
   "breaks",
+  "method",
+  "inference",
+  "yField",
+  "scan",
   "rule",
+  "k",
+  "band",
+  "power",
+  "symmetric",
   "study",
   "permutations",
   "seed",
@@ -37,7 +45,23 @@ export function defaults(catalog) {
     count: 5,
     // Manual class breaks, used when classification is "manual".
     breaks: null,
+    // Spatial weights: queen or rook contiguity, or k nearest (k), a distance
+    // band (band, in miles; null finds the smallest that leaves no area alone)
+    // or inverse distance within that band (power 1 or 2). See stats/neighbors.js.
+    // The analysis to run (stats/methods.js).
+    method: "lisa",
+    // How hot spot p-values are found: the normal approximation or permutations.
+    inference: "normal",
+    // The second measure for bivariate clusters (its neighbors' values).
+    yField: null,
+    // Spatial scan windows: the largest share of the population, an optional
+    // radius in miles, and whether to look for high rates, low or both.
+    scan: { maxPop: 0.25, maxMiles: null, direction: "high" },
     rule: "queen",
+    k: 6,
+    band: null,
+    power: 1,
+    symmetric: false,
     study: "all",
     permutations: 999,
     seed: 12345,
@@ -77,6 +101,19 @@ export function layerViewDefaults(catalog, measure) {
  * rename used `tracts` and `baseMeasures` for what are now `reference` and
  * `referenceFields`; the map camera travels separately.
  */
+/**
+ * The data fields a state names: each layer view's measure and second
+ * variable, and Compare's components. Restores use it to read the tables those
+ * fields come from before drawing.
+ */
+export function stateFields(state) {
+  const views = [state, ...Object.values(state?.layerViews || {})];
+  const fields = views.flatMap((v) => [v?.measure, v?.yField]);
+  for (const config of Object.values(state?.comparisons || {}))
+    for (const c of config?.components || []) fields.push(c?.field);
+  return [...new Set(fields.filter((f) => typeof f === "string" && f))];
+}
+
 export function normalizeState(saved, catalog, isLibraryLayer = () => false) {
   const { camera, mapCamera, ...rest } = saved;
   const state = { ...defaults(catalog), ...rest };

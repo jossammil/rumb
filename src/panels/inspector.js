@@ -6,12 +6,14 @@ import { formatValue, popupRows } from "../catalog/popup.js";
 import { featureId } from "../core/features.js";
 import { aggregate, coverageLabel, neighborsOf, poolOf } from "../stats/pool.js";
 import { clusters } from "../map/classify.js";
+import { basisOf, methodOf } from "../stats/methods.js";
+import { acsReliability, rateLimits, UNSTABLE_EVENTS } from "../stats/rates.js";
 import { $, fill, h, icon, s } from "../ui/dom.js";
 
 const row = (key, val) => h("div", null, h("dt", { text: key }), h("dd", { text: String(val) }));
 
 /** The Moran scatterplot: standardized value against the neighbor average. */
-export function scatter(result, selected, onPick) {
+export function scatter(result, selected, onPick, [xLabel, yLabel] = ["Standardized measure", "Neighbor average"]) {
   const points = Object.entries(result.byId).filter(
     ([, r]) => Number.isFinite(r.z) && Number.isFinite(r.lag),
   );
@@ -41,8 +43,7 @@ export function scatter(result, selected, onPick) {
       class: "scatter",
       viewBox: "0 0 250 165",
       role: "img",
-      "aria-label":
-        "Moran scatterplot. Horizontal axis is the standardized measure. Vertical axis is the standardized neighbor average.",
+      "aria-label": "Moran scatterplot. Horizontal axis: " + xLabel + ". Vertical axis: " + yLabel + ".",
     },
     s("rect", { x: 26, y: 9, width: 199, height: 133, rx: 3, class: "plot-bg" }),
     s("path", { d: "M26 76h199M125 9v133", class: "plot-axis", "stroke-dasharray": "3 3" }),
@@ -62,8 +63,8 @@ export function scatter(result, selected, onPick) {
     s(
       "g",
       { "font-size": 9, class: "plot-text", "text-anchor": "middle" },
-      s("text", { x: 125, y: 158, text: "Standardized measure" }),
-      s("text", { transform: "translate(12 76) rotate(-90)", text: "Neighbor average" }),
+      s("text", { x: 125, y: 158, text: xLabel }),
+      s("text", { transform: "translate(12 76) rotate(-90)", text: yLabel }),
     ),
   );
 }
@@ -80,14 +81,18 @@ export function createInspector(app) {
 
   /** The selected ids: the inspected feature and any others picked with Shift. */
   const selection = () => [...new Set([...(app.state.picks || []), app.state.selected].filter(Boolean).map(String))];
-  /** The focus layer's neighbor graph for the current rule, once loaded. */
+  /**
+   * The focus layer's contiguity graph for the current rule, once loaded.
+   * Distance-based rules pool a selection with the areas that touch it (queen).
+   */
   function graphOf(l) {
-    const { state } = app;
+    const { state } = app,
+      rule = state.rule === "rook" ? "rook" : "queen";
     return l.reference
-      ? app.ws.neighborData?.[state.rule]
+      ? app.ws.neighborData?.[rule]
       : l.library
-        ? app.ws.layerNeighbors(l.id)?.[state.rule]
-        : app.ws.graphs.get(l.id + "-" + state.rule);
+        ? app.ws.layerNeighbors(l.id)?.[rule]
+        : app.ws.graphs.get(l.id + "-" + rule);
   }
 
   /** Outlines the selection and dashes its neighbors; returns the inspected feature's neighbors. */
@@ -100,7 +105,9 @@ export function createInspector(app) {
       return null;
     }
     const graph = graphOf(app.layer());
-    const adjacent = state.result?.byId?.[id]?.neighbors ?? graph?.[id];
+    // An analysis on weights shows its own neighbors; a scan has none, so touching areas show.
+    const weighted = state.result && methodOf(state.result).id !== "scan";
+    const adjacent = (weighted && state.result.byId?.[id]?.neighbors) ?? graph?.[id];
     const dashed = ids.length > 1 ? neighborsOf(ids, graph) : adjacent || [];
     app.atlas.select({ layer: state.active, ids, neighbors: dashed });
     return adjacent;
@@ -114,7 +121,10 @@ export function createInspector(app) {
     const { state } = app,
       ids = selection();
     if (!ids.length || app.kindOf(l) === "point") return null;
-    const fields = app.fieldList(l).filter((f) => poolOf(app.fieldMeta(l, f)));
+    // Table fields pool once their table is read.
+    const fields = app
+      .fieldList(l)
+      .filter((f) => poolOf(app.fieldMeta(l, f)) && !app.ws.missingFields([f]).length);
     if (!fields.length) return null;
     const ordered = [state.measure, ...fields].filter((f, i, all) => fields.includes(f) && all.indexOf(f) === i);
     const props = new Map(l.collection.features.map((f) => [featureId(f), f.properties]));
@@ -132,7 +142,9 @@ export function createInspector(app) {
         const agg = aggregate(list.map((id) => props.get(id)).filter(Boolean), pool);
         return h("td", { title: "Coverage " + coverageLabel(agg), text: agg.value == null ? "—" : formatValue(agg.value, { format: info.format || "number", unit: info.unit }) });
       });
-      return h("tr", { "data-pool": field }, h("th", { scope: "row", text: app.label(field, l) }), cells);
+      // Pools of an age-adjusted measure's counts give a crude rate.
+      const label = app.label(field, l) + (pool.crude ? " (crude)" : "");
+      return h("tr", { "data-pool": field }, h("th", { scope: "row", text: label }), cells);
     };
     const head = h("tr", null, h("th"), sets.map(([name, list]) => h("th", { scope: "col", text: name + " (" + list.length + ")" })));
     const first = ordered.slice(0, 4),
@@ -177,6 +189,32 @@ export function createInspector(app) {
           props[info.moe] == null ? "Unavailable" : "±" + number(props[info.moe]) + " pp",
         ),
       );
+    // How far to trust the estimate: the ACS margin's coefficient of
+    // variation, or for event rates the exact Poisson limits and NCHS's rule.
+    if (info?.moe && props[measure] != null) {
+      const level = info.confidence || ref.moeLevel || 90;
+      const grade = acsReliability(props[measure], props[info.moe], level);
+      if (grade) {
+        const cv = props[measure] ? (props[info.moe] / (level === 95 ? 1.96 : 1.645) / Math.abs(props[measure])) * 100 : null;
+        metrics.push(row("Reliability", grade + (cv != null ? " (CV " + number(cv, 0) + "%)" : "")));
+      }
+    }
+    const pool = poolOf(info);
+    if (info?.format === "rate" && pool?.kind === "ratio" && pool.denominator && !info.smoothed) {
+      const e = props[pool.numerator],
+        limits = rateLimits([e], [props[pool.denominator]], pool.scale ?? 1)[0];
+      if (limits)
+        metrics.push(row("95% limits (exact Poisson)", number(limits[0]) + "–" + number(limits[1]) + unit));
+      if (Number.isFinite(e) && e < UNSTABLE_EVENTS) metrics.push(row("Reliability", "Unstable: " + e + " events (fewer than 20)"));
+    }
+    if (info?.lcl && info?.ucl)
+      metrics.push(
+        row(
+          (info.ci || 95) + "% confidence interval",
+          props[info.lcl] == null ? "Unavailable" : number(props[info.lcl]) + "–" + number(props[info.ucl]) + unit,
+        ),
+      );
+    if (info?.modelBased) metrics.push(row("Estimate", "Model-based (" + (info.source || "modeled") + ")"));
     if (info?.count)
       metrics.push(row(info.countLabel || app.label(info.count), number(props[info.count], 0)));
     if (info?.universe)
@@ -188,19 +226,16 @@ export function createInspector(app) {
       for (const r of popupRows(l.meta, props, { skip: [fields.labelField, measure] }))
         metrics.push(row(r.label, r.text));
     if (adjacent)
-      metrics.push(row(state.result ? "Eligible neighbors" : "Adjacent areas", adjacent.length));
+      metrics.push(
+        row(state.result && methodOf(state.result).id !== "scan" ? "Eligible neighbors" : "Adjacent areas", adjacent.length),
+      );
+    const method = methodOf(state.result);
     if (record) {
       if (record.reason) metrics.push(row("Analysis", record.reason));
-      else
-        metrics.push(
-          row("Local Moran’s I", number(record.localI, 4)),
-          row("Permutation p", number(record.p, 4)),
-          row("FDR q", number(record.q, 4)),
-          row("Classification", clusters[record.cluster][0]),
-        );
+      else metrics.push(...method.featureRows(record, state.result).map(([k, v]) => row(k, v)));
     }
     let reading = null;
-    if (record && record.z != null) {
+    if (method.reading && record && record.z != null) {
       const { result } = state;
       const side = (v) => (v > 0 ? "above" : v < 0 ? "below" : "at");
       const lagValue = record.lag * result.sd + result.mean;
@@ -250,7 +285,8 @@ export function createInspector(app) {
 
   function analysisBlock() {
     const { state } = app,
-      result = state.result;
+      result = state.result,
+      method = methodOf(result);
     const mode = (name, text) =>
       h("button", {
         "data-mode": name,
@@ -264,23 +300,18 @@ export function createInspector(app) {
     return h(
       "section",
       { class: "inspect-block" },
-      h("div", { class: "inspection-head" }, h("h3", { text: "Cluster analysis" })),
-      h("p", { class: "subtle", text: result.studyName + " · " + state.rule + " neighbors" }),
-      h(
-        "dl",
-        { class: "metrics" },
-        row("Global Moran’s I", number(result.globalI, 4)),
-        row("Permutation p", number(result.globalP, 4)),
-        row("Eligible areas", number(result.n, 0)),
-      ),
-      h("div", { class: "segmented" }, mode("value", "Measure"), mode("cluster", "Clusters")),
-      scatter(result, state.selected, (id) => app.selectFeature(id)),
+      h("div", { class: "inspection-head" }, h("h3", { text: method.title })),
+      h("p", { class: "subtle", text: result.studyName + " · " + basisOf(result, state.rule) }),
+      h("dl", { class: "metrics" }, method.summaryRows(result).map(([k, v]) => row(k, v))),
+      result.caution && h("p", { class: "caution", id: "analysis-caution", text: result.caution }),
+      h("div", { class: "segmented" }, mode("value", "Measure"), mode("cluster", method.modeLabel)),
+      method.scatter && scatter(result, state.selected, (id) => app.selectFeature(id), method.scatterLabels),
       h(
         "p",
         { class: "subtle" },
-        result.permutations + " permutations · Seed " + result.seed,
+        result.permutations + " " + (method.trials || "permutations") + " · Seed " + result.seed,
         h("br"),
-        (result.fdr ? "FDR-adjusted q" : "Unadjusted local p") + " ≤ " + result.alpha,
+        method.ruleText ? method.ruleText(result) : (result.fdr ? "FDR-adjusted q" : "Unadjusted local p") + " ≤ " + result.alpha,
       ),
       h(
         "button",

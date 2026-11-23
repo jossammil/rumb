@@ -32,6 +32,7 @@ export const DEFAULT_STYLE = {
   pointStrokeWidth: 1,
   shape: "circle",
   label: null, // a field name to label features with
+  hatch: false, // true: hatch polygons whose estimate is unreliable (properties.__rumb_unreliable)
   faded: false, // true while a filter dims what it leaves out (data-driven opacity)
 };
 
@@ -50,6 +51,7 @@ export function entryStyle(entry, kind) {
   if (look.shape) out.shape = look.shape;
   if (look.outline != null) out.outlineWidth = look.outline;
   if (look.outlineColor) out.outlineColor = look.outlineColor;
+  if (look.hatch && (kind === "polygon" || kind === "mixed")) out.hatch = true;
   return out;
 }
 
@@ -91,6 +93,12 @@ export function layerSpecs(id, kind, colors, style = {}) {
       },
     });
   }
+  if ((kind === "polygon" || mixed) && st.hatch)
+    add("hatch", "area", false, {
+      type: "fill",
+      filter: ["all", is("Polygon"), ["==", ["get", "__rumb_unreliable"], true]],
+      paint: { "fill-pattern": "rumb-hatch", "fill-opacity": fade(0.9) },
+    });
   if (kind === "line" || mixed)
     add("line", "area", true, {
       type: "line",

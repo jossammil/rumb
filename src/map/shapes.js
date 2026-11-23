@@ -52,9 +52,29 @@ export function shapeImage(shape) {
 
 export const shapeImageId = (shape) => "rumb-shape-" + shape;
 
-/** Registers the non-circle shapes with a MapLibre map (once). */
+/**
+ * The hatch for unreliable estimates: diagonal stripes, a light line beside a
+ * dark one, so they show on any fill color. 8 px tiles at 2x.
+ */
+export function hatchImage() {
+  const n = 8 * RATIO,
+    data = new Uint8ClampedArray(n * n * 4);
+  for (let row = 0; row < n; row++)
+    for (let col = 0; col < n; col++) {
+      const d = (col + row) % n,
+        i = (row * n + col) * 4;
+      const light = d < RATIO,
+        dark = d >= RATIO && d < 2 * RATIO;
+      data[i] = data[i + 1] = data[i + 2] = light ? 255 : 20;
+      data[i + 3] = light ? 200 : dark ? 170 : 0;
+    }
+  return { width: n, height: n, data };
+}
+
+/** Registers the non-circle shapes and the hatch with a MapLibre map (once). */
 export function addShapeImages(map) {
   for (const shape of SHAPES.slice(1))
     if (!map.hasImage(shapeImageId(shape)))
       map.addImage(shapeImageId(shape), shapeImage(shape), { sdf: true, pixelRatio: RATIO });
+  if (!map.hasImage("rumb-hatch")) map.addImage("rumb-hatch", hatchImage(), { pixelRatio: RATIO });
 }

@@ -9,7 +9,6 @@ import {
   categoryFields,
   classify,
   classOf,
-  clusters,
   paletteKind,
   PALETTE_NAMES,
   palettes,
@@ -18,7 +17,9 @@ import {
 } from "../map/classify.js";
 import { mapColors } from "../map/basemap-style.js";
 import { classItems, renderLegend, renderOthers } from "../map/legend.js";
+import { methodOf } from "../stats/methods.js";
 import { poolOf } from "../stats/pool.js";
+import { acsReliability, UNSTABLE_EVENTS } from "../stats/rates.js";
 import { $, h, options } from "../ui/dom.js";
 
 export function createStyle(app) {
@@ -50,7 +51,7 @@ export function createStyle(app) {
     const measure = $("measure");
     const cats = categoryChoices(l);
     measure.replaceChildren(
-      ...(fields.length ? [h("optgroup", { label: "Measure" }, options(fields.map((f) => [f, app.label(f)])))] : []),
+      ...app.fieldGroups(l).map((g) => h("optgroup", { label: g.label }, options(g.fields.map((f) => [f, app.label(f)])))),
       ...(cats.length
         ? [h("optgroup", { label: "Category" }, options(cats.map((f) => ["category:" + f, app.label(f)])))]
         : []),
@@ -67,6 +68,10 @@ export function createStyle(app) {
       : "Count points in each area";
     const classed = !!state.measure && !state.category;
     $("classes-row").hidden = $("palette-row").hidden = !classed;
+    // Rates with counts can be smoothed; polygons can hatch unreliable estimates.
+    $("smooth-rate").hidden = !app.fieldList(l).some((f) => poolOf(app.fieldMeta(l, f))?.denominator);
+    $("hatch-row").hidden = kind !== "polygon" && kind !== "mixed";
+    $("look-hatch").checked = !!entry?.style?.hatch;
     renderLook(l, kind);
     $("classification").value = state.classification;
     $("class-count").value = String(state.count);
@@ -129,6 +134,28 @@ export function createStyle(app) {
   const uniformOf = (l) =>
     app.state.stack.find((e) => e.id === l.id)?.style?.color || l.meta?.style?.color || UNIFORM_COLOR;
 
+  /**
+   * Whether a feature's estimate of a measure is unreliable, or null when
+   * the measure has no rule: an ACS estimate whose coefficient of variation is
+   * over 40%, a count rate on fewer than 20 events (NCHS), or a value its
+   * source flags as unreliable. Model-based and smoothed values have none.
+   */
+  function reliabilityRule(l, measure) {
+    const info = app.fieldMeta(l, measure);
+    if (!info || info.modelBased || info.smoothed) return null;
+    if (info.moe) {
+      const level = info.confidence || app.ref.moeLevel || 90;
+      return { note: "ACS margin of error over 40% of the estimate", test: (p) => acsReliability(p[measure], p[info.moe], level) === "low" };
+    }
+    const pool = poolOf(info);
+    if (pool?.kind !== "ratio" || !pool.denominator) return null;
+    return {
+      note: "fewer than " + UNSTABLE_EVENTS + " events" + (pool.flag ? ", or flagged by the source" : ""),
+      test: (p) =>
+        (pool.flag && p[pool.flag] === 1) || (Number.isFinite(p[pool.numerator]) && p[pool.numerator] < UNSTABLE_EVENTS),
+    };
+  }
+
   /** One layer's features with __rumb_id and __rumb_color, and how they were classed. */
   function colorize(l, view) {
     const features = l.collection.features,
@@ -143,14 +170,19 @@ export function createStyle(app) {
       colors = ramp(view.palette, cuts.length + 1);
     const cats = category ? categories(features.map((f) => f.properties?.[category])) : null;
     const clustered = view.mode === "cluster" && view.result;
+    const method = methodOf(view.result),
+      classes = method.classes(view.result);
     const { na, ns } = neutralColors();
-    const clusterColor = (key) => (key === "NS" ? ns : key === "NA" ? na : clusters[key][1]);
+    const clusterColor = (key) => (key === "NS" ? ns : key === "NA" ? na : classes[key]?.[1] ?? na);
     const uniform = uniformOf(l);
+    const hatching = !!app.state.stack.find((e) => e.id === l.id)?.style?.hatch && !!measure;
+    const rule = hatching ? reliabilityRule(l, measure) : null;
+    let unreliable = 0;
     const annotated = features.map((f, i) => {
       const id = featureId(f),
         v = data[i];
       const cls = clustered
-        ? view.result.byId[id]?.cluster ?? "NA"
+        ? method.classOf(view.result.byId[id])
         : cats
           ? f.properties?.[category] ?? null
           : measure && Number.isFinite(v)
@@ -163,17 +195,37 @@ export function createStyle(app) {
           : !Number.isFinite(v)
             ? na
             : colors[classOf(v, cuts)];
-      if (clustered) color = clusterColor(view.result.byId[id]?.cluster ?? "NA");
-      return { ...f, properties: { ...f.properties, __rumb_id: id, __rumb_color: color, __rumb_class: cls } };
+      if (clustered) color = clusterColor(method.classOf(view.result.byId[id]));
+      const flagged = !!rule && Number.isFinite(v) && rule.test(f.properties || {});
+      if (flagged) unreliable++;
+      return {
+        ...f,
+        properties: { ...f.properties, __rumb_id: id, __rumb_color: color, __rumb_class: cls, __rumb_unreliable: flagged },
+      };
     });
-    return { annotated, data, cuts, colors, cats, measure, clustered, clusterColor, uniform, na, suppressed };
+    return {
+      annotated,
+      data,
+      cuts,
+      colors,
+      cats,
+      measure,
+      clustered,
+      clusterColor,
+      method,
+      classes,
+      uniform,
+      na,
+      suppressed,
+      hatched: rule ? { count: unreliable, note: rule.note } : null,
+    };
   }
 
   /** A compact legend entry for a shown layer that is not the focus. */
   function otherSection(l, drawn) {
     const kind = app.kindOf(l);
     if (drawn.clustered)
-      return { name: l.name, kind, colors: ["HH", "LL", "HL", "LH"].map(drawn.clusterColor), note: "clusters" };
+      return { name: l.name, kind, colors: drawn.method.swatches.map(drawn.clusterColor), note: drawn.method.short };
     if (drawn.cats) return { name: l.name, kind, colors: drawn.cats.items.map((x) => x.color), note: "by category" };
     if (drawn.measure) return { name: l.name, kind, colors: drawn.colors, note: app.label(drawn.measure, l) };
     return { name: l.name, kind, colors: [drawn.uniform] };
@@ -207,7 +259,8 @@ export function createStyle(app) {
     const l = app.layer();
     values.clear();
     for (const f of l.collection.features) values.set(featureId(f), f);
-    const { data, cuts, colors, cats, clustered, clusterColor, uniform, na, suppressed } = focus || colorize(l, state);
+    const { data, cuts, colors, cats, clustered, clusterColor, method, classes, uniform, na, suppressed, hatched } =
+      focus || colorize(l, state);
     lastCuts = cuts;
 
     const legend = $("legend");
@@ -221,8 +274,8 @@ export function createStyle(app) {
         }
       : null;
     if (clustered) {
-      items = Object.entries(clusters).map(([key, [text]]) => ({ text, color: clusterColor(key) }));
-      renderLegend(legend, { kind: "categories", title: "Local Moran clusters", items, action });
+      items = Object.entries(classes).map(([key, [text]]) => ({ text, color: clusterColor(key) }));
+      renderLegend(legend, { kind: "categories", title: method.legendTitle, items, action });
     } else if (cats) {
       items = cats.items.map((x) => ({ color: x.color, text: x.value }));
       renderLegend(legend, { kind: "categories", title: app.label(state.category), items, action });
@@ -244,10 +297,13 @@ export function createStyle(app) {
           : null,
         missing: data.length - valid.length,
         missingNote: suppressed ? suppressed + " suppressed by the source" : "",
+        hatched,
         action,
       });
     }
     renderOthers(legend, others);
+    // A scan's windows draw over the map while its clusters show.
+    app.atlas.setAnalysisShapes(clustered && method.id === "scan" ? state.result.circles : null);
     app.filter?.renderSummary();
     app.renderInspector();
   }

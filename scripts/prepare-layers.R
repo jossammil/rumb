@@ -184,6 +184,10 @@ build_chr <- function(l, built) {
     data[[raw]] <- value(v)
     meta <- list(label = label, format = fmt, group = group, source = "County Health Rankings 2025")
     if (fmt == "percent") meta$unit <- "%"
+    # The published value is age-adjusted; the numerator and denominator are crude,
+    # so anything pooled or smoothed from them is a crude rate.
+    adjusted <- length(row) >= 7 && identical(row[[7]], "age-adjusted")
+    if (adjusted) meta$ageAdjusted <- TRUE
     num <- paste0(v, "_numerator")
     data[[num]] <- clean_number(d[[num]])
     fields[[num]] <- list(label = paste0(label, ": numerator"), format = "number", role = "meta")
@@ -194,6 +198,7 @@ build_chr <- function(l, built) {
       fields[[den]] <- list(label = paste0(label, ": denominator"), format = "number", role = "meta")
       pool$denominator <- den
       pool$scale <- scale
+      if (adjusted) pool$crude <- TRUE
     }
     flag <- paste0(v, "_flag")
     if (flag %in% names(d)) {

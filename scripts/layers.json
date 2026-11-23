@@ -125,6 +125,8 @@
         ["v128", "Child mortality (per 100,000)", "ratio", 100000, "rate", "Health outcomes"],
         ["v135", "Injury deaths (per 100,000)", "ratio", 100000, "rate", "Health outcomes"],
         ["v138", "Drug overdose deaths (per 100,000)", "ratio", 100000, "rate", "Health outcomes"],
+        ["v127", "Premature age-adjusted mortality (per 100,000)", "ratio", 100000, "rate", "Health outcomes", "age-adjusted"],
+        ["v161", "Suicides (age-adjusted, per 100,000)", "ratio", 100000, "rate", "Health outcomes", "age-adjusted"],
         ["v015", "Homicides (per 100,000)", "ratio", 100000, "rate", "Health outcomes"],
         ["v039", "Motor vehicle crash deaths (per 100,000)", "ratio", 100000, "rate", "Health outcomes"],
         ["v148", "Firearm fatalities (per 100,000)", "ratio", 100000, "rate", "Health outcomes"],

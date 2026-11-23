@@ -1,37 +1,29 @@
-// Spatial analysis: the Find clusters controls, running Moran's I and LISA in
-// the statistics worker, and the statistics CSV.
+// Spatial analysis: the method menu and its controls, running the chosen
+// method in the statistics worker, and the statistics CSV. What each method's
+// result means is in stats/methods.js.
 import { featureId, groups, isPolygon } from "../core/features.js";
 import { csvText } from "../data/csv.js";
+import { projectedIndex } from "../geo/filter.js";
 import { callStats } from "../stats/client.js";
+import { METHOD_LIST, methodId, methodOf } from "../stats/methods.js";
+import { poolOf } from "../stats/pool.js";
+import { centroid, DISTANCE_KINDS, summaryText } from "../stats/neighbors.js";
 import { $, icon, options, saveBlob } from "../ui/dom.js";
 
-const CSV_FIELDS = [
-  "GEOID_or_feature_ID",
-  "measure",
-  "value",
-  "z",
-  "neighbor_mean_z",
-  "local_I",
-  "permutation_p",
-  "FDR_q",
-  "cluster",
-  "eligible_neighbors",
-  "reason",
-  "study_area",
-  "neighbor_rule",
-  "global_I",
-  "global_p",
-  "permutations",
-  "seed",
-  "alpha",
-  "FDR_applied",
-  "method",
-];
+
+// Controls a method adds below the menu, each loaded the first time its
+// method is chosen: id → () => import(...), whose module exports render(app, mount).
+const PANELS = {
+  gistar: () => import("./methods/gistar.js"),
+  bilisa: () => import("./methods/bilisa.js"),
+  eblisa: () => import("./methods/eblisa.js"),
+  scan: () => import("./methods/scan.js"),
+};
 
 export function createAnalysis(app) {
   let running = null;
   const button = $("analyze");
-  const idle = () => button.replaceChildren(icon("cluster"), "Find clusters");
+  const idle = () => button.replaceChildren(icon("cluster"), "Run");
 
   function cancel() {
     running?.abort();
@@ -43,6 +35,7 @@ export function createAnalysis(app) {
   function clearResults() {
     cancel();
     app.store.set({ result: null, mode: "value", inspector: !!app.state.selected });
+    renderWeights();
   }
 
   /** Fills the study-area list and syncs the controls with the state. */
@@ -58,6 +51,9 @@ export function createAnalysis(app) {
         ...groups(records, groupField).map((g) => [groupField + ":" + g, g]),
       ]),
     );
+    $("method").replaceChildren(...options(METHOD_LIST.map((m) => [m.id, m.label])));
+    $("method").value = methodId(state.method);
+    renderMethodControls();
     for (const [id, value] of Object.entries({
       rule: state.rule,
       study: state.study,
@@ -66,9 +62,85 @@ export function createAnalysis(app) {
     }))
       $(id).value = String(value);
     $("fdr").checked = state.fdr;
+    renderWeights();
+    // Contiguity needs polygons; distance weights work between any features.
+    const byDistance = DISTANCE_KINDS.has(state.rule);
     button.disabled =
-      !fields.length || !state.measure || !!state.category || running != null || !records.every(isPolygon);
-    button.title = button.disabled ? "Choose a polygon layer with a numeric measure." : "";
+      !fields.length ||
+      !state.measure ||
+      !!state.category ||
+      running != null ||
+      (!byDistance && !records.every(isPolygon));
+    button.title = button.disabled
+      ? byDistance
+        ? "Choose a numeric measure."
+        : "Choose a polygon layer with a numeric measure, or distance-based neighbors."
+      : "";
+  }
+
+  /** The chosen method's own controls, loaded on first use. */
+  let panelToken = 0;
+  function renderMethodControls() {
+    const mount = $("method-controls"),
+      load = PANELS[methodId(app.state.method)];
+    if (!load) return mount.replaceChildren();
+    const token = ++panelToken;
+    load().then((panel) => token === panelToken && panel.render(app, mount), app.fail);
+  }
+
+  /** The weights inputs for the chosen kind, and what the last run's weights were like. */
+  function renderWeights() {
+    const { state } = app,
+      rule = state.rule,
+      scanning = state.method === "scan";
+    // A scan grows windows by distance; it has no neighbor weights.
+    $("rule").disabled = scanning;
+    $("weights-params").hidden = scanning || !DISTANCE_KINDS.has(rule);
+    $("k-field").hidden = rule !== "knn";
+    $("symmetric-field").hidden = rule !== "knn";
+    $("band-field").hidden = rule !== "band" && rule !== "idw";
+    $("power-field").hidden = rule !== "idw";
+    $("k").value = String(state.k);
+    $("band").value = state.band == null ? "" : String(state.band);
+    $("power").value = String(state.power);
+    $("symmetric").checked = state.symmetric;
+    const w = state.result?.weights;
+    $("weights-note").textContent = w
+      ? w.label + " · " + summaryText(w.summary) + (w.from ? " · from " + w.from : "")
+      : DISTANCE_KINDS.has(rule)
+        ? "Distances run between centers of population where the data has them, otherwise area centroids, in the region's projection."
+        : "";
+  }
+
+  /** Each scan cluster's window as a circle around its center, in longitude and latitude. */
+  function scanShapes(clusters, points) {
+    const projection = app.tools.projection;
+    return clusters.flatMap((k) => {
+      const [x, y] = points[k.center],
+        r = Math.max(k.radius, 300);
+      const ring = Array.from({ length: 73 }, (_, i) => {
+        const t = (2 * Math.PI * (i % 72)) / 72;
+        return projection.inverse([x + r * Math.cos(t), y + r * Math.sin(t)]);
+      });
+      return [
+        { type: "Feature", properties: { rank: k.rank }, geometry: { type: "Polygon", coordinates: [ring] } },
+        { type: "Feature", properties: { rank: k.rank }, geometry: { type: "Point", coordinates: projection.inverse([x, y]) } },
+      ];
+    });
+  }
+
+  /**
+   * Each feature's location in the region's projected plane: 2020 centers of
+   * population for layers that ship them, otherwise area-weighted centroids.
+   */
+  async function locations(l, items) {
+    const projection = app.tools.projection;
+    const centers = l.reference || l.library ? await app.ws.centers(l.id).catch(() => null) : null;
+    const points = {};
+    if (centers) centers.ids.forEach((id, i) => (points[id] = projection.forward([centers.lon[i], centers.lat[i]])));
+    for (const f of projectedIndex(l.collection, projection, featureId))
+      if (!points[f.id]) points[f.id] = centroid(f.geometry);
+    return { points, from: centers ? "2020 centers of population" : "area centroids" };
   }
 
   async function run() {
@@ -84,20 +156,26 @@ export function createAnalysis(app) {
         l = app.layer(),
         items = app.records(),
         cacheKey = l.id + "-" + state.rule;
-      // Reference and library polygons ship their neighbors; other layers compute them once.
-      let graph = l.reference
-        ? (await app.ws.neighbors())[state.rule]
-        : l.library && l.meta.neighbors
-          ? (await app.ws.loadLayerNeighbors(l.id))[state.rule]
-          : app.ws.graphs.get(cacheKey);
-      if (!graph) {
-        graph = await callStats({ type: "weights", features: items, rule: state.rule }, control.signal);
-        app.ws.graphs.set(cacheKey, graph);
-      }
+      const weights = { kind: state.rule, k: state.k, miles: state.band, power: state.power, symmetric: state.symmetric };
       const ids = new Set(items.map(featureId));
-      const neighbors = Object.fromEntries(
-        items.map((f) => [featureId(f), (graph[featureId(f)] || []).filter((id) => ids.has(id))]),
-      );
+      let neighbors, points, from;
+      const scanning = state.method === "scan";
+      if (scanning || DISTANCE_KINDS.has(state.rule)) ({ points, from } = await locations(l, items));
+      else {
+        // Reference and library polygons ship their neighbors; other layers compute them once.
+        let graph = l.reference
+          ? (await app.ws.neighbors())[state.rule]
+          : l.library && l.meta.neighbors
+            ? (await app.ws.loadLayerNeighbors(l.id))[state.rule]
+            : app.ws.graphs.get(cacheKey);
+        if (!graph) {
+          graph = await callStats({ type: "weights", features: items, rule: state.rule }, control.signal);
+          app.ws.graphs.set(cacheKey, graph);
+        }
+        neighbors = Object.fromEntries(
+          items.map((f) => [featureId(f), (graph[featureId(f)] || []).filter((id) => ids.has(id))]),
+        );
+      }
       const values = Object.fromEntries(items.map((f) => [featureId(f), f.properties[state.measure]]));
       let studyIds,
         studyName = $("study").selectedOptions[0].textContent;
@@ -116,11 +194,33 @@ export function createAnalysis(app) {
       const denominators = universe
         ? Object.fromEntries(items.map((f) => [featureId(f), f.properties[universe]]))
         : undefined;
+      const byId = (field) => Object.fromEntries(app.records().map((f) => [featureId(f), f.properties[field]]));
+      const extra = {};
+      if (state.method === "bilisa") {
+        if (!state.yField || state.yField === state.measure) throw new Error("Choose a second measure for bivariate clusters.");
+        await app.ws.ensureFields([state.yField]);
+        extra.second = byId(state.yField);
+      }
+      if (scanning) {
+        const pool = poolOf(app.fieldMeta(l, state.measure));
+        if (!pool?.denominator) throw new Error("A spatial scan needs a rate with counts: choose a measure with a numerator and a denominator.");
+        Object.assign(extra, { cases: byId(pool.numerator), population: byId(pool.denominator), ...state.scan });
+      }
+      if (state.method === "eblisa") {
+        const pool = poolOf(app.fieldMeta(l, state.measure));
+        if (!pool?.denominator) throw new Error("EB-adjusted clusters need a rate with counts: choose a measure with a numerator and a denominator.");
+        extra.events = byId(pool.numerator);
+        extra.base = byId(pool.denominator);
+      }
       const res = await callStats(
         {
-          type: "analyze",
+          type: methodOf({ method: state.method }).request,
           values,
           neighbors,
+          points,
+          weights,
+          inference: state.inference,
+          ...extra,
           denominators,
           studyIds,
           permutations: state.permutations,
@@ -128,11 +228,27 @@ export function createAnalysis(app) {
           fdr: state.fdr,
         },
         control.signal,
+        (f) => (button.textContent = "Scanning " + Math.round(f * 100) + "%"),
       );
       if (control.signal.aborted) return;
       app.timings.lastAnalysis = Math.round(performance.now() - started);
+      app.timings.lastMethod = res.method === "gistar" ? "gi*" : res.method;
       app.statusbar?.timing();
+      if (from && res.weights) res.weights.from = from;
+      if (scanning) {
+        res.from = from;
+        res.circles = scanShapes(res.clusters, points);
+      }
+      if (state.method === "bilisa") res.secondLabel = app.label(state.yField);
+      // Model-based estimates (CDC PLACES) borrow strength from covariates, so their patterns are partly the model's.
+      const modeled = [state.measure, state.method === "bilisa" && state.yField]
+        .filter(Boolean)
+        .filter((f) => app.fieldMeta(l, f)?.modelBased);
+      if (modeled.length)
+        res.caution =
+          "Model-based estimates (" + modeled.map((f) => app.label(f)).join(", ") + "): CDC's models use ACS and county covariates, so spatial patterns partly reflect the model.";
       app.store.set({ result: { ...res, studyName }, mode: "cluster", inspector: true });
+      renderWeights();
       $("settings").classList.remove("open");
       app.draw();
     } catch (err) {
@@ -149,32 +265,12 @@ export function createAnalysis(app) {
 
   function exportStats() {
     const { state } = app,
-      a = state.result;
-    const rows = Object.entries(a.byId).map(([id, r]) => [
-      id,
-      state.measure,
-      r.value,
-      r.z,
-      r.lag,
-      r.localI,
-      r.p,
-      r.q,
-      r.cluster,
-      r.neighbors.join(" "),
-      r.reason,
-      a.studyName,
-      state.rule,
-      a.globalI,
-      a.globalP,
-      a.permutations,
-      a.seed,
-      a.alpha,
-      a.fdr,
-      a.method,
-    ]);
+      a = state.result,
+      method = methodOf(a);
+    const rows = Object.entries(a.byId).map(([id, r]) => method.csvRow(id, r, a, state));
     saveBlob(
-      new Blob([csvText([CSV_FIELDS, ...rows])], { type: "text/csv;charset=utf-8" }),
-      "spatial-clusters.csv",
+      new Blob([csvText([method.csvFields, ...rows])], { type: "text/csv;charset=utf-8" }),
+      method.file,
     );
   }
 
