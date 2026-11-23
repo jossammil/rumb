@@ -136,6 +136,12 @@ Rscript scripts/prepare-basemap.R
 
 `context.geojson` contains the regional backdrop clipped to 98°W–82°W and 26°N–39°N. `world-land.geojson` supplies a global outline when the map leaves that region. These are display assets. The tract neighbor graph comes from TIGER geography.
 
+The same script also builds `roads.geojson` from the 2024 TIGER/Line primary and secondary roads for Mississippi (`tl_2024_28_prisecroads.zip`, SHA-256 `421905d94b9429037db33c027fd9637a35d631aa2dd90a00ec4a665054e5b702` on November 22, 2026). It keeps the numbered routes (Interstate, U.S. and state highways), dissolves each into one feature, simplifies it to about 40 m and labels it with a short reference such as `I-55` or `MS 25`. To rebuild only the roads, keeping the download in `RUMB_ROADS_CACHE`:
+
+```sh
+RUMB_ROADS_CACHE="$input_dir" Rscript scripts/prepare-basemap.R roads
+```
+
 ### Add-on layers (facilities, districts, County Health Rankings)
 
 The add-on layers a reader can stack over the tracts come from 32 MARIS downloads and the County Health Rankings 2025 analytic file. [`scripts/layers.json`](scripts/layers.json) lists each source URL, the fields kept, their labels and code meanings. [`scripts/prepare-layers.R`](scripts/prepare-layers.R) downloads each source, projects it to longitude and latitude, simplifies polygon display geometry with shared arcs, and writes the files under `public/data/ms/layers/`. Set the first argument or `RUMB_LAYER_CACHE` to a folder to keep the downloads.

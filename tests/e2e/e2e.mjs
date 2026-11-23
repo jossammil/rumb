@@ -249,6 +249,17 @@ await check("boot", async () => {
     !requests.some((u) => /duckdb|geoda-lisa.*wasm/.test(u)),
     "analytics downloaded before the first map",
   );
+  // Roads and add-on layers wait for the first map; roads then draw on their own.
+  await page.waitForFunction(() => window.rumb.map.querySourceFeatures("roads").length > 0);
+  const late = await page.evaluate(() => {
+    const first = window.rumb.timings.firstMap;
+    return performance
+      .getEntriesByType("resource")
+      .filter((e) => /roads\.geojson|\/layers\//.test(e.name))
+      .every((e) => e.startTime >= first - 1);
+  });
+  expect(late, "roads or layer files were requested before the first map");
+  expect(!requests.some((u) => /\/layers\//.test(u)), "add-on layers loaded without being asked for");
   await page.waitForTimeout(500);
   await shot("map");
 });
@@ -501,6 +512,12 @@ await check("themes", async () => {
         getComputedStyle(document.documentElement).getPropertyValue("--map-water").trim(),
     );
     expect(repainted, `${theme}: map backdrop did not follow the theme`);
+    const roads = await p.evaluate(
+      () =>
+        window.rumb.map.getPaintProperty("roads-primary", "line-color") ===
+        getComputedStyle(document.documentElement).getPropertyValue("--map-road").trim(),
+    );
+    expect(roads, `${theme}: roads did not follow the theme`);
     expect(
       (await p.evaluate(() => document.documentElement.dataset.theme)) === theme,
       `${theme} not applied`,

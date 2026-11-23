@@ -2,7 +2,7 @@
 // fitting, highlighting, and repainting the backdrop when the theme changes.
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { buildStyle, DATA_LAYERS, mapColors, themedPaint } from "./basemap-style.js";
+import { buildStyle, DATA_LAYERS, graticuleLines, mapColors, themedPaint } from "./basemap-style.js";
 
 function extent(collection) {
   const bounds = new maplibregl.LngLatBounds();
@@ -50,6 +50,13 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
     }
   });
   map.addControl(new maplibregl.ScaleControl({ maxWidth: 80, unit: "imperial" }), "bottom-right");
+
+  let gridLoaded = false;
+  // Roads wait until the first map has drawn, so they never delay it.
+  map.once("idle", () => {
+    if (region.backdrop?.roads && map.getSource("roads"))
+      map.getSource("roads").setData(regionPath + region.backdrop.roads);
+  });
 
   const ready = new Promise((resolve, reject) => {
     map.once("load", resolve);
@@ -106,6 +113,15 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
     },
     camera() {
       return { center: map.getCenter().toArray(), zoom: map.getZoom() };
+    },
+    /** Shows or hides the 1° grid over the region's backdrop. */
+    graticule(on) {
+      if (!map.getLayer("graticule")) return;
+      if (on && !gridLoaded) {
+        gridLoaded = true;
+        map.getSource("graticule").setData(graticuleLines(region.backdrop?.extent || [-180, -85, 180, 85]));
+      }
+      map.setLayoutProperty("graticule", "visibility", on ? "visible" : "none");
     },
     /** Re-reads the theme's map tokens and repaints the backdrop. */
     retheme() {

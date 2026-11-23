@@ -13,6 +13,7 @@
     "backdrop": {
       "context": "context.geojson",
       "world": "world-land.geojson",
+      "roads": "roads.geojson",
       "extent": [-98, 26, -82, 39],
       "labels": [
         ["ARKANSAS", -92.65, 34.45],

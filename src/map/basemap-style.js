@@ -1,6 +1,6 @@
-// The MapLibre style: a Natural Earth backdrop for the region, then the data
-// layer drawn from one GeoJSON source whose features carry __rumb_id and
-// __rumb_color. Colors come from the theme (mapColors), so the backdrop can
+// The MapLibre style: a Natural Earth backdrop for the region, Census roads, an
+// optional 1° grid, then the data layer drawn from one GeoJSON source whose
+// features carry __rumb_id and __rumb_color. Colors come from the theme (mapColors), so the backdrop can
 // change with it while data colors stay put.
 
 export const DATA_LAYERS = ["areas", "lines", "points"];
@@ -22,6 +22,8 @@ export function mapColors(root = document.documentElement) {
     neighbor: get("--map-neighbor", "#3d505c"),
     selected: get("--map-selected", "#1d2933"),
     pointStroke: get("--map-point-stroke", "#ffffff"),
+    road: get("--map-road", "#b7a98a"),
+    roadMinor: get("--map-road-minor", "#cfc5ad"),
   };
 }
 
@@ -57,6 +59,10 @@ export function themedPaint(c) {
     neighbors: { "line-color": c.neighbor },
     selected: { "line-color": c.selected },
     "selected-point": { "circle-color": c.selected, "circle-stroke-color": c.pointStroke },
+    "roads-secondary": { "line-color": c.roadMinor },
+    "roads-primary": { "line-color": c.road },
+    "road-labels": { "text-color": c.label, "text-halo-color": c.halo },
+    graticule: { "line-color": c.boundary },
     "state-names": { "text-color": c.region, "text-halo-color": c.halo },
     "town-dots": { "circle-color": c.town, "circle-stroke-color": c.halo },
     towns: { "text-color": c.label, "text-halo-color": c.halo },
@@ -78,6 +84,8 @@ export function buildStyle(region, regionPath, c = mapColors()) {
       world: src(empty),
       context: src(region.backdrop?.context ? regionPath + region.backdrop.context : empty),
       regionNames: src({ type: "FeatureCollection", features: labels }),
+      roads: src(empty),
+      graticule: src(empty),
       area: src(empty),
     },
     layers: [
@@ -124,6 +132,32 @@ export function buildStyle(region, regionPath, c = mapColors()) {
         filter: ["==", ["geometry-type"], "LineString"],
         paint: { "line-color": ["get", "__rumb_color"], "line-width": 3 },
       },
+      // Roads (Census TIGER numbered routes) sit above area fills so they stay
+      // readable over a choropleth, and below points and selections.
+      {
+        id: "roads-secondary",
+        type: "line",
+        source: "roads",
+        minzoom: 7,
+        filter: ["==", ["get", "class"], "secondary"],
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { ...paint["roads-secondary"], "line-opacity": 0.8, "line-width": width([7, 0.5, 10, 1.1, 13, 2.4]) },
+      },
+      {
+        id: "roads-primary",
+        type: "line",
+        source: "roads",
+        filter: ["==", ["get", "class"], "primary"],
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { ...paint["roads-primary"], "line-opacity": 0.9, "line-width": width([5, 0.7, 8, 1.5, 12, 3.4]) },
+      },
+      {
+        id: "graticule",
+        type: "line",
+        source: "graticule",
+        layout: { visibility: "none" },
+        paint: { ...paint.graticule, "line-width": 0.8, "line-opacity": 0.7, "line-dasharray": [1, 3] },
+      },
       {
         id: "points",
         type: "circle",
@@ -158,6 +192,20 @@ export function buildStyle(region, regionPath, c = mapColors()) {
         paint: { ...paint["selected-point"], "circle-radius": 6, "circle-stroke-width": 3 },
       },
       {
+        id: "road-labels",
+        type: "symbol",
+        source: "roads",
+        minzoom: 9,
+        layout: {
+          ...label,
+          "text-field": ["get", "ref"],
+          "text-size": 10,
+          "symbol-placement": "line",
+          "symbol-spacing": 320,
+        },
+        paint: { ...paint["road-labels"], "text-halo-width": 1.4 },
+      },
+      {
         id: "state-names",
         type: "symbol",
         source: "regionNames",
@@ -181,4 +229,16 @@ export function buildStyle(region, regionPath, c = mapColors()) {
       },
     ],
   };
+}
+
+/** Meridians and parallels every `step` degrees across an extent [w, s, e, n]. */
+export function graticuleLines([west, south, east, north], step = 1) {
+  const features = [];
+  const line = (coordinates, value, axis) =>
+    features.push({ type: "Feature", properties: { value, axis }, geometry: { type: "LineString", coordinates } });
+  for (let x = Math.ceil(west / step) * step; x <= east; x += step)
+    line([[x, south], [x, north]], x, "lon");
+  for (let y = Math.ceil(south / step) * step; y <= north; y += step)
+    line([[west, y], [east, y]], y, "lat");
+  return { type: "FeatureCollection", features };
 }

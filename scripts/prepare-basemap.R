@@ -1,6 +1,10 @@
-# Rebuild the small public-domain Natural Earth backdrop. Usage: Rscript scripts/prepare-basemap.R
+# Rebuild the small public-domain backdrop: Natural Earth land, water, states and
+# places, and Census TIGER primary and secondary roads for Mississippi.
+# Usage: Rscript scripts/prepare-basemap.R [roads]   ("roads" rebuilds only the roads)
 suppressPackageStartupMessages(library(sf))
 sf_use_s2(FALSE)
+only_roads <- identical(commandArgs(trailingOnly = TRUE), "roads")
+if (!only_roads) {
 inputs <- c(land="ne_50m_land", lakes="ne_50m_lakes", states="ne_50m_admin_1_states_provinces_lines",
             rivers="ne_10m_rivers_lake_centerlines", places="ne_10m_populated_places_simple")
 # RUMB_NE_CACHE (or the older BGIS_NE_CACHE) points at a folder of cached downloads.
@@ -29,3 +33,35 @@ path <- file.path(ne_cache(), paste0("bgis-", global, ".geojson"))
 if (!file.exists(path)) download.file(ne_url(global), path, mode="wb")
 world <- st_sf(geometry=st_geometry(st_read(path, quiet=TRUE)))
 st_write(world, "public/data/ms/world-land.geojson", quiet=TRUE, delete_dsn=TRUE, layer_options="COORDINATE_PRECISION=4")
+}
+
+# Census TIGER/Line 2024 primary (S1100) and secondary (S1200) roads. Only numbered
+# routes are kept (unnamed and municipal street segments are clutter at this
+# scale). Each route is dissolved into one feature per class and route, simplified
+# to about 40 m and written with 4 decimals; `ref` is the short route label
+# (I-55, US 49, MS 25).
+roads_url <- "https://www2.census.gov/geo/tiger/TIGER2024/PRISECROADS/tl_2024_28_prisecroads.zip"
+roads_zip <- file.path(Sys.getenv("RUMB_ROADS_CACHE", tempdir()), basename(roads_url))
+if (!file.exists(roads_zip)) download.file(roads_url, roads_zip, mode = "wb")
+roads <- st_read(paste0("/vsizip/", roads_zip), quiet = TRUE)
+stopifnot(all(roads$MTFCC %in% c("S1100", "S1200")))
+roads$class <- ifelse(roads$MTFCC == "S1100", "primary", "secondary")
+number <- sub("^.*?([0-9]+[A-Z]?).*$", "\\1", roads$FULLNAME)
+has_number <- grepl("[0-9]", roads$FULLNAME)
+roads$ref <- ifelse(has_number & roads$RTTYP == "I", paste0("I-", number),
+             ifelse(has_number & roads$RTTYP == "U", paste0("US ", number),
+             ifelse(has_number & roads$RTTYP == "S", paste0("MS ", number), NA_character_)))
+
+roads <- st_transform(roads[!is.na(roads$ref), ], 3814)
+key <- paste(roads$class, roads$name, sep = "|")
+merged <- do.call(rbind, lapply(split(seq_len(nrow(roads)), key), function(rows) {
+  line <- st_line_merge(st_cast(st_union(st_geometry(roads)[rows]), "MULTILINESTRING"))
+  st_sf(class = roads$class[rows[1]], ref = roads$ref[rows[1]], geometry = line)
+}))
+merged <- st_transform(st_simplify(merged, dTolerance = 40, preserveTopology = FALSE), "OGC:CRS84")
+merged <- merged[!st_is_empty(merged), ]
+merged <- merged[order(merged$class == "primary", merged$ref), ]
+st_write(merged, "public/data/ms/roads.geojson", quiet = TRUE, delete_dsn = TRUE,
+         layer_options = c("COORDINATE_PRECISION=4", "RFC7946=YES", "WRITE_NAME=NO"))
+message("Wrote ", nrow(merged), " road routes; TIGER ZIP SHA-256 ",
+        digest::digest(roads_zip, algo = "sha256", file = TRUE))

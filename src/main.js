@@ -237,6 +237,9 @@ async function start() {
     else if (store.state.view === "map") app.draw();
   });
   ready = true;
+  store.subscribe((state, keys) => {
+    if (keys.has("graticule")) app.atlas.graticule(state.graticule);
+  });
   renderAll();
   app.atlas.map.once("idle", () => {
     if (app.atlas.map.queryRenderedFeatures({ layers: ["areas"] }).length) {
@@ -316,6 +319,7 @@ function wire(app) {
     appearance: openAppearance,
     coords: () => update({ coords: getSettings().coords === "dms" ? "dd" : "dms" }),
     help: () => openHelp(app.version),
+    graticule: () => store.set({ graticule: !app.state.graticule }),
   });
   app.runCommand = runCommand;
 

@@ -17,6 +17,7 @@ export const COMMANDS = [
   { id: "zoom-in", label: "Zoom in", group: "Map" },
   { id: "zoom-out", label: "Zoom out", group: "Map" },
   { id: "clear-selection", label: "Clear the selection", group: "Map" },
+  { id: "graticule", label: "Show or hide the 1° grid", group: "Map" },
   { id: "run-analysis", label: "Find clusters (Moran's I and LISA)", group: "Analysis" },
   { id: "export-stats", label: "Export cluster statistics as CSV", group: "Analysis" },
   { id: "import", label: "Import data files", group: "File" },

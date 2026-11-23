@@ -43,6 +43,7 @@ export function defaults(catalog) {
     layerViews: {},
     comparisons: {},
     compareLayer: null,
+    graticule: false,
   };
 }
 
