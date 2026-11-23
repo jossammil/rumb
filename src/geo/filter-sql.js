@@ -1,7 +1,7 @@
 // The map's spatial filter as DuckDB spatial SQL, for imported tables too big
 // to filter in the page (ported from map_project's sql_layer_select). Distances
 // use the region's projected coordinates, as the map does. Pure.
-import { ident } from "../data/sql.js";
+import { ident, sqlString } from "../data/sql.js";
 
 /** Well-known text for a GeoJSON geometry in longitude/latitude. */
 export function toWKT(g) {
@@ -29,11 +29,26 @@ export function toWKT(g) {
 }
 
 /**
- * SELECT * FROM table WHERE <the filter>. `base` holds the buffer's selected
- * geometries (longitude/latitude GeoJSON); `epsg` the region's projected CRS.
+ * The target CRS for ST_Transform, as SQL text: the region's EPSG code when it
+ * has one, else its PROJ string. DuckDB-WASM 1.32.0 (spatial 1.4.3) takes the
+ * PROJ string form ("+proj=aea …") in Chrome and WebKit, matching sf to
+ * nanometres, so PROJJSON is not needed. `crs` is the catalog's
+ * region.projection.
  */
-export function filterSQL(table, geometry, filter, { epsg, base = [] }) {
-  const projected = (expr) => `ST_Transform(${expr}, 'EPSG:4326', 'EPSG:${epsg}', always_xy := true)`;
+export function crsSQL(crs) {
+  if (crs?.epsg) return `'EPSG:${crs.epsg}'`;
+  if (crs?.proj) return sqlString(crs.proj);
+  return "'EPSG:4326'";
+}
+
+/**
+ * SELECT * FROM table WHERE <the filter>. `base` holds the buffer's selected
+ * geometries (longitude/latitude GeoJSON); `crs` the region's projection
+ * ({ epsg } or { proj }, as in the catalog).
+ */
+export function filterSQL(table, geometry, filter, { crs, base = [] }) {
+  const target = crsSQL(crs);
+  const projected = (expr) => `ST_Transform(${expr}, 'EPSG:4326', ${target}, always_xy := true)`;
   const metres = (filter.miles || 0) * 1609.344;
   let where;
   if (filter.kind === "radius")
