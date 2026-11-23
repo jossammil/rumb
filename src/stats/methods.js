@@ -360,6 +360,134 @@ METHODS.scan = {
   miles,
 };
 
+// Regression residuals: standardized, in GeoDa's bands, on RdBu (red: the
+// measure is higher than the model predicts).
+const residualClasses = {
+  P3: ["More than 2.5 SD above the prediction", "#b2182b"],
+  P2: ["1.5 to 2.5 SD above", "#ef8a62"],
+  P1: ["0.5 to 1.5 SD above", "#fddbc7"],
+  Z: ["Within 0.5 SD", "#c9d0cc"],
+  N1: ["0.5 to 1.5 SD below", "#d1e5f0"],
+  N2: ["1.5 to 2.5 SD below", "#67a9cf"],
+  N3: ["More than 2.5 SD below the prediction", "#2166ac"],
+  NA: ["Unavailable", "#8a918b"],
+};
+const pText = (p) => (p < 0.0001 ? "<0.0001" : fixed(p));
+const testRow = (name, t) => (t ? [name, fixed(t.statistic, 3), String(t.df ?? ""), pText(t.p)] : null);
+
+METHODS.model = {
+  id: "model",
+  label: "Regression (OLS with spatial diagnostics)",
+  title: "Regression",
+  legendTitle: "Standardized residuals",
+  modeLabel: "Residuals",
+  short: "residuals",
+  request: "model",
+  file: "regression-areas.csv",
+  classes: () => residualClasses,
+  swatches: ["P3", "P1", "N1", "N3"],
+  classOf: (record) => record?.cluster ?? "NA",
+  featureRows: (record) => [
+    ["Predicted", fixed(record.fitted, 3)],
+    ["Residual", fixed(record.residual, 3)],
+    ["Standardized residual", fixed(record.standardized, 2)],
+  ],
+  summaryRows: (result) => [
+    ["Areas", number(result.n, 0)],
+    ["R² · adjusted", fixed(result.r2, 3) + " · " + fixed(result.adjR2, 3)],
+    ["F", fixed(result.F.statistic, 2) + " (p " + pText(result.F.p) + ")"],
+    ["Log-likelihood · AIC", fixed(result.logLik, 2) + " · " + fixed(result.aic, 2)],
+    ["Condition number", fixed(result.conditionNumber, 1) + (result.conditionNumber > 30 ? " (collinearity likely)" : "")],
+    ...(result.spatial
+      ? [["Residual Moran’s I", fixed(result.spatial.moran.I, 4) + " (z " + fixed(result.spatial.moran.z, 2) + ", p " + pText(result.spatial.moran.p) + ")"]]
+      : []),
+  ],
+  /** Tables under the summary: [{ caption, head, rows }]. */
+  details: (result) => [
+    {
+      caption: "Coefficients",
+      head: ["", "Estimate", "SE", "t", "p", "VIF"],
+      rows: result.coefficients.map((c, j) => [
+        c.label || c.name,
+        fixed(c.estimate, 4),
+        fixed(c.se, 4),
+        fixed(c.statistic, 2),
+        pText(c.p),
+        j && result.vif?.[j - 1] != null ? fixed(result.vif[j - 1], 2) : "",
+      ]),
+    },
+    {
+      caption: "Diagnostics",
+      head: ["Test", "Value", "df", "p"],
+      rows: [
+        testRow("Jarque–Bera (normality)", result.jarqueBera),
+        testRow("Breusch–Pagan", result.breuschPagan),
+        testRow("Koenker–Bassett", result.koenker),
+        result.spatial && ["Moran’s I (residuals)", fixed(result.spatial.moran.I, 4), "", pText(result.spatial.moran.p)],
+        testRow("LM-lag", result.spatial?.lmLag),
+        testRow("Robust LM-lag", result.spatial?.robustLmLag),
+        testRow("LM-error", result.spatial?.lmError),
+        testRow("Robust LM-error", result.spatial?.robustLmError),
+        testRow("SARMA", result.spatial?.sarma),
+      ].filter(Boolean),
+      note: result.suggestion,
+    },
+  ],
+  /** Charts under the tables: [{ kind, … }] for ui/chart.js. */
+  charts: (result) => {
+    const records = Object.entries(result.byId).filter(([, r]) => Number.isFinite(r.fitted));
+    return [
+      {
+        kind: "points",
+        points: records.map(([id, r]) => ({ id, x: r.fitted, y: r.residual })),
+        xLabel: "Predicted",
+        yLabel: "Residual",
+        reference: 0,
+      },
+      { kind: "histogram", values: records.map(([, r]) => r.standardized), xLabel: "Standardized residual" },
+    ];
+  },
+  reportText: (result) =>
+    "R² " + fixed(result.r2, 3) + " on " + result.covariates.length + " covariates, " + number(result.n, 0) + " areas" +
+    (result.spatial ? " · residual Moran's I " + fixed(result.spatial.moran.I, 3) + " (p " + pText(result.spatial.moran.p) + ")" : "") +
+    " · " + result.studyName,
+  rule: () => "residuals in standard deviations",
+  ruleText: (result) => result.suggestion || "",
+  csvFields: [
+    "GEOID_or_feature_ID",
+    "measure",
+    "value",
+    "predicted",
+    "residual",
+    "standardized_residual",
+    "residual_class",
+    "reason",
+    "study_area",
+    "covariates",
+    "neighbor_rule",
+    "method",
+  ],
+  csvRow: (id, r, result, state) => [
+    id,
+    state.measure,
+    r.value,
+    r.fitted,
+    r.residual,
+    r.standardized,
+    r.cluster,
+    r.reason,
+    result.studyName,
+    result.covariates.join(" "),
+    result.weights?.label || state.rule,
+    result.methodNote,
+  ],
+  /** Further downloads from the summary: the coefficient and diagnostic tables. */
+  exports: [{ label: "Export coefficients", file: "regression-model.csv" }],
+  scatter: false,
+  reading: false,
+  trials: null,
+};
+
 /** The methods in the order the menu lists them. */
 export const METHOD_LIST = Object.values(METHODS);
 

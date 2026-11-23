@@ -7,10 +7,26 @@ import { featureId } from "../core/features.js";
 import { aggregate, coverageLabel, neighborsOf, poolOf } from "../stats/pool.js";
 import { basisOf, methodOf } from "../stats/methods.js";
 import { acsReliability, rateLimits, UNSTABLE_EVENTS } from "../stats/rates.js";
-import { scatter } from "../ui/chart.js";
+import { histogram, lineChart, pointChart, scatter } from "../ui/chart.js";
 import { $, fill, h, icon } from "../ui/dom.js";
 
 const row = (key, val) => h("div", null, h("dt", { text: key }), h("dd", { text: String(val) }));
+
+/** A method's table: { caption, head, rows, note }. */
+const statTable = ({ caption, head, rows, note }) => [
+  h(
+    "div",
+    { class: "stat-wrap" },
+    h(
+      "table",
+      { class: "stat-table", "data-table": caption },
+      h("caption", { text: caption }),
+      h("thead", null, h("tr", null, head.map((x) => h("th", { scope: "col", text: x })))),
+      h("tbody", null, rows.map((r) => h("tr", null, r.map((x, i) => (i ? h("td", { text: x }) : h("th", { scope: "row", text: x })))))),
+    ),
+  ),
+  note && h("p", { class: "subtle model-note", text: note }),
+];
 
 const MEANING = {
   HH: "This is a high-value cluster.",
@@ -249,11 +265,18 @@ export function createInspector(app) {
       result.caution && h("p", { class: "caution", id: "analysis-caution", text: result.caution }),
       h("div", { class: "segmented" }, mode("value", "Measure"), mode("cluster", method.modeLabel)),
       method.scatter && scatter(result, state.selected, (id) => app.selectFeature(id), method.scatterLabels),
+      (method.details?.(result) || []).map((t) => statTable(t)),
+      (method.charts?.(result) || []).map((c) =>
+        c.kind === "points"
+          ? pointChart(c.points, { ...c, selected: state.selected, onPick: (id) => app.selectFeature(id) })
+          : c.kind === "line"
+            ? lineChart(c.data, c)
+            : histogram(c.values, c),
+      ),
       h(
         "p",
         { class: "subtle" },
-        result.permutations + " " + (method.trials || "permutations") + " · Seed " + result.seed,
-        h("br"),
+        method.trials !== null && [result.permutations + " " + (method.trials || "permutations") + " · Seed " + result.seed, h("br")],
         method.ruleText ? method.ruleText(result) : (result.fdr ? "FDR-adjusted q" : "Unadjusted local p") + " ≤ " + result.alpha,
       ),
       h(
@@ -262,6 +285,21 @@ export function createInspector(app) {
         icon("download", 13),
         "Export statistics",
       ),
+      (method.exports || []).map((x, i) =>
+        h(
+          "button",
+          { class: "plain-btn", "data-export": i, onclick: () => app.analysis.exportDetails(i) },
+          icon("download", 13),
+          x.label,
+        ),
+      ),
+      result.method === "model" &&
+        h("button", {
+          class: "plain-btn",
+          id: "model-fields",
+          text: "Add predictions and residuals as fields",
+          onclick: () => app.perform(null, () => app.analysis.saveModelFields()),
+        }),
     );
   }
 

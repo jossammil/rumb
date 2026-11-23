@@ -19,7 +19,8 @@ import { THEMES } from "./core/settings.js";
 import { defaults, LAYER_VIEW_KEYS, layerViewDefaults, stateFields } from "./core/state.js";
 import { callStats } from "./stats/client.js";
 import { poolOf } from "./stats/pool.js";
-import { RATE_METHODS, rateFields, rateSpec } from "./stats/rates.js";
+import { RATE_METHODS, rateFields } from "./stats/rates.js";
+import { derivedSpec, modelFields } from "./core/derived.js";
 import { createStore } from "./core/store.js";
 import { createWorkspace } from "./core/workspace.js";
 import { createOffline } from "./data/offline.js";
@@ -149,8 +150,19 @@ async function start() {
       let changed = false;
       for (const e of store.state.stack)
         for (const raw of e.derived || []) {
-          const spec = rateSpec(raw);
+          const spec = derivedSpec(raw);
           if (!spec) continue;
+          if (spec.kind === "model") {
+            const key = e.id + JSON.stringify(spec);
+            if (failedDerived.has(key)) continue;
+            try {
+              changed = (await deriveModel(e.id, spec)) || changed;
+            } catch (error) {
+              failedDerived.add(key);
+              throw error;
+            }
+            continue;
+          }
           await ws.ensureFields([spec.measure]);
           const view = countedLayer(e.id);
           if (!view || derivedOf(view, spec)) continue;
@@ -334,7 +346,7 @@ async function start() {
     if (ws.missingFields([store.state.measure]).length)
       ws.ensureFields([store.state.measure]).then(renderAll, report);
     // Derived rates the stack names that are not computed yet.
-    if (store.state.stack.some((e) => (e.derived || []).some((d) => !derivedOf(countedLayer(e.id) || {}, rateSpec(d) || {}))))
+    if (store.state.stack.some((e) => (e.derived || []).some((d) => derivedSpec(d) && !derivedOf(countedLayer(e.id) || {}, derivedSpec(d)))))
       app.ensureDerived().catch(report);
     renderLayers(app);
     app.style.renderControls(fields);
@@ -426,15 +438,16 @@ async function start() {
   // Derived rate fields (stats/rates.js) by collection and spec; computed by
   // ensureDerived, read here synchronously.
   const derivedValues = new WeakMap(),
-    derivedViews = new Map();
+    derivedViews = new Map(),
+    failedDerived = new Set();
   const derivedStore = (collection) => {
     if (!derivedValues.has(collection)) derivedValues.set(collection, new Map());
     return derivedValues.get(collection);
   };
   const derivedOf = (view, spec) => derivedValues.get(view.collection)?.get(JSON.stringify(spec));
-  /** A layer with the derived rate fields its stack entry asks for, once computed. */
+  /** A layer with the derived fields its stack entry asks for, once computed. */
   function withDerived(view, specs) {
-    const parts = specs.map(rateSpec).filter(Boolean).map((s) => derivedOf(view, s)).filter(Boolean);
+    const parts = specs.map(derivedSpec).filter(Boolean).map((s) => derivedOf(view, s)).filter(Boolean);
     if (!parts.length) return view;
     const key = JSON.stringify(specs),
       hit = derivedViews.get(view.id);
@@ -451,6 +464,28 @@ async function start() {
     const derived = { ...view, collection, extraFields, derivedFields: fields };
     derivedViews.set(view.id, { base: view.collection, key, parts, view: derived });
     return derived;
+  }
+  /** Fits a model spec in the worker and keeps its predictions and residuals as fields. */
+  async function deriveModel(id, spec) {
+    const view = countedLayer(id);
+    if (!view || derivedOf(view, spec)) return false;
+    const request = await app.analysis.modelRequest(view, spec);
+    const fresh = countedLayer(id);
+    const result = await callStats(request);
+    const [fit, res, sres] = modelFields(spec);
+    const info = app.fieldMeta(fresh, spec.y) || {},
+      label = app.label(spec.y, fresh);
+    const values = (key) => fresh.collection.features.map((f) => result.byId[featureId(f)]?.[key] ?? null);
+    derivedStore(fresh.collection).set(JSON.stringify(spec), {
+      fields: [fit, res, sres],
+      extraFields: {
+        [fit]: { label: label + ": predicted by the regression", format: info.format, unit: info.unit, smoothed: true },
+        [res]: { label: label + ": regression residual", format: "number", smoothed: true },
+        [sres]: { label: label + ": standardized residual", format: "number", smoothed: true },
+      },
+      values: { [fit]: values("fitted"), [res]: values("residual"), [sres]: values("standardized") },
+    });
+    return true;
   }
   /** Queen contiguity as neighbor indices by feature, for spatial smoothing. */
   async function contiguityRows(view) {

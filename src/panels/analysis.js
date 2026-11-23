@@ -7,6 +7,7 @@ import { projectedIndex } from "../geo/filter.js";
 import { callStats } from "../stats/client.js";
 import { METHOD_LIST, methodId, methodOf } from "../stats/methods.js";
 import { poolOf } from "../stats/pool.js";
+import { modelSpec } from "../core/derived.js";
 import { centroid, DISTANCE_KINDS, summaryText } from "../stats/neighbors.js";
 import { $, icon, options, saveBlob } from "../ui/dom.js";
 
@@ -18,6 +19,7 @@ const PANELS = {
   bilisa: () => import("./methods/bilisa.js"),
   eblisa: () => import("./methods/eblisa.js"),
   scan: () => import("./methods/scan.js"),
+  model: () => import("./methods/model.js"),
 };
 
 export function createAnalysis(app) {
@@ -201,6 +203,12 @@ export function createAnalysis(app) {
         await app.ws.ensureFields([state.yField]);
         extra.second = byId(state.yField);
       }
+      if (state.method === "model") {
+        const xs = (state.model?.xs || []).filter((x) => x !== state.measure);
+        if (!xs.length) throw new Error("Choose at least one covariate for the regression.");
+        await app.ws.ensureFields(xs);
+        Object.assign(extra, { modelType: state.model.type || "ols", covariates: Object.fromEntries(xs.map((x) => [x, byId(x)])) });
+      }
       if (scanning) {
         const pool = poolOf(app.fieldMeta(l, state.measure));
         if (!pool?.denominator) throw new Error("A spatial scan needs a rate with counts: choose a measure with a numerator and a denominator.");
@@ -240,6 +248,7 @@ export function createAnalysis(app) {
         res.circles = scanShapes(res.clusters, points);
       }
       if (state.method === "bilisa") res.secondLabel = app.label(state.yField);
+      if (res.method === "model") res.coefficients.forEach((c) => (c.label = c.name === "(Intercept)" ? "Intercept" : app.label(c.name)));
       // Model-based estimates (CDC PLACES) borrow strength from covariates, so their patterns are partly the model's.
       const modeled = [state.measure, state.method === "bilisa" && state.yField]
         .filter(Boolean)
@@ -274,9 +283,67 @@ export function createAnalysis(app) {
     );
   }
 
+  /** One of a method's further downloads: its summary tables as CSV. */
+  function exportDetails(i) {
+    const a = app.state.result,
+      method = methodOf(a),
+      x = method.exports[i];
+    const rows = (method.details?.(a) || []).flatMap((t) => [[t.caption], t.head, ...t.rows, ...(t.note ? [[t.note]] : []), []]);
+    saveBlob(new Blob([csvText(rows)], { type: "text/csv;charset=utf-8" }), x.file);
+  }
+
+  /** Keeps the current regression's predictions and residuals as fields of the layer. */
+  async function saveModelFields() {
+    const { state } = app;
+    const spec = modelSpec({
+      kind: "model",
+      type: state.model?.type,
+      y: state.measure,
+      xs: state.model?.xs,
+      weights: { kind: state.rule, k: state.k, miles: state.band, power: state.power, symmetric: state.symmetric },
+    });
+    if (!spec) throw new Error("Run a regression with at least one covariate first.");
+    const others = (state.stack.find((e) => e.id === state.active)?.derived || []).filter((d) => !(d.kind === "model" && d.y === spec.y));
+    app.store.set({ stack: state.stack.map((e) => (e.id === state.active ? { ...e, derived: [...others, spec] } : e)) });
+    await app.ensureDerived();
+    app.renderAll();
+    app.notify("Added predictions and residuals of " + app.label(spec.y) + " as fields, under Derived.");
+  }
+
+  /**
+   * The worker request for a model spec on a layer (for derived fields):
+   * the outcome, covariates and weights over the whole layer.
+   */
+  async function modelRequest(l, spec) {
+    await app.ws.ensureFields([spec.y, ...spec.xs]);
+    const items = l.collection.features;
+    const byId = (field) => Object.fromEntries(items.map((f) => [featureId(f), f.properties[field]]));
+    const request = {
+      type: "model",
+      values: byId(spec.y),
+      covariates: Object.fromEntries(spec.xs.map((x) => [x, byId(x)])),
+      weights: spec.weights,
+    };
+    const ids = new Set(items.map(featureId));
+    if (DISTANCE_KINDS.has(spec.weights.kind)) request.points = (await locations(l, items)).points;
+    else {
+      const graph = l.reference
+        ? (await app.ws.neighbors())[spec.weights.kind]
+        : l.library && l.meta.neighbors
+          ? (await app.ws.loadLayerNeighbors(l.id))[spec.weights.kind]
+          : app.ws.graphs.get(l.id + "-" + spec.weights.kind) ||
+            (await callStats({ type: "weights", features: items, rule: spec.weights.kind }));
+      request.neighbors = Object.fromEntries(items.map((f) => [featureId(f), (graph[featureId(f)] || []).filter((id) => ids.has(id))]));
+    }
+    return { ...request, modelType: spec.type };
+  }
+
   return {
     run,
     cancel,
+    exportDetails,
+    saveModelFields,
+    modelRequest,
     clearResults,
     renderControls,
     exportStats,

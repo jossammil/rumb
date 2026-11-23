@@ -47,6 +47,50 @@ out$linalg <- list(
   eigenTracts = sort(eigen(similar(tract_ids, neighbors), symmetric = TRUE, only.values = TRUE)$values)
 )
 
-out$packages <- lapply(setNames(nm = c("sf", "jsonlite")), function(p) as.character(packageVersion(p)))
+# ---- OLS and its diagnostics -------------------------------------------------------------
+# The tracts with every variable and at least one queen neighbor among them.
+suppressPackageStartupMessages({
+  library(spdep)
+  library(lmtest)
+})
+r <- m[match(tract_ids, m$GEOID), ]
+fit <- lm(reformulate(covariates, outcome), data = r)
+sm <- summary(fit)
+Xr <- model.matrix(fit)
+e <- residuals(fit)
+mom <- function(k) mean((e - mean(e))^k)
+jb <- length(e) / 6 * ((mom(3) / mom(2)^1.5)^2 + (mom(4) / mom(2)^2 - 3)^2 / 4)
+vifs <- vapply(covariates, function(v) {
+  aux <- summary(lm(reformulate(setdiff(covariates, v), v), data = r))
+  1 / (1 - aux$r.squared)
+}, numeric(1))
+unit <- sweep(Xr, 2, sqrt(colSums(Xr^2)), "/")
+ev <- eigen(crossprod(unit), symmetric = TRUE, only.values = TRUE)$values
+queen_nb <- structure(lapply(tract_ids, function(id) sort(match(intersect(unlist(neighbors[[id]]), tract_ids), tract_ids))),
+                      class = "nb", region.id = tract_ids)
+centers <- jsonlite::read_json("public/data/ms/tables/tracts-centers.json", simplifyVector = TRUE)
+pts <- st_transform(st_as_sf(data.frame(lon = centers$lon, lat = centers$lat)[match(tract_ids, centers$ids), ],
+                             coords = c("lon", "lat"), crs = 4269), 3814)
+knn_nb <- knn2nb(knearneigh(st_coordinates(pts), k = 6))
+spatial <- function(nb) {
+  lw <- nb2listw(nb, style = "W")
+  mt <- lm.morantest(fit, lw, alternative = "two.sided")
+  rs <- lm.RStests(fit, lw, test = "all")
+  list(I = unname(mt$estimate[1]), expected = unname(mt$estimate[2]), variance = unname(mt$estimate[3]),
+       lmError = unname(rs$RSerr$statistic), lmLag = unname(rs$RSlag$statistic),
+       robustLmError = unname(rs$adjRSerr$statistic), robustLmLag = unname(rs$adjRSlag$statistic),
+       sarma = unname(rs$SARMA$statistic))
+}
+out$ols <- list(
+  ids = I(tract_ids),
+  coef = unname(coef(fit)), se = unname(sm$coefficients[, 2]), t = unname(sm$coefficients[, 3]), p = unname(sm$coefficients[, 4]),
+  sigma = sm$sigma, r2 = sm$r.squared, adjR2 = sm$adj.r.squared,
+  F = unname(sm$fstatistic[1]), logLik = as.numeric(logLik(fit)), aic = AIC(fit), sc = BIC(fit),
+  vif = unname(vifs), conditionNumber = sqrt(max(ev) / min(ev)), jarqueBera = jb,
+  breuschPagan = unname(bptest(fit, studentize = FALSE)$statistic), koenker = unname(bptest(fit, studentize = TRUE)$statistic),
+  queen = spatial(queen_nb), knn6 = spatial(knn_nb), knn6Ids = I(tract_ids)
+)
+
+out$packages <- lapply(setNames(nm = c("sf", "jsonlite", "spdep", "lmtest")), function(p) as.character(packageVersion(p)))
 jsonlite::write_json(out, "tests/models-reference.json", digits = NA, auto_unbox = TRUE, dataframe = "rows", matrix = "rowmajor")
 message("Wrote tests/models-reference.json")

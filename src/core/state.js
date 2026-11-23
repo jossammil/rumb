@@ -15,6 +15,7 @@ export const LAYER_VIEW_KEYS = [
   "inference",
   "yField",
   "scan",
+  "model",
   "rule",
   "k",
   "band",
@@ -57,6 +58,8 @@ export function defaults(catalog) {
     // Spatial scan windows: the largest share of the population, an optional
     // radius in miles, and whether to look for high rates, low or both.
     scan: { maxPop: 0.25, maxMiles: null, direction: "high" },
+    // Regression: the model type and its covariates (the measure is the outcome).
+    model: { type: "ols", xs: [] },
     rule: "queen",
     k: 6,
     band: null,

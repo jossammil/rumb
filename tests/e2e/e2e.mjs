@@ -463,6 +463,33 @@ await check("scan", async () => {
   await p.context().close();
 });
 
+await check("regression", async () => {
+  const ref = JSON.parse(await readFile("tests/models-reference.json", "utf8"));
+  const p = await openPage();
+  await p.evaluate(() => window.rumb.app.setMeasure("places_diabetes"));
+  await p.selectOption("#method", "model");
+  await p.waitForSelector("#covariates");
+  for (const x of ref.linalg.covariates) await p.check(`[data-covariate="${x}"]`);
+  await p.click("#analyze");
+  // The same fit and residual diagnostics as lm and spdep.
+  await waitText("#inspect-panel", "R² · adjusted" + ref.ols.r2.toFixed(3), p);
+  await waitText("#inspect-panel", "Residual Moran’s I" + ref.ols.queen.I.toFixed(4), p);
+  await waitText("#legend", "Standardized residuals", p);
+  await waitText("#analysis-caution", "Model-based estimates", p);
+  const intercept = await p.locator('[data-table="Coefficients"] tbody tr td').first().textContent();
+  expect(intercept === ref.ols.coef[0].toFixed(4), "intercept " + intercept);
+  expect((await p.locator("#inspect-panel svg.chart").count()) === 2, "residual charts");
+  const bytes = await download('[data-export="0"]', p);
+  expect(bytes.toString().startsWith("Coefficients"), "coefficient CSV");
+  // Predictions and residuals become fields that other analyses can use.
+  await p.click("#model-fields");
+  await waitText("#toast", "Added predictions and residuals", p);
+  await p.evaluate(() => window.rumb.app.setMeasure("res_places_diabetes"));
+  await p.keyboard.press("h");
+  await waitText("#inspect-panel", "Hot spot analysis", p);
+  await p.context().close();
+});
+
 await check("identity", async () => {
   const p = await openPage();
   const ids = ["lyr-tracts-fill", "lyr-tracts-outline", "anchor-areas", "anchor-points", "anchor-labels", "sel-line"];

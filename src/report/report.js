@@ -77,7 +77,22 @@ export async function buildReport(app, { sections, title, notes }) {
       ["Layers shown", state.stack.filter((e) => e.visible).map((e) => app.layerById(e.id)?.name).filter(Boolean).join(", ")],
       ["Made", new Date().toLocaleString() + " · rumb " + app.version],
     ].filter(Boolean);
-    section("summary", "Summary", h("table", { class: "print-table" }, h("tbody", null, rows.map(([k, v]) => h("tr", null, h("th", { text: k }), h("td", { text: v }))))));
+    // A method's own tables (a regression's coefficients and diagnostics) follow.
+    const tables = state.result ? methodOf(state.result).details?.(state.result) || [] : [];
+    section(
+      "summary",
+      "Summary",
+      h("table", { class: "print-table" }, h("tbody", null, rows.map(([k, v]) => h("tr", null, h("th", { text: k }), h("td", { text: v }))))),
+      tables.map((t) =>
+        h(
+          "table",
+          { class: "print-table" },
+          h("caption", { text: t.caption }),
+          h("thead", null, h("tr", null, t.head.map((x) => h("th", { text: x })))),
+          h("tbody", null, t.rows.map((r) => h("tr", null, r.map((x) => h("td", { text: x }))))),
+        ),
+      ),
+    );
   }
   if (sections.features) {
     const ids = kept ? [...kept.keys()] : selected;

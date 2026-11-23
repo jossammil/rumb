@@ -8,14 +8,14 @@
 // where the browser cannot compress. Pure apart from CompressionStream.
 import { normalizeFilter } from "../geo/filter.js";
 import { METHODS } from "../stats/methods.js";
-import { rateSpec } from "../stats/rates.js";
+import { derivedSpec, MODEL_KINDS } from "./derived.js";
 import { WEIGHT_KINDS } from "../stats/neighbors.js";
 
 /** Longest link part rumb writes (characters after #state=). */
 export const SHARE_LIMIT = 8000;
 const VIEW_KEYS = [
   "measure", "category", "palette", "classification", "count", "breaks",
-  "method", "inference", "yField", "scan", "rule", "k", "band", "power", "symmetric", "study", "permutations", "seed", "fdr",
+  "method", "inference", "yField", "scan", "model", "rule", "k", "band", "power", "symmetric", "study", "permutations", "seed", "fdr",
 ];
 const LOOK_KEYS = ["color", "opacity", "size", "shape", "outline", "outlineColor", "hatch"];
 
@@ -60,7 +60,10 @@ export function shareState(state, { camera, isShared, reference }) {
       if (Object.keys(look).length) out.st = look;
       if (e.label) out.l = e.label;
       if (e.counts?.length) out.n = e.counts.filter(isShared);
-      if (e.derived?.length) out.dv = e.derived.map((d) => [d.measure, d.methods]);
+      if (e.derived?.length)
+        out.dv = e.derived.map((d) =>
+          d.kind === "model" ? { m: d.type, y: d.y, x: d.xs, w: d.weights } : [d.measure, d.methods],
+        );
       return out;
     }),
     w: own ? pick(state, VIEW_KEYS) : pick(state.layerViews?.[focus], VIEW_KEYS),
@@ -140,6 +143,13 @@ export function readShare(data, { known, palettes, region }) {
         method: METHODS[w.method] ? w.method : undefined,
         inference: ["normal", "permutation"].includes(w.inference) ? w.inference : undefined,
         yField: str(w.yField),
+        model:
+          w.model && typeof w.model === "object"
+            ? {
+                type: MODEL_KINDS.includes(w.model.type) ? w.model.type : "ols",
+                xs: Array.isArray(w.model.xs) ? w.model.xs.map((x) => str(x)).filter(Boolean).slice(0, 12) : [],
+              }
+            : undefined,
         scan:
           w.scan && typeof w.scan === "object"
             ? {
@@ -187,7 +197,11 @@ export function readShare(data, { known, palettes, region }) {
       ...(Array.isArray(e.dv) && {
         derived: e.dv
           .slice(0, 12)
-          .map((d) => Array.isArray(d) && rateSpec({ kind: "rate", measure: str(d[0]), methods: Array.isArray(d[1]) ? d[1] : [] }))
+          .map((d) =>
+            Array.isArray(d)
+              ? derivedSpec({ kind: "rate", measure: str(d[0]), methods: Array.isArray(d[1]) ? d[1] : [] })
+              : d && typeof d === "object" && derivedSpec({ kind: "model", type: d.m, y: str(d.y), xs: d.x, weights: d.w }),
+          )
           .filter(Boolean),
       }),
     });
