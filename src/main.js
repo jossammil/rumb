@@ -1144,6 +1144,8 @@ function wire(app) {
     $("dialog").close();
   });
   $("dialog").addEventListener("close", () => {
+    // A late close event must not blur a dialog that has opened again.
+    if ($("dialog").open) return;
     if ($("dialog").contains(document.activeElement)) document.activeElement.blur();
   });
   on("mobile-settings", "click", () => $("settings").classList.add("open"));

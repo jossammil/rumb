@@ -106,11 +106,18 @@ async function check(name, fn) {
     console.log(`PASS  ${name} (${((Date.now() - started) / 1000).toFixed(1)} s)`);
   } catch (error) {
     failed++;
-    console.log(`FAIL  ${name}: ${error.message.split("\n")[0]}`);
-    if (shots)
+    const lines = error.message.split("\n");
+    console.log(`FAIL  ${name}: ${lines[0]}`);
+    // Playwright's call log says what a timed-out action was waiting for.
+    for (const line of lines.slice(1, 8)) if (line.trim()) console.log("      " + line.trim());
+    if (shots) {
       await page
         ?.screenshot({ path: path.join(shots, `${which}-FAIL-${name}.png`) })
         .catch(() => {});
+      // Most checks open their own page; capture the newest one still open too.
+      const own = pages.filter((p) => p !== page && !p.isClosed()).at(-1);
+      await own?.screenshot({ path: path.join(shots, `${which}-FAIL-${name}-page.png`) }).catch(() => {});
+    }
   }
 }
 const expect = (ok, message) => {
@@ -1325,7 +1332,20 @@ await check("palette", async () => {
   expect((await p.evaluate(() => window.rumb.state.view)) === "sql", "palette did not open SQL");
   // Places are found by name, and choosing one selects it on the map.
   await p.keyboard.press("Control+k");
+  await p.locator("#palette[open]").waitFor();
+  await p.waitForFunction(() => document.activeElement?.id === "palette-input", null, { timeout: 5000 });
+  // A busy page can deliver the first close event after the palette has opened
+  // again; replay that late event and the typing must still reach the palette.
+  await p.evaluate(() => document.querySelector("#palette").dispatchEvent(new Event("close")));
   await p.keyboard.type(ids[0]);
+  // If the typing went anywhere but the palette, say where, rather than time out on the click.
+  const typed = await p.evaluate(() => ({
+    value: document.querySelector("#palette-input").value,
+    open: document.querySelector("#palette").open,
+    focus: document.activeElement?.id || document.activeElement?.tagName,
+    view: window.rumb.state.view,
+  }));
+  expect(typed.value === ids[0] && typed.open, "palette lost the typing: " + JSON.stringify(typed));
   await p.locator("#palette-list li", { hasText: ids[0] }).first().click();
   await waitText("#inspect-panel", "Adams County", p);
   await p.context().close();
