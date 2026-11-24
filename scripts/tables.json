@@ -62,6 +62,10 @@
     "url": "https://data.cdc.gov/d/yjkw-uj5s",
     "download": "https://data.cdc.gov/api/views/yjkw-uj5s/rows.csv?accessType=DOWNLOAD",
     "sha256": "201b7eb5e6df3053115712debd436e76cda1d51058612420a1636249b808709c",
+    "equivalent": [
+      { "sha256": "d6db01cef81316fb32b9ef97228db1921c2914398c69803b72951c2b9a906481", "checked": "2026-11-24",
+        "difference": "CDC's live export: TotalPop18plus without thousands separators (82,017 of 83,522 rows); every other value, in every row, identical" }
+    ],
     "dictionary": "https://data.cdc.gov/d/m35w-spkz",
     "methodology": "https://www.cdc.gov/places/methodology/index.html",
     "credit": "CDC PLACES 2025",

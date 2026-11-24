@@ -81,17 +81,24 @@ def extract(csv_path, atlas_path, region):
         raise ValueError(f"No CDC tracts joined to the {len(tract_ids)} {region['name']} tracts.")
     published = {key for record in by_id.values() for key in record}
     measures = {key: field for key, field in measures.items() if key in published}
+    # CDC regenerates the CSV on each download; scripts/tables.json lists the
+    # pinned export and those checked to hold the same values. The record keeps
+    # the pinned checksum, so it does not depend on which one was downloaded.
+    pins = json.loads((ROOT / "scripts/tables.json").read_text(encoding="utf-8"))["places"]
+    known = [pins["sha256"], *(e["sha256"] for e in pins.get("equivalent", []))]
     checksum = hashlib.sha256()
     with csv_path.open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             checksum.update(block)
+    if checksum.hexdigest() not in known:
+        raise ValueError(f"The PLACES download changed (sha256 {checksum.hexdigest()}). Compare it with the pinned export, then add it to scripts/tables.json.")
     return {
         "version": 1,
         "source": {
             "title": "CDC PLACES, 2025 release, census tract estimates",
             "url": "https://data.cdc.gov/500-Cities-Places/PLACES-Census-Tract-Data-GIS-Friendly-Format-2025-/yjkw-uj5s",
             "downloadUrl": DOWNLOAD,
-            "sha256": checksum.hexdigest(),
+            "sha256": pins["sha256"],
             "methodology": "https://www.cdc.gov/places/methodology/index.html",
             "population": f"{region['name']} adults aged 18 years and older. Adult population counts come from the 2020 Census.",
             "period": "2023 Behavioral Risk Factor Surveillance System (BRFSS), published in the 2025 PLACES release.",

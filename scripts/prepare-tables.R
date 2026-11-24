@@ -128,8 +128,13 @@ for (f in acs$fields) {
 # ---- CDC PLACES ----------------------------------------------------------------
 places <- spec$places
 places_csv <- cached(ctx, places$download, "PLACES_tract_GIS_2025.csv", national = TRUE)
-if (!identical(sha256(places_csv), places$sha256))
-  stop("The PLACES download changed (sha256 ", sha256(places_csv), "). Review it, then update scripts/tables.json.")
+# CDC regenerates the CSV on each download, so its bytes can change while its
+# data does not. tables.json lists exports checked to hold the same values as
+# the pinned one; outputs record the pinned checksum, so they do not depend on
+# which equivalent export was downloaded.
+known_places <- c(places$sha256, vapply(places$equivalent %||% list(), function(e) e$sha256, character(1)))
+if (!sha256(places_csv) %in% known_places)
+  stop("The PLACES download changed (sha256 ", sha256(places_csv), "). Compare it with the pinned export, then add it to scripts/tables.json.")
 p <- read.csv(places_csv, colClasses = "character", fileEncoding = "UTF-8-BOM", check.names = FALSE)
 names(p) <- trimws(names(p))  # one 2025 heading ends in a tab
 p <- p[p$StateAbbr == ctx$abbr, ]
@@ -261,7 +266,7 @@ index <- list(
   sources = list(
     acs = list(title = acs$title, tables = acs_sources, top_or_bottom_coded = top_coded),
     places = Filter(Negate(is.null), list(title = places$title, url = places$url, download = places$download,
-                  sha256 = sha256(places_csv), dictionary = places$dictionary,
+                  sha256 = places$sha256, dictionary = places$dictionary,
                   tracts_without_estimates = I(missing_places),
                   populated_tracts_without_estimates = if (length(gaps)) I(gaps),
                   measures_not_published = if (length(not_published)) I(not_published))),
