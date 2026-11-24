@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "region": "ri",
+  "acs_dp02": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP02?g=040XX00US44$1400000",
+    "sha256": "c0c252bea5479eb66bdd34853280779445733847d9879749261a9d66371f84f8",
+    "rows": 250
+  },
+  "acs_dp03": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP03?g=040XX00US44$1400000",
+    "sha256": "d3b1682c433986ddb74f1175a4461e7e4875624a0aa11354061c60f1a91bc096",
+    "rows": 250
+  },
+  "acs_dp04": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP04?g=040XX00US44$1400000",
+    "sha256": "11a8375a42a6203d393b3e391a3a21e12d9739384e793379ba156a7b09bb494a",
+    "rows": 250
+  },
+  "acs_dp05": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP05?g=040XX00US44$1400000",
+    "sha256": "f51bbd27cfbeb2ce79c1f7a4857ebb3db8e5cc0181ad2a9ecad2f8fae788637e",
+    "rows": 250
+  },
+  "acs_s1701": {
+    "url": "https://data.census.gov/table/ACSST5Y2024.S1701?g=040XX00US44$1400000",
+    "sha256": "ab1d57cdce7f04a928d7429ac3e484de2995b12cdcf62875d5ddf624d3cddfd0",
+    "rows": 250
+  },
+  "centers_counties": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/county/CenPop2020_Mean_CO44.txt",
+    "sha256": "abff4c458ddaf882350e9db08d2a99de469c4c84dc413ab86400b20bd816994d",
+    "rows": 5
+  },
+  "centers_tracts": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/tract/CenPop2020_Mean_TR44.txt",
+    "sha256": "76e285f0cc0e05d76f4e4d3c317ea8407e6914b21eea2ee1b0c7a3b67e97a35d",
+    "rows": 250
+  },
+  "tiger_roads": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/PRISECROADS/tl_2024_44_prisecroads.zip",
+    "sha256": "23f23c3e18580047ee92ab7e85ed957689c6af4a6780be7667749caae2ed3e4d"
+  },
+  "tiger_tracts": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/TRACT/tl_2024_44_tract.zip",
+    "sha256": "af2f3a2bd6be0115a83fa302ba63444711ea2ee414cba83388756e0ea3c10c90",
+    "tracts": 250,
+    "counties": 5
+  }
+}

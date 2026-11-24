@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "region": "ma",
+  "acs_dp02": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP02?g=040XX00US25$1400000",
+    "sha256": "a5d87f16fe8ed8314b84913779a3e10c220a764f04697f103221a3e8d8547cce",
+    "rows": 1620
+  },
+  "acs_dp03": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP03?g=040XX00US25$1400000",
+    "sha256": "61c9cbb685adb416494cf81794b75bc73f76d40d74580f330c37784bce0703c9",
+    "rows": 1620
+  },
+  "acs_dp04": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP04?g=040XX00US25$1400000",
+    "sha256": "2ac21d1c0ef44b506b78880f474d2d60a80950ccc88bceeaf7ad21edf267b571",
+    "rows": 1620
+  },
+  "acs_dp05": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP05?g=040XX00US25$1400000",
+    "sha256": "ca9a5035b8a68ef64dbf984762f6cf4274780c98bba3486c364981a45f65b1ac",
+    "rows": 1620
+  },
+  "acs_s1701": {
+    "url": "https://data.census.gov/table/ACSST5Y2024.S1701?g=040XX00US25$1400000",
+    "sha256": "f683fa174c22fae78f003bba914932a7e49250e9dcd8ba7117aed10cc6a2c814",
+    "rows": 1620
+  },
+  "centers_counties": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/county/CenPop2020_Mean_CO25.txt",
+    "sha256": "25368d0357e85a1dd7d99697b030d001de43dd14b085f26a1b7665297c0d476c",
+    "rows": 14
+  },
+  "centers_tracts": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/tract/CenPop2020_Mean_TR25.txt",
+    "sha256": "4401ac2dc3644f263693d5d2653e0e24b68527ec8d1e8383ceda9d747936abb3",
+    "rows": 1620
+  },
+  "tiger_roads": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/PRISECROADS/tl_2024_25_prisecroads.zip",
+    "sha256": "0caa8f644eed5dac17e37eaf87dd5072bc55666dd22efc4a77eca0adee3aae80"
+  },
+  "tiger_tracts": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/TRACT/tl_2024_25_tract.zip",
+    "sha256": "74ca27e8dd9ed393e43b75e237ff7d652ef072e413532821847de58a7aa4bfd4",
+    "tracts": 1620,
+    "counties": 14
+  }
+}

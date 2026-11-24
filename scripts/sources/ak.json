@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "region": "ak",
+  "acs_dp02": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP02?g=040XX00US02$1400000",
+    "sha256": "cad16c7f41fc289db1d63959d0694e451510795de6dd51dbba2bdc34870e782b",
+    "rows": 177
+  },
+  "acs_dp03": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP03?g=040XX00US02$1400000",
+    "sha256": "17832c39bf741f9154cbe7adb6b50c97ec68a673eaa4f745108cd2ab9a79f3e6",
+    "rows": 177
+  },
+  "acs_dp04": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP04?g=040XX00US02$1400000",
+    "sha256": "b0e9b814e4404c93ae108de552e9d1a85bdc883db343a490eadb10c632ca5526",
+    "rows": 177
+  },
+  "acs_dp05": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP05?g=040XX00US02$1400000",
+    "sha256": "ba448c358630e92c2a07c202ea1514e4c863066ec36d6d93e67192518a135ca0",
+    "rows": 177
+  },
+  "acs_s1701": {
+    "url": "https://data.census.gov/table/ACSST5Y2024.S1701?g=040XX00US02$1400000",
+    "sha256": "8aabd2c793ce2e85f4ea423cfc16642c94659103de8c801182fa6fced2fd3023",
+    "rows": 177
+  },
+  "centers_counties": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/county/CenPop2020_Mean_CO02.txt",
+    "sha256": "0acc9667157616162a9c0d80f286d2021fa776d33c9a30613289074ac5ae4599",
+    "rows": 30
+  },
+  "centers_tracts": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/tract/CenPop2020_Mean_TR02.txt",
+    "sha256": "c9d25e161794a721687fd0bfa16e9072011b176f118f21325829bbd195c5bb34",
+    "rows": 177
+  },
+  "tiger_roads": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/PRISECROADS/tl_2024_02_prisecroads.zip",
+    "sha256": "8f9dd675acda0fdf579198c6db50bf7390049822c679ac11c70acc58e2326797"
+  },
+  "tiger_tracts": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/TRACT/tl_2024_02_tract.zip",
+    "sha256": "f94f6c00361196cd8b5fa41dd7ab5b425ede6cc55ae2d7928e2665979484fc44",
+    "tracts": 177,
+    "counties": 30
+  }
+}

@@ -30,6 +30,29 @@ const lisaFolder = `geoda-lisa-${lisaPkg.version}`;
 await rm("dist", { recursive: true, force: true });
 await mkdir("dist", { recursive: true });
 await cp("public", "dist", { recursive: true });
+
+// 2b. More regions: RUMB_REGIONS names a folder of states built by
+//     scripts/build-regions.mjs (CI builds every state). Each one not already
+//     in public/data joins the index, in name order after the committed ones.
+if (process.env.RUMB_REGIONS) {
+  const index = JSON.parse(await readFile("dist/data/index.json", "utf8"));
+  const have = new Set(index.regions.map((r) => r.id));
+  const added = [];
+  for (const entry of await readdir(process.env.RUMB_REGIONS, { withFileTypes: true })) {
+    const dir = path.join(process.env.RUMB_REGIONS, entry.name);
+    if (!entry.isDirectory() || have.has(entry.name)) continue;
+    const catalog = JSON.parse(await readFile(path.join(dir, "catalog.json"), "utf8").catch(() => "null"));
+    if (!catalog) continue;
+    await cp(dir, "dist/data/" + entry.name, { recursive: true });
+    const tracts = JSON.parse(await readFile(path.join(dir, catalog.layers[0].files.display), "utf8")).features.length;
+    added.push({ id: catalog.region.id, name: catalog.region.name, path: entry.name + "/", tracts, bounds: catalog.region.bounds });
+  }
+  index.regions.push(...added.sort((a, b) => a.name.localeCompare(b.name)));
+  await writeFile("dist/data/index.json", JSON.stringify(index, null, 1) + "\n");
+}
+// The world outline is the same for every region: one copy, in data/shared/.
+for (const entry of await readdir("dist/data", { withFileTypes: true }))
+  if (entry.isDirectory() && entry.name !== "shared") await rm(path.join("dist/data", entry.name, "world-land.geojson"), { force: true });
 await cp(`.cache/vendor/${duckdbFolder}`, `dist/vendor/${duckdbFolder}`, {
   recursive: true,
 });
@@ -130,6 +153,7 @@ if (watch) {
     ["@geoda/lisa", "GeoDaLib local Moran statistics"],
     ["jsts", "polygon contiguity"],
     ["@zip.js/zip.js", ".rumb project files"],
+    ["hyparquet", "reads attribute tables stored as Parquet"],
     ["@fontsource-variable/jetbrains-mono", "font, Field Terminal"],
     ["@fontsource-variable/antonio", "font, Starship"],
     ["@fontsource/chakra-petch", "font, Tactical HUD"],
@@ -168,23 +192,43 @@ if (watch) {
     return hash.digest("hex").slice(0, 10);
   };
   const version = `${pkg.version}-${await digest(shellFiles)}${debug ? "-debug" : ""}`;
-  const dataVersion = await digest(dataFiles);
-  // Precached data: each region's catalog, display geography and backdrop.
+  // Data is versioned per region (data/<id>/), plus the shared files (the
+  // index and data/shared/), so rebuilding one state leaves the others cached.
   const index = JSON.parse(await readFile("dist/data/index.json", "utf8"));
-  const predata = ["data/index.json"];
-  for (const region of index.regions) {
-    const base = "data/" + region.path;
-    const catalog = JSON.parse(await readFile("dist/" + base + "catalog.json", "utf8"));
-    predata.push(base + "catalog.json", base + catalog.layers[0].files.display);
-    if (catalog.region.backdrop?.context) predata.push(base + catalog.region.backdrop.context);
-  }
+  const regionOf = (f) => {
+    const id = f.split("/")[1];
+    return index.regions.some((r) => r.path === id + "/") ? id : "shared";
+  };
+  const groups = { shared: [] };
+  for (const f of dataFiles) (groups[regionOf(f)] ??= []).push(f);
+  const dataCaches = {};
+  for (const [id, list] of Object.entries(groups)) dataCaches[id] = `rumb-data-${id}-${await digest(list)}`;
+  // Precached data: the index and the default region's catalog, display geography and backdrop.
+  const opening = index.regions.find((r) => r.id === index.default);
+  const base = "data/" + opening.path;
+  const catalog = JSON.parse(await readFile("dist/" + base + "catalog.json", "utf8"));
+  const predata = ["data/index.json", base + "catalog.json", base + catalog.layers[0].files.display];
+  if (catalog.region.backdrop?.context) predata.push(base + catalog.region.backdrop.context);
+  const { shared, ...regions } = groups;
   await writeFile(
     "dist/offline.json",
-    JSON.stringify({ version, dataVersion, files: [...vendorFiles, ...dataFiles] }, null, 1) + "\n",
+    JSON.stringify(
+      {
+        version,
+        dataCaches,
+        vendor: vendorFiles,
+        shared,
+        regions,
+        // Builds before regions were cached separately read `files`.
+        files: [...vendorFiles, ...shared, ...(regions[index.default] || [])],
+      },
+      null,
+      1,
+    ) + "\n",
   );
   const sw = (await readFile("public/sw.js", "utf8"))
     .replace('"__VERSION__"', JSON.stringify(version))
-    .replace('"__DATA_VERSION__"', JSON.stringify(dataVersion))
+    .replace('"__DATA_CACHES__"', JSON.stringify(dataCaches))
     .replace('"__PRECACHE__"', JSON.stringify(["./", ...shellFiles, "offline.json"]))
     .replace('"__PREDATA__"', JSON.stringify(predata));
   await writeFile("dist/sw.js", sw);
@@ -203,6 +247,6 @@ if (watch) {
     `  MapLibre ${maplibrePkg.version}; ${duckdbFolder} and ${lisaFolder} in dist/vendor/, loaded on first use`,
   );
   console.log(
-    `  service worker ${version}: ${shellFiles.length} shell files and ${predata.length} data files precached; ${vendorFiles.length + dataFiles.length} more in offline.json`,
+    `  service worker ${version}: ${shellFiles.length} shell files and ${predata.length} data files precached; offline.json lists ${vendorFiles.length} vendor files and ${dataFiles.length} data files in ${Object.keys(regions).length} regions`,
   );
 }

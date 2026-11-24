@@ -66,17 +66,62 @@ A source installation of `sf` needs GDAL, GEOS and PROJ. The repository locks Ja
 | R data and geometry packages | sf 1.0-21, spdep 1.4-2, arrow 22.0.0.1, rmapshaper 0.6.1 |
 | Other R packages | jsonlite 2.0.0, digest 0.6.37, httr2 1.2.1 |
 
+### Options shared by the data scripts
+
+`prepare-data.R`, `prepare-tables.R`, `prepare-outline.R` and `prepare-basemap.R` build one state at a time and take the same options ([`scripts/lib/region.R`](scripts/lib/region.R)):
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--state MS` | `MS` | A state's abbreviation, FIPS code or data id, from [`scripts/regions.json`](scripts/regions.json) (the 50 states and DC) |
+| `--out DIR` | `public/data/<id>` | Where the region's files are written |
+| `--cache DIR` | `$RUMB_SOURCE_CACHE`, else `.cache/sources` | Downloads, national files under `us/` and the state's under its FIPS code; files already there are reused |
+| `--pin` | off | Record each download's SHA-256 and counts instead of checking them |
+
+Every download is pinned in `scripts/sources/<id>.json` ([Mississippi's](scripts/sources/ms.json)): its URL, SHA-256 and the counts read from it, such as the number of tracts and counties in the TIGER file. A data.census.gov export is pinned by the SHA-256 of its data CSV, because the ZIP around it changes between exports. Without `--pin`, a script stops when a download no longer matches its pin, so a changed source is reviewed (and re-pinned) before it reaches the app. `prepare-places.py` takes `--state` and `--out` too.
+
+[`scripts/compare-region.R`](scripts/compare-region.R) compares a fresh build with the committed folder by meaning: every JSON value, the GeoParquet columns and geometries, and `reference.json` to 1e-12. Package versions and output checksums are reported, not compared. On November 23, 2026, rebuilding Mississippi into a scratch folder reproduced every committed file byte for byte except `sources.json`, which records spdep 1.4-3 instead of 1.4-2.
+
+```sh
+out=$(mktemp -d)
+mkdir -p "$out/layers" && cp public/data/ms/layers/chr_counties_2025.geojson "$out/layers/"
+Rscript scripts/prepare-data.R --out "$out"
+Rscript scripts/prepare-tables.R --out "$out"
+Rscript scripts/prepare-outline.R --out "$out"
+Rscript scripts/prepare-basemap.R --out "$out"
+python3 scripts/prepare-places.py .cache/sources/us/PLACES_tract_GIS_2025.csv --out "$out"
+Rscript scripts/compare-region.R public/data/ms "$out"
+```
+
+### Building states
+
+[`scripts/build-regions.mjs`](scripts/build-regions.mjs) runs the scripts in order for each state (data, layers, tables, outline, backdrop, the PLACES comparison file), writes its `catalog.json` ([`scripts/region-catalog.mjs`](scripts/region-catalog.mjs)) and checks the folder ([`scripts/check-region.mjs`](scripts/check-region.mjs)). The check runs the app's own catalog, library and table validators, confirms that every named file exists and that ids agree across files, that neighbors are symmetric, and that no file exceeds 100 MB.
+
+```sh
+node scripts/build-regions.mjs de                # one state into .cache/data/de
+node scripts/build-regions.mjs --all --jobs 3    # every state and DC
+node scripts/check-region.mjs public/data/ms public/data/de
+```
+
+A new state's catalog copies Mississippi's reference-layer fields, takes its bounds from the tracts (padded by 1% and rounded outward to 0.01°) and its backdrop from `prepare-basemap.R`. Its projection is a transverse Mercator centred on the state, with the scale factor chosen so the scale error is split evenly between the centre and the east and west edges (at most ±0.26%, in Texas). Alaska uses the Alaska Albers system (EPSG:3338). The GeoParquet copy outside Mississippi is simplified with shared arcs at a 10 m interval: Delaware's falls from 1.1 MB to 366 KB. Mississippi keeps its full-resolution file and its hand-edited catalog.
+
+Building every state on November 23, 2026 (419 MB in all; California is the largest at 34 MB, and no file exceeds 25 MB) needed these allowances, each recorded in the state's manifests:
+
+- **Tracts without ACS rows.** New York's 2024 TIGER file has 14 Suffolk County tracts the ACS table does not. They stay on the map with missing estimates and are listed in `sources.json` as `tracts_without_acs`. More than 5 tracts, or 1% of the state, stops the build.
+- **Tracts without 2020 centers.** A tract added since 2020 has no published center of population. A point inside it, with no population, takes its place, listed in `tables/index.json` under `tracts_without_centers`.
+- **PLACES coverage.** A few populated special-use tracts (bases, parks, airports) have no PLACES row, such as two in Arizona and three in California. They are listed as `populated_tracts_without_estimates`. Beyond 5 tracts, or 1%, the build stops.
+- **Connecticut.** In 2022 Connecticut replaced its eight counties with nine planning regions. Tract codes stayed, but county codes changed, so 2020-based files (centers, PLACES) whose ids do not match are matched by their tract code when that code is unique. County Health Rankings 2025 lists both: the former counties carry the health measures, the planning regions only population and a few newer measures. Connecticut's County Health Rankings layer therefore uses the former counties, on the 2020 cartographic boundary file (`cb_2020_us_county_500k.zip`), with contiguity from that file and the 2020 county centers. The planning-region rows are listed in the library as `rowsLeftOut`, and that layer has no population figure.
+- **Alaska.** The Aleutians cross 180°, so every longitude east of it moves west by 360°. Alaska's files are written without GDAL's RFC 7946 mode, which would wrap them back. Its bounds run from 188.2°W to 129.4°W.
+- **Hawaii and Alaska backdrops** have no other state in view, so they are labelled with their seas only.
+
+`public/data/de/` (Delaware: 262 tracts, 3 counties, 1.3 MB) is committed as the second, small region, built by this pipeline. CI rebuilds both committed regions and compares them by meaning.
+
 ### Census geography, poverty and spatial weights
 
 ```sh
 Rscript scripts/prepare-data.R
 ```
 
-The script downloads the 2024 Mississippi TIGER/Line tract ZIP and the 2020–2024 ACS S1701 table for all Mississippi tracts. If using saved downloads, pass the two ZIPs in this order. The table ZIP must contain `ACSST5Y2024.S1701-Data.csv`.
-
-```sh
-Rscript scripts/prepare-data.R "$input_dir/tl_2024_28_tract.zip" "$input_dir/S1701.zip"
-```
+The script downloads the state's 2024 TIGER/Line tract ZIP and the 2020–2024 ACS S1701 table for all its tracts (a data.census.gov export, `ACSST5Y2024.S1701.zip` in the cache, which must contain `ACSST5Y2024.S1701-Data.csv`).
 
 The script joins one ACS record per TIGER GEOID, checks counts against denominators, and constructs queen and rook neighbors from unsimplified shared boundaries. Zero-denominator rates remain missing. It writes the following files. The [Census manifest](public/data/ms/sources.json) gives the download URLs, exact variable IDs, TIGER ZIP hash, extracted ACS CSV hash and product hashes.
 
@@ -134,21 +179,23 @@ done
 Rscript scripts/prepare-basemap.R
 ```
 
-`context.geojson` contains the regional backdrop clipped to 98°W–82°W and 26°N–39°N. `world-land.geojson` supplies a global outline when the map leaves that region. These are display assets. The tract neighbor graph comes from TIGER geography.
+`context.geojson` contains the regional backdrop clipped to 6° of longitude and 4° of latitude past the state, in whole degrees: 98°W–82°W and 26°N–39°N for Mississippi. Alaska's extent runs past 180°W, so the far side is cropped separately and moved west by 360°. For a new state's catalog, the script also writes `.cache/build/<id>/backdrop.json`: the state's bounds, the extent, and labels for the eight nearest other states with at least 10,000 km² in view (at a point inside their visible part), plus the seas and lakes in [`scripts/waters.json`](scripts/waters.json) whose first listed point lies in view on open water. Mississippi's committed catalog keeps its hand-placed labels. `world-land.geojson` supplies a global outline when the map leaves that region. These are display assets. The tract neighbor graph comes from TIGER geography.
 
-The same script also builds `roads.geojson` from the 2024 TIGER/Line primary and secondary roads for Mississippi (`tl_2024_28_prisecroads.zip`, SHA-256 `421905d94b9429037db33c027fd9637a35d631aa2dd90a00ec4a665054e5b702` on November 22, 2026). It keeps the numbered routes (Interstate, U.S. and state highways), dissolves each into one feature, simplifies it to about 40 m and labels it with a short reference such as `I-55` or `MS 25`. To rebuild only the roads, keeping the download in `RUMB_ROADS_CACHE`:
+The same script also builds `roads.geojson` from the 2024 TIGER/Line primary and secondary roads for Mississippi (`tl_2024_28_prisecroads.zip`, SHA-256 `421905d94b9429037db33c027fd9637a35d631aa2dd90a00ec4a665054e5b702` on November 22, 2026). It keeps the numbered routes (Interstate, U.S. and state highways), dissolves each class and route into one feature, simplifies it to about 40 m and labels it with a short reference such as `I-55` or `MS 25` (the state's abbreviation prefixes its routes). To rebuild only the roads:
 
 ```sh
-RUMB_ROADS_CACHE="$input_dir" Rscript scripts/prepare-basemap.R roads
+Rscript scripts/prepare-basemap.R roads
 ```
 
 ### Add-on layers (facilities, districts, County Health Rankings)
 
-The add-on layers a reader can stack over the tracts come from 32 MARIS downloads and the County Health Rankings 2025 analytic file. [`scripts/layers.json`](scripts/layers.json) lists each source URL, the fields kept, their labels and code meanings. [`scripts/prepare-layers.R`](scripts/prepare-layers.R) downloads each source, projects it to longitude and latitude, simplifies polygon display geometry with shared arcs, and writes the files under `public/data/ms/layers/`. Set the first argument or `RUMB_LAYER_CACHE` to a folder to keep the downloads.
+The add-on layers a reader can stack over the tracts come from 32 MARIS downloads and the County Health Rankings 2025 analytic file. [`scripts/layers.json`](scripts/layers.json) lists each source URL, the fields kept, their labels and code meanings. [`scripts/prepare-layers.R`](scripts/prepare-layers.R) downloads each source, projects it to longitude and latitude, simplifies polygon display geometry with shared arcs, and writes the files under `public/data/ms/layers/`. It takes the options above, and runs after `prepare-data.R`.
 
 ```sh
-Rscript scripts/prepare-layers.R "$input_dir/layers"
+Rscript scripts/prepare-layers.R
 ```
+
+**Other states.** MARIS covers Mississippi only, so another state's library holds the layers whose sources cover the nation: County Health Rankings 2025, filtered to the state's counties and placed on the Census Bureau's 2024 cartographic boundary counties (`cb_2024_us_county_500k.zip`, simplified with shared arcs to 40% of its vertices). Tracts nest in counties, so two counties touch at a point or along a segment exactly when some of their tracts do; their queen and rook neighbors come from the state's tract neighbors, which are built on full-resolution TIGER vertices. National files are pinned once, in [`scripts/sources/national.json`](scripts/sources/national.json).
 
 | Output under `public/data/ms/layers/` | Use |
 | --- | --- |
@@ -182,15 +229,17 @@ Rscript scripts/prepare-layers.R "$input_dir/layers"
 Statistics on tracts need more than poverty. [`scripts/tables.json`](scripts/tables.json) lists 15 ACS 2020–2024 covariates (each a published data-profile percentage with its margin of error, count and universe, or an estimate with its margin), all 40 CDC PLACES 2025 tract measures, and the 2020 Census centers of population for tracts and counties. [`scripts/prepare-tables.R`](scripts/prepare-tables.R) builds them into `public/data/ms/tables/`. The app reads `tables/index.json` after the first map, and a table's values only when one of its fields is mapped or a method needs it.
 
 ```sh
-Rscript scripts/prepare-tables.R "$input_dir/tables"
+Rscript scripts/prepare-tables.R
 ```
 
 - **ACS profiles.** The api.census.gov endpoint now requires a key, so the script requests the data.census.gov exports of `ACSDP5Y2024.DP02` to `DP05` for all Mississippi tracts, the same way `prepare-data.R` requests S1701. Each variable code is checked against the label it had on November 23, 2026. A changed label stops the build. "No high school diploma" is 100 minus the published "high school graduate or higher" percentage, with that percentage's margin of error; its count is the sum of the two published categories below a diploma. Every percentage is checked against count ÷ universe within 0.05 points.
-- **CDC PLACES.** The table uses the national 2025 GIS-friendly tract CSV, the same file (and SHA-256) as `places-2025.json` below. Values are model-based crude prevalence among adults with 95% intervals. 870 of the 878 tracts have estimates; the 8 without are listed in `index.json`. Measures for all adults pool over a selection as a mean weighted by adult population; the six measures for narrower groups (65 and over, women 50–74, ages 18–64, people screened or with high blood pressure) do not pool.
-- **Centers of population.** `CenPop2020_Mean_TR28.txt` and `CenPop2020_Mean_CO28.txt` give each tract's and county's population-weighted center and 2020 population. Distance-based statistics use them instead of shape centroids when they are loaded.
+- **CDC PLACES.** The table uses the national 2025 GIS-friendly tract CSV, the same file (and SHA-256) as `places-2025.json` below. Values are model-based crude prevalence among adults with 95% intervals. 870 of Mississippi's 878 tracts have estimates; the 8 without are listed in `index.json`. CDC publishes none for tracts with almost no adults, so the script stops if a tract with an ACS population of 50 or more has no PLACES row (Mississippi's 8 have at most 30 people). The 2025 release lacks whole measures for some states: Kentucky and Pennsylvania have only the 2022 measures (teeth lost, dental visits, colorectal screening and mammography), and Colorado, Florida, Oregon, South Dakota, Tennessee, Texas, Vermont, Washington and Wyoming have none of the seven social-needs measures. A measure with no estimate anywhere in the state is left out of its table and listed in `index.json` as `measures_not_published`. A single tract without an estimate stays missing. Measures for all adults pool over a selection as a mean weighted by adult population; the six measures for narrower groups (65 and over, women 50–74, ages 18–64, people screened or with high blood pressure) do not pool.
+- **Centers of population.** `CenPop2020_Mean_TR28.txt` and `CenPop2020_Mean_CO28.txt` (each state's files carry its FIPS code) give each tract's and county's population-weighted center and 2020 population. Distance-based statistics use them instead of shape centroids when they are loaded.
 - **County Health Rankings additions.** `scripts/layers.json` adds v127 (premature age-adjusted mortality) and v161 (suicides). Their published values are age-adjusted, but their numerators and denominators are crude counts and person-years, so pooled or smoothed values are crude rates and the app labels them so. Rebuilding the library on November 23, 2026 reproduced every other layer byte for byte.
 
 `tables/index.json` records each export's data-file SHA-256, the PLACES file hash, the center files' hashes, and each output's size and hash.
+
+Each table is also written as Parquet (`tracts-acs.parquet`, `tracts-places.parquet`: `GEOID`, then one double column per field, Snappy-compressed). The app reads that copy with [hyparquet](https://github.com/hyparam/hyparquet) 1.32.0 (MIT, pure JavaScript), a 58 KB chunk loaded only when a table is first needed. Values are rounded to the 15 significant digits the JSON carries, so both copies read back to the same numbers; `tests/parquet.test.js` checks every column of Mississippi's and Delaware's tables. The JSON copies stay for builds that read them.
 
 ### Independent fixtures for the map tools
 
@@ -213,7 +262,7 @@ The scripts need the R packages `classInt`, `spdep`, `smerc`, `spatialreg`, `lmt
 Point patterns need the region's area and shape: the average nearest neighbor uses the area, Ripley's L envelopes place random points inside the outline, and density surfaces are clipped to it. [`scripts/prepare-outline.R`](scripts/prepare-outline.R) takes Mississippi from the Census Bureau's 2024 cartographic boundary file of states (`cb_2024_us_state_500k.zip`, SHA-256 `3e81cbb6cf5f60d9b01ef3e730afa14d61ce5f784252a0b33a696135e71447bc` on November 23, 2026). It simplifies the state with shared arcs and writes `public/data/ms/outline.geojson` (5,694 bytes; SHA-256 `12e94462d7443b83db3b164a211d7998ba4ed19f7f8a5f060c94505f014dc508`). In EPSG:3814 the outline covers 47,682 square miles.
 
 ```sh
-Rscript scripts/prepare-outline.R "$input_dir/outline"
+Rscript scripts/prepare-outline.R
 ```
 
 ## 4. Verify the rebuild
@@ -259,7 +308,7 @@ All of them check that runtime requests stay on the site's own origin. Playwrigh
 
 ## 5. Publish and locate implementation details
 
-For a fork, select **Settings → Pages → Build and deployment → Source → GitHub Actions**. A push to `main` or a manual run of **Publish rumb** installs dependencies, runs unit tests, builds the site and deploys `dist/`. **Test rumb** runs the unit and browser tests on Chromium and WebKit. For a local reproduction, `npm run serve` is sufficient. [Pages workflow](.github/workflows/pages.yml) · [GitHub Pages configuration](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)
+For a fork, select **Settings → Pages → Build and deployment → Source → GitHub Actions**. A push to `main` or a manual run of **Publish rumb** builds the 49 states that are not committed with the R pipeline (six shards; `renv.lock` pins R 4.5.0's packages, installed as Posit binaries), rebuilds Mississippi and Delaware and compares them with the committed folders, then installs dependencies, runs unit tests, builds the site with every state, checks that it fits GitHub Pages (under 900 MB, no file over 100 MB) and deploys `dist/`. Downloads must match the pins in `scripts/sources/`. **Test rumb** runs the unit and browser tests on Chromium and WebKit. For a local reproduction, `npm run serve` is sufficient. [Pages workflow](.github/workflows/pages.yml) · [GitHub Pages configuration](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)
 
 | When investigating | Start here |
 | --- | --- |

@@ -3,9 +3,13 @@
 // data/<region>/catalog.json; nothing about a particular state lives in code.
 // Adding a state later means adding data/<st>/ and a line in index.json.
 
-/** Loads the index and one region's catalog. fetchJSON(path) resolves parsed JSON. */
+/**
+ * Loads the index and one region's catalog. fetchJSON(path) resolves parsed
+ * JSON; `regionId` is an id, or a function choosing one from the index.
+ */
 export async function loadCatalog(fetchJSON, regionId) {
   const index = await fetchJSON("data/index.json");
+  if (typeof regionId === "function") regionId = regionId(index);
   const entry =
     index.regions.find((r) => r.id === (regionId || index.default)) ||
     index.regions.find((r) => r.id === index.default);

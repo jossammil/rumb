@@ -296,7 +296,7 @@ export function createWorkbench(app) {
                 const ids = new Set(filter.ids || []);
                 openSQL(
                   filterSQL(table, info.geometry, filter, {
-                    epsg: app.catalog.region.projection?.epsg || 4326,
+                    crs: app.catalog.region.projection,
                     base: layer ? layer.collection.features.filter((f) => ids.has(featureId(f))).map((f) => f.geometry) : [],
                   }),
                 );

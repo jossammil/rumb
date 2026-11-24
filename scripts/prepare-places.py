@@ -1,4 +1,4 @@
-"""Extract the public Mississippi PLACES reference from CDC's national 2025 GIS-friendly tract CSV."""
+"""Extract a state's public PLACES reference from CDC's national 2025 GIS-friendly tract CSV."""
 
 import argparse
 import csv
@@ -35,7 +35,7 @@ MEASURES = {
 }
 
 
-def extract(csv_path, atlas_path):
+def extract(csv_path, atlas_path, region):
     atlas = json.loads(atlas_path.read_text(encoding="utf-8"))
     tract_ids = {f["properties"]["GEOID"] for f in atlas["features"]}
     if len(tract_ids) != len(atlas["features"]):
@@ -55,14 +55,18 @@ def extract(csv_path, atlas_path):
         if missing:
             raise ValueError(f"CDC GIS-friendly tract CSV is missing columns {sorted(missing)}")
         for row in reader:
-            if row["StateAbbr"] != "MS":
+            if row["StateAbbr"] != region["abbr"]:
                 continue
             geoid = row["TractFIPS"]
-            if (not re.fullmatch(r"28[0-9]{9}", geoid) or geoid[:5] != row["CountyFIPS"]
+            if (not re.fullmatch(region["fips"] + r"[0-9]{9}", geoid) or geoid[:5] != row["CountyFIPS"]
                     or geoid not in tract_ids or geoid in by_id):
-                raise ValueError(f"Unexpected or duplicate Mississippi tract {geoid!r}")
+                raise ValueError(f"Unexpected or duplicate {region['name']} tract {geoid!r}")
             record = {"adult_population_2020": int(row["TotalPop18plus"].replace(",", ""))}
             for key, field in measures.items():
+                # Some states' 2025 release lacks a measure, and a few tracts lack one
+                # estimate; those stay out of the record.
+                if not row[field["estimateColumn"]].strip() and not row[field["intervalColumn"]].strip():
+                    continue
                 estimate = float(row[field["estimateColumn"]])
                 interval = re.fullmatch(r"\(\s*([\d.]+),\s*([\d.]+)\s*\)", row[field["intervalColumn"]])
                 if interval is None:
@@ -73,8 +77,10 @@ def extract(csv_path, atlas_path):
                 record[key] = estimate
                 record[key + "_ci"] = [lower, upper]
             by_id[geoid] = record
-    if len(by_id) != 870 or len(tract_ids) != 878:
-        raise ValueError(f"Expected 870 CDC tracts joined to 878 Atlas tracts. Found {len(by_id)} and {len(tract_ids)}.")
+    if not by_id:
+        raise ValueError(f"No CDC tracts joined to the {len(tract_ids)} {region['name']} tracts.")
+    published = {key for record in by_id.values() for key in record}
+    measures = {key: field for key, field in measures.items() if key in published}
     checksum = hashlib.sha256()
     with csv_path.open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
@@ -87,7 +93,7 @@ def extract(csv_path, atlas_path):
             "downloadUrl": DOWNLOAD,
             "sha256": checksum.hexdigest(),
             "methodology": "https://www.cdc.gov/places/methodology/index.html",
-            "population": "Mississippi adults aged 18 years and older. Adult population counts come from the 2020 Census.",
+            "population": f"{region['name']} adults aged 18 years and older. Adult population counts come from the 2020 Census.",
             "period": "2023 Behavioral Risk Factor Surveillance System (BRFSS), published in the 2025 PLACES release.",
             "estimateType": "Model-based crude prevalence (%)",
             "uncertainty": "Each interval gives the original CDC model-based 95% confidence limits, in percent.",
@@ -103,12 +109,19 @@ def extract(csv_path, atlas_path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, epilog=f"Public national input: {DOWNLOAD}")
     parser.add_argument("csv", type=Path, help="Downloaded CDC PLACES 2025 GIS-friendly census tract CSV")
-    parser.add_argument("--atlas", type=Path, default=ROOT / "public/data/ms/tracts.geojson")
-    parser.add_argument("--output", type=Path, default=ROOT / "public/data/ms/places-2025.json")
+    parser.add_argument("--state", default="MS", help="State abbreviation, FIPS code or data id (scripts/regions.json)")
+    parser.add_argument("--out", type=Path, help="The region's data folder (default public/data/<id>)")
     args = parser.parse_args()
-    data = extract(args.csv, args.atlas)
-    args.output.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
-    print(f"Wrote {len(data['byId'])} Mississippi tract records to {args.output}")
+    regions = json.loads((ROOT / "scripts/regions.json").read_text(encoding="utf-8"))["regions"]
+    want = args.state.upper()
+    region = next((r for r in regions if want in (r["abbr"], r["fips"], r["id"].upper())), None)
+    if region is None:
+        raise SystemExit(f"Unknown state {args.state}; see scripts/regions.json")
+    out = args.out or ROOT / "public/data" / region["id"]
+    data = extract(args.csv, out / "tracts.geojson", region)
+    output = out / "places-2025.json"
+    output.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
+    print(f"Wrote {len(data['byId'])} {region['name']} tract records to {output}")
 
 
 if __name__ == "__main__":

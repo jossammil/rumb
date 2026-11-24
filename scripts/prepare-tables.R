@@ -1,74 +1,66 @@
 #!/usr/bin/env Rscript
-# Builds the attribute tables that join to the reference tracts by GEOID, read
-# lazily by the app: ACS 2020–2024 data-profile covariates, CDC PLACES 2025
+# Builds the attribute tables that join to a state's reference tracts by GEOID,
+# read lazily by the app: ACS 2020–2024 data-profile covariates, CDC PLACES 2025
 # tract estimates and 2020 Census centers of population (tracts and counties).
-# Writes public/data/ms/tables/*.json and tables/index.json, which describes
-# every field and records where each input came from. Run at the repository root:
-#   Rscript scripts/prepare-tables.R [download-cache-folder]
-# The cache may already hold DP02.zip–DP05.zip (data.census.gov exports for all
-# Mississippi tracts) and the national PLACES CSV; anything missing is downloaded.
-# R packages: jsonlite, digest, httr2.
+# Writes <out>/tables/*.json and tables/index.json, which describes every field
+# and records where each input came from. Run at the repository root after
+# prepare-data.R and prepare-layers.R:
+#   Rscript scripts/prepare-tables.R [--state MS] [--out DIR] [--cache DIR] [--pin]
+# (options in scripts/lib/region.R). Downloads: DP02–DP05 exports for the
+# state's tracts, the national PLACES CSV and the state's center files.
+# R packages: jsonlite, digest, httr2, arrow, sf.
+source("scripts/lib/region.R")
+ctx <- region_context()
 spec <- jsonlite::read_json("scripts/tables.json")
-args <- commandArgs(trailingOnly = TRUE)
-cache <- if (length(args)) args[[1]] else Sys.getenv("RUMB_TABLE_CACHE", file.path(tempdir(), "rumb-tables"))
-dir.create(cache, recursive = TRUE, showWarnings = FALSE)
-output <- "public/data/ms/tables"
+fill <- function(template) {
+  x <- sub("{geo}", tract_filter(ctx), template, fixed = TRUE)
+  gsub("{fips}", ctx$fips, x, fixed = TRUE)
+}
+output <- file.path(ctx$out, "tables")
 dir.create(output, recursive = TRUE, showWarnings = FALSE)
 stage <- tempfile("rumb-tables-")
 dir.create(stage)
-sha256 <- function(path) digest::digest(path, algo = "sha256", file = TRUE)
-fetch <- function(url, name = basename(url)) {
-  dest <- file.path(cache, name)
-  if (!file.exists(dest)) download.file(url, dest, mode = "wb", quiet = TRUE)
-  dest
-}
 
 # The reference tracts, in the order the display file lists them.
-tracts <- jsonlite::read_json("public/data/ms/tracts.geojson")
+tracts <- jsonlite::read_json(file.path(ctx$out, "tracts.geojson"))
 ids <- vapply(tracts$features, function(f) f$properties$GEOID, character(1))
-stopifnot(length(ids) == 878L, !anyDuplicated(ids))
+stopifnot(length(ids) > 0, !anyDuplicated(ids))
+
+# A source's tract GEOIDs in terms of ours. In 2022 Connecticut replaced its
+# eight counties with nine planning regions: tract codes stayed, county codes
+# changed, so 2020-based files (centers, PLACES) name tracts by the old
+# county. An id that does not match is matched by its tract code when that
+# code is unique on both sides. Returns our id for each source id (NA if none).
+align <- function(source_ids) {
+  out <- ifelse(source_ids %in% ids, source_ids, NA_character_)
+  tract <- function(x) substr(x, 6, 11)
+  free <- setdiff(ids, out)
+  loose <- is.na(out)
+  unique_code <- function(x) !duplicated(x) & !duplicated(x, fromLast = TRUE)
+  ours <- free[unique_code(tract(free))]
+  theirs <- unique_code(tract(source_ids)) & loose
+  out[theirs] <- ours[match(tract(source_ids[theirs]), tract(ours))]
+  out
+}
 
 # ---- ACS data profiles -------------------------------------------------------
-endpoint <- "https://data.census.gov/api/access/table/download"
-census_export <- function(table, dest) {
-  response <- httr2::request(endpoint) |>
-    httr2::req_body_json(list(request = list(id = table, g = "040XX00US28$1400000", download_estimate = FALSE))) |>
-    httr2::req_perform() |>
-    httr2::resp_body_json()
-  job <- response$response$download_id
-  stopifnot(is.character(job), length(job) == 1)
-  for (attempt in seq_len(60)) {
-    status <- httr2::request(paste0(endpoint, "?status&download_id=", job)) |> httr2::req_perform() |> httr2::resp_body_json()
-    if (identical(status$response$status, "complete")) {
-      download.file(status$response$url, dest, mode = "wb", quiet = TRUE)
-      return(invisible(dest))
-    }
-    Sys.sleep(2)
-  }
-  stop("Census table export did not finish for ", table)
-}
 acs <- spec$acs
 columns <- list()
 labels <- character()
 acs_sources <- list()
 for (t in unlist(acs$tables)) {
   table <- sub("{table}", t, acs$table, fixed = TRUE)
-  zip <- file.path(cache, paste0(t, ".zip"))
-  if (!file.exists(zip)) census_export(table, zip)
-  csv_name <- paste0(table, "-Data.csv")
-  unzip(zip, files = csv_name, exdir = stage)
-  csv <- file.path(stage, csv_name)
-  d <- read.csv(csv, colClasses = "character", fileEncoding = "UTF-8-BOM", check.names = FALSE)
-  # The export's second heading row describes each variable.
-  stopifnot(d$GEO_ID[1] == "Geography")
-  labels <- c(labels, unlist(d[1, ]))
-  d <- d[-1, ]
-  stopifnot(all(grepl("^1400000US28[0-9]{9}$", d$GEO_ID)))
-  d$GEOID <- sub("^1400000US", "", d$GEO_ID)
-  stopifnot(!anyDuplicated(d$GEOID), setequal(d$GEOID, ids))
+  zip <- census_export(ctx, table)
+  export <- read_export(ctx, zip, table, stage)
+  d <- export$data
+  csv <- export$csv
+  labels <- c(labels, export$labels)
+  # As in prepare-data.R, a few new TIGER tracts may have no ACS row.
+  stopifnot(!anyDuplicated(d$GEOID), all(d$GEOID %in% ids), length(ids) - nrow(d) <= max(5, 0.01 * length(ids)))
+  pin(ctx, paste0("acs_", tolower(t)), fill(sub("{table}", t, acs$url, fixed = TRUE)), csv, list(rows = nrow(d)))
   d <- d[match(ids, d$GEOID), ]
   for (name in setdiff(names(d), c("GEO_ID", "NAME", "GEOID"))) columns[[name]] <- d[[name]]
-  acs_sources[[t]] <- list(url = sub("{table}", t, acs$url, fixed = TRUE), csv_sha256 = sha256(csv))
+  acs_sources[[t]] <- list(url = fill(sub("{table}", t, acs$url, fixed = TRUE)), csv_sha256 = sha256(csv))
 }
 # A changed label means the variable code now means something else.
 for (code in names(acs$labels)) {
@@ -135,30 +127,49 @@ for (f in acs$fields) {
 
 # ---- CDC PLACES ----------------------------------------------------------------
 places <- spec$places
-places_csv <- fetch(places$download, "PLACES_tract_GIS_2025.csv")
+places_csv <- cached(ctx, places$download, "PLACES_tract_GIS_2025.csv", national = TRUE)
 if (!identical(sha256(places_csv), places$sha256))
   stop("The PLACES download changed (sha256 ", sha256(places_csv), "). Review it, then update scripts/tables.json.")
 p <- read.csv(places_csv, colClasses = "character", fileEncoding = "UTF-8-BOM", check.names = FALSE)
 names(p) <- trimws(names(p))  # one 2025 heading ends in a tab
-p <- p[p$StateAbbr == "MS", ]
-stopifnot(nrow(p) == 870L, !anyDuplicated(p$TractFIPS), all(p$TractFIPS %in% ids))
+p <- p[p$StateAbbr == ctx$abbr, ]
+stopifnot(nrow(p) > 0, !anyDuplicated(p$TractFIPS))
+p$TractFIPS <- align(p$TractFIPS)
+unmatched_places <- sum(is.na(p$TractFIPS))
+if (unmatched_places) stop(unmatched_places, " PLACES tracts match no tract here")
 missing_places <- setdiff(ids, p$TractFIPS)
 row <- match(ids, p$TractFIPS)
+# CDC publishes no estimate for tracts with almost no adults. Any other gap
+# means the tract IDs no longer line up.
+# CDC publishes no estimate for tracts with almost no adults, and a handful of
+# special-use tracts (bases, parks, airports) lack rows too. More than that
+# means the tract ids no longer line up.
+populated <- ids[is.finite(acs_cols$acs_population) & acs_cols$acs_population >= 50]
+gaps <- intersect(missing_places, populated)
+if (length(gaps) > max(5, 0.01 * length(ids)))
+  stop(length(gaps), " populated tracts have no PLACES row: ", paste(head(gaps), collapse = ", "))
 places_cols <- list(places_pop18 = as.numeric(gsub(",", "", p$TotalPop18plus))[row])
 places_fields <- list(places_pop18 = list(label = "Adults 18 and over (2020 Census)", format = "integer", role = "meta"))
 places_measures <- character()
+not_published <- character()
 # Measures for a narrower population than all adults cannot be pooled by adult population.
 narrower <- c("TEETHLOST", "COLON_SCREEN", "MAMMOUSE", "ACCESS2", "BPMED", "HIGHCHOL")
 for (m in places$measures) {
   code <- m[[1]]
   key <- paste0("places_", tolower(code))
-  value <- as.numeric(p[[paste0(code, "_CrudePrev")]])[row]
+  estimate <- trimws(p[[paste0(code, "_CrudePrev")]])
+  # Some states' 2025 release lacks whole measures (Kentucky and Pennsylvania
+  # most of them, nine states the social-needs module): leave those out. A
+  # tract may also lack a single estimate; it stays missing.
+  if (all(estimate == "")) { not_published <- c(not_published, code); next }
+  value <- suppressWarnings(as.numeric(estimate))[row]
   interval <- p[[paste0(code, "_Crude95CI")]][row]
   parts <- regmatches(interval, regexec("^\\(\\s*([0-9.]+),\\s*([0-9.]+)\\s*\\)$", interval))
   lcl <- vapply(parts, function(x) if (length(x) == 3) as.numeric(x[2]) else NA_real_, numeric(1))
   ucl <- vapply(parts, function(x) if (length(x) == 3) as.numeric(x[3]) else NA_real_, numeric(1))
-  have <- !is.na(row)
-  stopifnot(all(is.finite(value[have])), all(lcl[have] <= value[have] & value[have] <= ucl[have]))
+  have <- !is.na(row) & !is.na(estimate[row]) & estimate[row] != ""
+  stopifnot(all(is.finite(value[have])), all(lcl[have] <= value[have] & value[have] <= ucl[have]),
+            all(is.na(value[!have])))
   places_cols[[key]] <- value
   places_cols[[paste0(key, "_lcl")]] <- lcl
   places_cols[[paste0(key, "_ucl")]] <- ucl
@@ -172,23 +183,38 @@ for (m in places$measures) {
 }
 
 # ---- Centers of population -------------------------------------------------------
-read_centers <- function(url, name) {
-  path <- fetch(url, name)
+read_centers <- function(template, key) {
+  url <- fill(template)
+  path <- cached(ctx, url)
   d <- read.csv(path, colClasses = "character", fileEncoding = "UTF-8-BOM")
-  list(path = path, d = d)
+  pin(ctx, key, url, path, list(rows = nrow(d)))
+  list(path = path, url = url, d = d)
 }
-tc <- read_centers(spec$centers$tracts, "CenPop2020_Mean_TR28.txt")
-tc$d$GEOID <- paste0(tc$d$STATEFP, tc$d$COUNTYFP, tc$d$TRACTCE)
-stopifnot(setequal(tc$d$GEOID, ids))
+tc <- read_centers(spec$centers$tracts, "centers_tracts")
+tc$d$GEOID <- align(paste0(tc$d$STATEFP, tc$d$COUNTYFP, tc$d$TRACTCE))
+tc$d <- tc$d[!is.na(tc$d$GEOID), ]
+# A tract added since 2020 has no published center: use a point inside it,
+# with no population, and list it.
+new_tracts <- setdiff(ids, tc$d$GEOID)
+if (length(new_tracts) > max(5, 0.01 * length(ids)))
+  stop(length(new_tracts), " tracts have no 2020 center of population: ", paste(head(new_tracts), collapse = ", "))
+if (length(new_tracts)) {
+  shapes <- sf::st_read(file.path(ctx$out, "tracts.geojson"), quiet = TRUE)
+  inside <- suppressWarnings(sf::st_coordinates(sf::st_point_on_surface(sf::st_geometry(shapes[match(new_tracts, shapes$GEOID), ]))))
+  tc$d <- rbind(tc$d[c("GEOID", "LATITUDE", "LONGITUDE", "POPULATION")],
+                data.frame(GEOID = new_tracts, LATITUDE = as.character(round(inside[, 2], 6)),
+                           LONGITUDE = as.character(round(inside[, 1], 6)), POPULATION = "0"))
+}
 tc$d <- tc$d[match(ids, tc$d$GEOID), ]
-cc <- read_centers(spec$centers$counties, "CenPop2020_Mean_CO28.txt")
+cc <- read_centers(spec$centers$counties, "centers_counties")
 cc$d$GEOID <- paste0(cc$d$STATEFP, cc$d$COUNTYFP)
-counties <- jsonlite::read_json(file.path("public/data/ms/layers", paste0(spec$centers$countyLayer, ".geojson")))
+counties <- jsonlite::read_json(file.path(ctx$out, "layers", paste0(spec$centers$countyLayer, ".geojson")))
 county_ids <- vapply(counties$features, function(f) as.character(f$id), character(1))
-stopifnot(length(county_ids) == 82L, setequal(cc$d$GEOID, county_ids))
+stopifnot(length(county_ids) > 0, setequal(cc$d$GEOID, county_ids))
 cc$d <- cc$d[match(county_ids, cc$d$GEOID), ]
-centers <- function(d, id) list(version = 1, ids = I(id), lon = as.numeric(d$LONGITUDE), lat = as.numeric(d$LATITUDE),
-                                population = as.integer(d$POPULATION))
+# I() keeps one-county states' columns as arrays.
+centers <- function(d, id) list(version = 1, ids = I(id), lon = I(as.numeric(d$LONGITUDE)), lat = I(as.numeric(d$LATITUDE)),
+                                population = I(as.integer(d$POPULATION)))
 
 # ---- Write -------------------------------------------------------------------------
 write <- function(x, name) {
@@ -196,9 +222,20 @@ write <- function(x, name) {
   name
 }
 table_file <- function(id, cols) list(version = 1, table = id, ids = I(ids), columns = cols)
+# The same table as Parquet (Snappy, which the app's reader handles without
+# extra codecs): GEOID, then one double column per field. Values are rounded
+# to the 15 significant digits the JSON carries, so both read back to the same
+# numbers.
+write_parquet_table <- function(cols, name) {
+  df <- data.frame(GEOID = ids, lapply(cols, function(x) signif(as.numeric(x), 15)), check.names = FALSE)
+  arrow::write_parquet(df, file.path(stage, name), compression = "snappy")
+  name
+}
 files <- c(
   write(table_file("acs", acs_cols), "tracts-acs.json"),
   write(table_file("places", places_cols), "tracts-places.json"),
+  write_parquet_table(acs_cols, "tracts-acs.parquet"),
+  write_parquet_table(places_cols, "tracts-places.parquet"),
   write(centers(tc$d, ids), "tracts-centers.json"),
   write(centers(cc$d, county_ids), "counties-centers.json")
 )
@@ -208,9 +245,11 @@ index <- list(
   layer = "tracts",
   tables = list(
     list(id = "acs", name = "ACS 2020–2024 profile", group = acs$group, file = "tables/tracts-acs.json",
+         parquet = "tables/tracts-acs.parquet",
          credit = acs$credit, vintage = acs$vintage, confidence = acs$confidence,
          measures = I(acs_measures), fields = acs_fields),
     list(id = "places", name = "CDC PLACES 2025", group = places$group, file = "tables/tracts-places.json",
+         parquet = "tables/tracts-places.parquet",
          credit = places$credit, vintage = places$vintage, modelBased = TRUE, note = places$note,
          url = places$url, methodology = places$methodology, confidence = 95,
          measures = I(places_measures), fields = places_fields)
@@ -221,13 +260,17 @@ index <- list(
   ),
   sources = list(
     acs = list(title = acs$title, tables = acs_sources, top_or_bottom_coded = top_coded),
-    places = list(title = places$title, url = places$url, download = places$download, sha256 = sha256(places_csv),
-                  dictionary = places$dictionary, tracts_without_estimates = I(missing_places)),
-    centers = list(title = spec$centers$title, tracts = list(url = spec$centers$tracts, sha256 = sha256(tc$path)),
-                   counties = list(url = spec$centers$counties, sha256 = sha256(cc$path)))
+    places = Filter(Negate(is.null), list(title = places$title, url = places$url, download = places$download,
+                  sha256 = sha256(places_csv), dictionary = places$dictionary,
+                  tracts_without_estimates = I(missing_places),
+                  populated_tracts_without_estimates = if (length(gaps)) I(gaps),
+                  measures_not_published = if (length(not_published)) I(not_published))),
+    centers = Filter(Negate(is.null), list(title = spec$centers$title, tracts = list(url = tc$url, sha256 = sha256(tc$path)),
+                   counties = list(url = cc$url, sha256 = sha256(cc$path)),
+                   tracts_without_centers = if (length(new_tracts)) I(new_tracts)))
   ),
   assets = setNames(lapply(files, asset), files),
-  packages = list(jsonlite = as.character(packageVersion("jsonlite")))
+  packages = list(jsonlite = as.character(packageVersion("jsonlite")), arrow = as.character(packageVersion("arrow")))
 )
 invisible(write(index, "index.json"))
 stopifnot(all(file.copy(file.path(stage, c(files, "index.json")), output, overwrite = TRUE)))

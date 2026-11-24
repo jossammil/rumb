@@ -1,18 +1,23 @@
 // rumb service worker: offline use.
 // - The app shell (page, scripts, styles, fonts) is cached when the worker
-//   installs, with the region's catalog and display geography.
+//   installs, with the default region's catalog and display geography.
 // - DuckDB and GeoDaLib (vendor/<name>-<version>/) and the rest of the data are
-//   cached the first time they load, or all at once by "Download for offline".
+//   cached the first time they load, or by "Download for offline" (the vendor
+//   files and the open region's data).
+// - Each region's data (data/<id>/) has its own cache, named by a hash of its
+//   files, so rebuilding one state leaves the others cached; the index and
+//   data/shared/ have one too.
 // - Byte-range requests are answered from a cached file when there is one.
 // No cross-origin isolation headers are added: single-threaded DuckDB does not
 // need them, and they would restrict cross-origin assets.
-// scripts/build.mjs fills in VERSION, DATA_VERSION, PRECACHE and PREDATA.
+// scripts/build.mjs fills in VERSION, DATA_CACHES, PRECACHE and PREDATA.
 const VERSION = "__VERSION__";
-const DATA_VERSION = "__DATA_VERSION__";
+const DATA_CACHES = "__DATA_CACHES__";
 const PRECACHE = "__PRECACHE__";
 const PREDATA = "__PREDATA__";
 const SHELL = `rumb-shell-${VERSION}`;
-const DATA = `rumb-data-${DATA_VERSION}`;
+/** The cache for a data path: its region's (data/<id>/…), else the shared one. */
+const dataCache = (path) => DATA_CACHES[path.split("/")[1]] || DATA_CACHES.shared;
 // Vendor folders carry their version, so one cache can keep them across app versions.
 const VENDOR = "rumb-vendor-v1";
 const scope = new URL(self.registration.scope);
@@ -22,7 +27,7 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
       await (await caches.open(SHELL)).addAll(PRECACHE.map(at));
-      await (await caches.open(DATA)).addAll(PREDATA.map(at));
+      for (const path of PREDATA) await (await caches.open(dataCache(path))).add(at(path));
       await self.skipWaiting();
     })(),
   );
@@ -32,9 +37,10 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
       for (const name of await caches.keys()) {
+        // Older builds kept all data in one rumb-data-<hash> cache; it goes too.
         const stale =
           (name.startsWith("rumb-shell-") && name !== SHELL) ||
-          (name.startsWith("rumb-data-") && name !== DATA);
+          (name.startsWith("rumb-data-") && !Object.values(DATA_CACHES).includes(name));
         if (stale) await caches.delete(name);
       }
       await self.clients.claim();
@@ -108,6 +114,6 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   if (path.startsWith("vendor/")) event.respondWith(cacheFirst(VENDOR, request));
-  else if (path.startsWith("data/")) event.respondWith(cacheFirst(DATA, request));
+  else if (path.startsWith("data/")) event.respondWith(cacheFirst(dataCache(path), request));
   else event.respondWith(shell(request));
 });

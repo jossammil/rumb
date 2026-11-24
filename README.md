@@ -3,9 +3,11 @@
 A field GIS that runs entirely in your browser: maps, spatial SQL and cluster
 statistics, with no server, no install and nothing uploaded. Open it from
 [GitHub Pages](https://jossammil.github.io/rumb/), drop in your own files, and
-keep working offline. The starter kit is all 878 Mississippi census tracts with
-ACS poverty and CDC PLACES measures, plus a library of 33 public layers to stack
-over them: facilities, districts, 2020 Census tables and County Health Rankings. rumb is named for the rhumb line, a
+keep working offline. It opens on all 878 Mississippi census tracts with ACS
+poverty and CDC PLACES measures, plus a library of 33 public layers to stack
+over them: facilities, districts, 2020 Census tables and County Health Rankings.
+Every other state and DC is a click away (the region tag by the wordmark), with
+the same tract measures and County Health Rankings for its counties. rumb is named for the rhumb line, a
 navigator's course of constant bearing. It was called Field Atlas (repository
 `bgis`) before November 2026. *Frankensteined by MillJS.*
 
@@ -23,6 +25,13 @@ navigator's course of constant bearing. It was called Field Atlas (repository
     denominator. Its neighbors are dashed on the map.
   - Find a feature by name, county or ID with **F** or the palette.
   - Export a PNG with its title, legend and credits.
+- **States.** Click the region tag (MS) or choose **Change state…** in the
+  palette to open any of the 50 states and DC. Each has its tracts with ACS
+  S1701 poverty, the ACS profile and CDC PLACES tables, 2020 centers of
+  population, an outline and a backdrop, and County Health Rankings 2025 for
+  its counties. The 32 MARIS layers are Mississippi's only. Share links and
+  projects remember their state and reopen it; **Download for offline** keeps
+  the open state.
 - **Layers.** Stack several layers, reorder, hide and remove them.
   - **Add layer** (**N**) opens the library: 33 public layers for Mississippi.
     These include fire stations, schools, hospitals and pharmacies, districts,
@@ -164,7 +173,9 @@ The comparison uses complete cases across all enabled indicators. Each percentil
 
 **Distances, filters and counts.**
 - Distances, filters, buffers and measurements are straight lines in
-  Mississippi Transverse Mercator (EPSG:3814), in miles, as in map_pdo. A
+  Mississippi Transverse Mercator (EPSG:3814), in miles, as in map_pdo. Other
+  states use a transverse Mercator centred on the state (scale error at most
+  ±0.26%, in Texas); Alaska uses Alaska Albers (EPSG:3338). A
   feature is kept when any part of it lies within the distance.
 - Point counts leave out points on a boundary, as ST_Within does.
 - Both use the simplified display geometry. A point within a few metres of
@@ -206,22 +217,34 @@ The spatial query returned one result per tract and counted 39,670 points inside
 
 ## Limits
 
-- One region ships today: Mississippi tracts. The catalog and the
-  `data/<region>/` layout are ready for more states; adding them is data work.
+- Each state is analysed on its own: weights, scans and models stop at its
+  border. A national map of every tract and county-level statistics for the
+  whole country come in the next phase. Puerto Rico is not included.
+- Outside Mississippi the GeoParquet for spatial SQL is simplified to about
+  10 m, so a point within a few metres of a tract boundary can be counted in
+  its neighbor. Mississippi's keeps full TIGER resolution.
+- CDC PLACES 2025 lacks most measures for Kentucky and Pennsylvania, and the
+  social-needs measures for nine states; those measures are not offered there.
+  Connecticut's County Health Rankings layer uses its eight former counties,
+  which carry the 2025 health measures, not its planning regions.
 - Map layers from SQL hold at most 10,000 features and 32 MiB of geometry; the
   SQL preview shows 100 rows. Filter or aggregate large inputs first.
 - The scan is purely spatial (no space-time), and there is no geographically
   weighted regression or Bayesian disease mapping. Distances, access
   included, are straight lines in the state's projection, not travel times.
-- Spatial lag and error models need symmetric weights (not plain k nearest)
-  and at most 2,500 areas, since they use the weights' eigenvalues. Ripley's
+- Spatial lag and error models need symmetric weights (not plain k nearest).
+  Up to 2,500 areas they use the weights' eigenvalues; above, a Chebyshev
+  approximation of the log-determinant with numerical-Hessian standard
+  errors; they refuse above 20,000 areas. Ripley's
   L has no edge correction; the random envelope, drawn inside the same
   outline, carries the same bias.
 - CDC PLACES values are model-based; patterns in them partly reflect CDC's
   model, and results on them say so. County Health Rankings suppresses
   death counts under 10, so those counties drop out of smoothing and scans.
 - A spatial scan of tracts at windows up to 50% of the population takes
-  about 5 seconds; the default is 25%.
+  about 5 seconds; the default is 25%. A scan past its work budget (window
+  entries × replicates, 2 billion) does not run and suggests a radius or fewer
+  replicates (999 or 99) instead; large states usually need a radius.
 - The library's older layers keep their original vintages. Older MARIS
   districts get neighbors from tolerances (0.5 m), not exact shared vertices,
   and 911 service areas overlap.

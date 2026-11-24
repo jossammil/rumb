@@ -1,0 +1,177 @@
+{
+  "version": 1,
+  "region": "ms",
+  "acs_dp02": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP02?g=040XX00US28$1400000",
+    "sha256": "1ba4899b36145ffae184c955261fc8832d6c74d104bb9441a9b3f9b3205fa85c",
+    "rows": 878
+  },
+  "acs_dp03": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP03?g=040XX00US28$1400000",
+    "sha256": "f45c89cf58c71705b0899e58e67026336464915aa5ab7e20e95d4ae3c8c4d51c",
+    "rows": 878
+  },
+  "acs_dp04": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP04?g=040XX00US28$1400000",
+    "sha256": "7c7f85c845bb74213251ca3c1f3585b8ca233e0e87b005a9ce6dd2c79beba673",
+    "rows": 878
+  },
+  "acs_dp05": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP05?g=040XX00US28$1400000",
+    "sha256": "9c74fc4c4abb75d37949a93e2d268106bd971de504641482a730105435107f48",
+    "rows": 878
+  },
+  "acs_s1701": {
+    "url": "https://data.census.gov/table/ACSST5Y2024.S1701?g=040XX00US28$1400000",
+    "sha256": "81249cf8854929f9a99e8fec431497c12ba9cdd2bb891e71da5758a77a3261e9",
+    "rows": 878
+  },
+  "centers_counties": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/county/CenPop2020_Mean_CO28.txt",
+    "sha256": "a27a39077702ccfc0d5c8dc1e45533df8ee783831b27f509d3dfa938ac99f564",
+    "rows": 82
+  },
+  "centers_tracts": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/tract/CenPop2020_Mean_TR28.txt",
+    "sha256": "84deba8c73946dacdf5ca91d96c16ffe31198475a7892508723741b81e927349",
+    "rows": 878
+  },
+  "layer_casinos_2020": {
+    "url": "https://maris.mississippi.edu/MARISdata/Cultural/MS_Casinos_2020.zip",
+    "sha256": "27c26e8be7f9a825c2f1b4826a8a400b0e85a673e7c0b0cbd8f9e9111942b84e"
+  },
+  "layer_census_county_density_2020": {
+    "url": "https://maris.mississippi.edu/MARISdata/Census/MS_CENSUSCountiesPopulationDensity_2020.zip",
+    "sha256": "4e464b87778f5bd6e9589f15c31a690a2192512f4586d28e720159d2bf8bea8e"
+  },
+  "layer_census_county_housing_2020": {
+    "url": "https://maris.mississippi.edu/MARISdata/Census/MS_CENSUSCountiesPopulationHousing_2020.zip",
+    "sha256": "4c9b9d8bc56b2a78c3a057ea9eb363791b2dab5594b78d0a06746c7b4c4a6903"
+  },
+  "layer_census_county_poverty_2020": {
+    "url": "https://maris.mississippi.edu/MARISdata/Census/MS_CENSUSCountyPoverty_2020.zip",
+    "sha256": "8cba282db88e8199aff14000657e4967d70cdeebb1016bb1f1b57fbc73ab2c11"
+  },
+  "layer_census_school_districts_2020": {
+    "url": "https://maris.mississippi.edu/MARISdata/Census/MS_CENSUSSchoolDistrictsPopulationHousing_2020.zip",
+    "sha256": "9659f815b8a0acd6a2bed406d97bf700be9ec9fd82141e6b0b704545c6082143"
+  },
+  "layer_chancery_court_districts_2005": {
+    "url": "https://maris.mississippi.edu/MARISdata/Boundaries/MS_ChanceryCourtDistricts_2005.zip",
+    "sha256": "e2c5f841c87a0f87301eef60c3e44b1004bf9586febf629be6c1803f9399e84e"
+  },
+  "layer_childcare_2023": {
+    "url": "https://maris.mississippi.edu/MARISdata/Education/MS_LicensedChildcareFacilities_2023.zip",
+    "sha256": "96e047e5571f91a4546b87921e734a48e743cbdf152966b5f36f4049d7a74bac"
+  },
+  "layer_community_college_districts_1995": {
+    "url": "https://maris.mississippi.edu/MARISdata/Education/MS_CommunityCollegeDistricts_1995.zip",
+    "sha256": "cd99d3eeafa8f4a59d0cc528811a7ea39f16964b15b14e79b3a19b6063c11547"
+  },
+  "layer_county_boundaries_2015": {
+    "url": "https://maris.mississippi.edu/MARISdata/Boundaries/MS_CountyBoundaries_2015.zip",
+    "sha256": "cc323dc4d07fb42ffbd57c4f9dc4fe9ecaa3af0c344c7e093d68bd02b41cbdcc"
+  },
+  "layer_courthouses_2017": {
+    "url": "https://maris.mississippi.edu/MARISdata/Cultural/MS_Courthouses_2017.zip",
+    "sha256": "de351fdfcfd374d22e7f81971f334a8a3126d3100e07aad90d576db2dea9f66d"
+  },
+  "layer_fire_stations_2020": {
+    "url": "https://maris.mississippi.edu/MARISdata/Cultural/MS_FireStations_2020.zip",
+    "sha256": "9c41070d544159452d9daf3cf11f5d7135381f9ab571400c0bcd7e771dddbf0f"
+  },
+  "layer_highway_patrol_districts_2023": {
+    "url": "https://maris.mississippi.edu/MARISdata/Boundaries/MS_HighwayPatrolDistricts_2023.zip",
+    "sha256": "e5a25c1cad3e2917727fd371c1871df8f20a8141d12156781d724562823d3e99"
+  },
+  "layer_indian_lands_2020": {
+    "url": "https://maris.mississippi.edu/MARISdata/Boundaries/MS_IndianLands_2020.zip",
+    "sha256": "ac17c845f5c08ab7ba659dabfa31796cc92ed1bdf237e1f50fa057943f42f2a4"
+  },
+  "layer_law_enforcement_2017": {
+    "url": "https://maris.mississippi.edu/MARISdata/Cultural/MS_LawEnforcementSites_2017.zip",
+    "sha256": "2d128d19bf6e6b7eac3052652d7a178ac439d03677ed4c4a7f36fc8275156be6"
+  },
+  "layer_local_eocs_2009": {
+    "url": "https://maris.mississippi.edu/MARISdata/Cultural/MS_LocalEmergencyOperationsCenters_2009.zip",
+    "sha256": "3655ee22faa39972541e68235c173ae212bc089507e5de93e950b27d49830daf"
+  },
+  "layer_mema_shelters_2015": {
+    "url": "https://maris.mississippi.edu/MARISdata/Cultural/MS_MEMA361_Shelters_2015.zip",
+    "sha256": "40a5b7631424e3504dd24a9d86749ef71970e36ad58febf103d62d4b984198c7"
+  },
+  "layer_mental_health_regions_1998": {
+    "url": "https://maris.mississippi.edu/MARISdata/Health/MS_MentalHealthRegions_1998.zip",
+    "sha256": "28bca6988fd1ce1a5bd6013df7d43707a599ebd40f263d193cf32b078d0f1b1f"
+  },
+  "layer_msu_extension_offices_2014": {
+    "url": "https://maris.mississippi.edu/MARISdata/Cultural/MS_MSUCountyExtensionOffices_2014.zip",
+    "sha256": "ce6df3166592366774535a1cee6dca3f2d67a5801d302650b878f46c09452de3"
+  },
+  "layer_nursing_homes_2024": {
+    "url": "https://maris.mississippi.edu/MARISdata/Health/MS_NursingHomes_2024.zip",
+    "sha256": "a517d6b9e859fd9440c5c9da87f4ecac75dc8f7408a9981328689c20d7f86d09"
+  },
+  "layer_pharmacies_2010": {
+    "url": "https://maris.mississippi.edu/MARISdata/Health/MS_Pharmacies_2010.zip",
+    "sha256": "b2f7d11c4ef4a12d8f21fecfd94c1198f3d45d2c924ad2e6bdbb6ba02c996b5b"
+  },
+  "layer_places_of_worship_2020": {
+    "url": "https://maris.mississippi.edu/MARISdata/Cultural/MS_PlacesofWorship_2020.zip",
+    "sha256": "6747a26bfbe176d50ac303d3f27af6b8f5642dcb6be93cf0813abde59ed8696e"
+  },
+  "layer_post_offices_2015": {
+    "url": "https://maris.mississippi.edu/MARISdata/Cultural/MS_PostOffices_2015.zip",
+    "sha256": "8cbf96a5b6fd3a1ffbc4c8faa1e99297b6281197f6ade31344b1f9e50e353a75"
+  },
+  "layer_private_colleges_2017": {
+    "url": "https://maris.mississippi.edu/MARISdata/Education/MS_PrivateColleges_2017.zip",
+    "sha256": "45bdce75e2d4ca7da68cb3e0692de661fcd6e1f48a23220f5950e782eb9b5ef9"
+  },
+  "layer_private_schools_2017": {
+    "url": "https://maris.mississippi.edu/MARISdata/Education/MS_PrivateSchools_2017.zip",
+    "sha256": "c1fd7b244b73a59a73679ad2a47e7e176d00467fa937561808db8c1b7bb73fcf"
+  },
+  "layer_psap_areas_2009": {
+    "url": "https://maris.mississippi.edu/MARISdata/Boundaries/MS_911PSAPServiceAreas_2009.zip",
+    "sha256": "40d9d9ffeb680fee2a68a222cdcefd773195c28813882bac596c583584ebc022"
+  },
+  "layer_psc_districts_2010": {
+    "url": "https://maris.mississippi.edu/MARISdata/Boundaries/MS_PublicServiceCommissionDistricts_2010.zip",
+    "sha256": "5a1db38b97b9915d63915b51200bd031df8107ad7e0463fc5fbdb7b35d82d2cf"
+  },
+  "layer_public_health_departments_2010": {
+    "url": "https://maris.mississippi.edu/MARISdata/Health/MS_PublicHealthDepartments_2010.zip",
+    "sha256": "a7d6b641660fcfe92d569bae36bfdb2bed3680b5a97365d909e0c977458738b2"
+  },
+  "layer_public_higher_education_2009": {
+    "url": "https://maris.mississippi.edu/MARISdata/Education/MS_PublicHigherEducationSites_2009.zip",
+    "sha256": "33f89e0d073202b88d65d95d69fd5a5e38d833f04f1c6934dd3b1e2e0b139fc4"
+  },
+  "layer_public_libraries_2021": {
+    "url": "https://maris.mississippi.edu/MARISdata/Cultural/MS_PublicLibraries_2021.zip",
+    "sha256": "080a72bc6d376fb6395b51ae09792ae3557efa9452fe6244ef498cbe597ff4fd"
+  },
+  "layer_public_school_districts_2016": {
+    "url": "https://maris.mississippi.edu/MARISdata/Education/MS_PublicSchoolDistricts_2015to2016.zip",
+    "sha256": "028ab426108a4b8d2ada04db6ee0d68919af8bcaaec590b622f3ed9e809d039b"
+  },
+  "layer_public_schools_2024": {
+    "url": "https://maris.mississippi.edu/MARISdata/Education/MS_PublicSchools_2024.zip",
+    "sha256": "bdb3596892d9a8cbbcdae9c4f255d1c7fe27d6b316ac13a87fbc4b05ffd2cbc3"
+  },
+  "layer_rural_health_facilities_2007": {
+    "url": "https://maris.mississippi.edu/MARISdata/Health/MS_MSDHRuralHealthFacilities_2007.zip",
+    "sha256": "a0c2ea2fe36f72d09ad1c9402be883e7e6be3b800fa6dd950293fd7eb20caf5b"
+  },
+  "tiger_roads": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/PRISECROADS/tl_2024_28_prisecroads.zip",
+    "sha256": "421905d94b9429037db33c027fd9637a35d631aa2dd90a00ec4a665054e5b702"
+  },
+  "tiger_tracts": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/TRACT/tl_2024_28_tract.zip",
+    "sha256": "f0a48cb1d85b9f448bfddbeb8de0ef0105497e9d7f22464d10bcdb380c9df252",
+    "tracts": 878,
+    "counties": 82
+  }
+}

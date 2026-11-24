@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "about": "Add-on layers for the Mississippi region: what scripts/prepare-layers.R downloads, which fields it keeps and how the app describes them. Every source is a public download; MARIS asks to be credited as the source provider, the Census Bureau asks for acknowledgement, and County Health Rankings asks for its citation.",
+  "about": "Add-on layers: what scripts/prepare-layers.R downloads (every layer for Mississippi; for other states, the layers whose sources cover the nation), which fields it keeps and how the app describes them. Every source is a public download; MARIS asks to be credited as the source provider, the Census Bureau asks for acknowledgement, and County Health Rankings asks for its citation.",
   "na": ["", "NOT AVAILABLE", "N/A", "-999", "-999.0"],
   "groups": ["Health", "Emergency services", "Public safety", "Education", "Community", "Government", "Census", "Boundaries"],
   "terms": {
@@ -92,9 +92,21 @@
       "popup": ["troop", "district"]
     },
     {
+      "id": "census_counties_2024", "name": "Counties (2024 cartographic boundaries)", "group": "Census", "geometry": "polygon",
+      "source": "counties", "outside": true, "url": "https://www2.census.gov/geo/tiger/GENZ2024/shp/cb_2024_us_county_500k.zip",
+      "vintage": "2024", "credit": "U.S. Census Bureau", "terms": "census",
+      "note": "Outside Mississippi only: the county geometry County Health Rankings is placed on. Not listed in the library."
+    },
+    {
+      "id": "census_counties_2020", "name": "Counties (2020 cartographic boundaries)", "group": "Census", "geometry": "polygon",
+      "source": "counties", "outside": true, "states": ["09"], "url": "https://www2.census.gov/geo/tiger/GENZ2020/shp/cb_2020_us_county_500k.zip",
+      "vintage": "2020", "credit": "U.S. Census Bureau", "terms": "census",
+      "note": "Connecticut only: County Health Rankings 2025 still reports Connecticut's eight former counties, which 2024 Census geometry replaces with planning regions."
+    },
+    {
       "id": "chr_counties_2025", "name": "County Health Rankings 2025", "group": "Health", "geometry": "polygon",
       "source": "chr", "url": "https://www.countyhealthrankings.org/sites/default/files/media/document/analytic_data2025_v3.csv",
-      "geometryFrom": "census_county_housing_2020", "vintage": "2025",
+      "geometryFrom": "census_county_housing_2020", "outsideGeometry": "census_counties_2024", "outsideGeometryFor": { "09": "census_counties_2020" }, "outsideKeep": 0.4, "vintage": "2025",
       "credit": "County Health Rankings & Roadmaps 2025 · U.S. Census Bureau", "terms": "chr", "color": "#c86bfa",
       "label": "name", "population": "v051_rawvalue",
       "lead": ["v085_rawvalue", "v023_rawvalue", "v138_rawvalue", "v002_rawvalue", "v063_rawvalue"],

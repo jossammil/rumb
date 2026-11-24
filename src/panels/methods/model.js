@@ -67,7 +67,8 @@ export function render(app, mount) {
       text:
         (model.xs.length ? model.xs.length + " covariates chosen." : "Choose at least one covariate.") +
         (model.type === "lag" || model.type === "error"
-          ? " Spatial models use the Neighbors setting below, which must be symmetric (not plain k nearest)."
+          ? " Spatial models use the Neighbors setting below, which must be symmetric (not plain k nearest)." +
+            " Above 2,500 areas, log|I − ρW| is approximated (Chebyshev) and standard errors come from a numerical Hessian; at most 20,000 areas."
           : "") +
         (COUNT_TYPES.has(model.type) ? countNote() : ""),
     }),

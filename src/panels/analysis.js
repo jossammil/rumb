@@ -275,6 +275,12 @@ export function createAnalysis(app) {
         (f) => (button.textContent = "Scanning " + Math.round(f * 100) + "%"),
       );
       if (control.signal.aborted) return;
+      // A scan past the work budget does not run; its panel offers a radius or fewer replicates.
+      if (res.advice) {
+        app.scanAdvice = { ...res.advice, layer: l.id, measure: state.measure, scan: JSON.stringify(state.scan ?? null) };
+        renderMethodControls();
+        throw new Error(res.advice.message);
+      }
       app.timings.lastAnalysis = Math.round(performance.now() - started);
       app.timings.lastMethod = res.method === "gistar" ? "gi*" : res.method;
       app.statusbar?.timing();

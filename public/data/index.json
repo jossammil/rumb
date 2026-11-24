@@ -2,6 +2,7 @@
   "version": 1,
   "default": "ms",
   "regions": [
-    { "id": "ms", "name": "Mississippi", "path": "ms/" }
+    { "id": "ms", "name": "Mississippi", "path": "ms/", "tracts": 878, "bounds": [[-91.66, 30.16], [-88.08, 35.02]] },
+    { "id": "de", "name": "Delaware", "path": "de/", "tracts": 262, "bounds": [[-75.8, 38.43], [-74.97, 39.86]] }
   ]
 }

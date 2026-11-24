@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "region": "nj",
+  "acs_dp02": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP02?g=040XX00US34$1400000",
+    "sha256": "cf7e8ed5cfc87fe34739f83713b93dab1f9346800a6be30a54da106117a5eff3",
+    "rows": 2181
+  },
+  "acs_dp03": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP03?g=040XX00US34$1400000",
+    "sha256": "c8c8437cd9e580546b5b295e3744483b2e961396ea0d485346080eaa6760dc4a",
+    "rows": 2181
+  },
+  "acs_dp04": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP04?g=040XX00US34$1400000",
+    "sha256": "b6ebbb4fbdf2adfdb5a90dcd5748d6c44e9255f2dbcb9e9f2def2792edabef32",
+    "rows": 2181
+  },
+  "acs_dp05": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP05?g=040XX00US34$1400000",
+    "sha256": "c7572a7276b3cec6ebbec23785f348d0066883df04a42a49f7f36f12ec966d4e",
+    "rows": 2181
+  },
+  "acs_s1701": {
+    "url": "https://data.census.gov/table/ACSST5Y2024.S1701?g=040XX00US34$1400000",
+    "sha256": "89b11d6f46123622d3d9ba2aee3f039a8ea3135919faf274a73444559b918036",
+    "rows": 2181
+  },
+  "centers_counties": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/county/CenPop2020_Mean_CO34.txt",
+    "sha256": "cd2ca27dc1882df9688d7b507124ab99d1ee4fa0c8ba8f98f034aa733ad98022",
+    "rows": 21
+  },
+  "centers_tracts": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/tract/CenPop2020_Mean_TR34.txt",
+    "sha256": "3787f4f70e11818b77af5dd7b992e41c635b652b767a36b326cbb033843f1584",
+    "rows": 2181
+  },
+  "tiger_roads": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/PRISECROADS/tl_2024_34_prisecroads.zip",
+    "sha256": "4f7b9b213302de33f5a1569e26a0b9eacd8e3573b064587a58c9a9dc7a1626e6"
+  },
+  "tiger_tracts": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/TRACT/tl_2024_34_tract.zip",
+    "sha256": "6aa58cfd7b8563383a0104bc7363d9de9daeac0ad524a12ed0d4fd473a03c38e",
+    "tracts": 2181,
+    "counties": 21
+  }
+}
