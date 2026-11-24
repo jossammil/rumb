@@ -91,6 +91,7 @@ jobs:
       # some display vertices differently from the machine that built them.
       - run: Rscript scripts/compare-region.R public/data/ms .cache/verify/ms --geometry 2e-4
       - run: Rscript scripts/compare-region.R public/data/de .cache/verify/de --geometry 2e-4
+        if: success() || failure()
       - uses: actions/upload-artifact@v7.0.2
         if: failure()
         with:

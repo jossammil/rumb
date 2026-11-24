@@ -13,10 +13,17 @@
 #   - tracts.parquet columns must be equal and its geometries equal to the same
 #     tolerance;
 #   - the layer library (layers/*.geojson, *.neighbors.json, library.json) is
-#     compared the same way; output checksums inside library.json are reported
-#     through the files themselves.
+#     compared the same way; the output sizes and checksums library.json
+#     records are reported through the files themselves, not compared;
+#   - display GeoJSON shapes that differ beyond the coordinate tolerance are
+#     compared as shapes: GEOS on Linux repairs and simplifies some old MARIS
+#     polygons with a vertex more or less than macOS. A polygon passes when its
+#     symmetric difference is at most 1% of its area, a line when the Hausdorff
+#     distance is at most 250 m; points must match the coordinate tolerance.
+#     Properties and ids stay exact, and so do the analytical GeoParquet
+#     geometry and every neighbor file.
 # Exits with status 1 and lists the differences when they do not match.
-# R packages: jsonlite, arrow, sf.
+# R packages: jsonlite, arrow, sf, geojsonsf.
 args <- commandArgs(trailingOnly = TRUE)
 stopifnot(length(args) >= 2)
 committed <- args[[1]]
@@ -40,6 +47,26 @@ report <- function(file, path, what) {
     problems <<- c(problems, sprintf("%s %s: %s", file, if (length(path)) paste(path, collapse = "/") else "(top)", what))
 }
 
+suppressMessages(sf::sf_use_s2(FALSE))
+# A display shape that differs beyond the coordinate tolerance: compare it as
+# a shape, in metres (EPSG:5070), as described above.
+same_shape <- function(a, b, file, path) {
+  na <- unlist(a$coordinates); nb <- unlist(b$coordinates)
+  if (identical(a$type, b$type) && length(na) == length(nb) && all(abs(na - nb) <= tolerance)) return(invisible())
+  shape <- function(g) sf::st_transform(sf::st_make_valid(geojsonsf::geojson_sfc(as.character(jsonlite::toJSON(g, auto_unbox = TRUE, digits = NA)))), 5070)
+  ga <- shape(a); gb <- shape(b)
+  type <- as.character(sf::st_geometry_type(ga))
+  if (grepl("POLYGON", type)) {
+    area <- as.numeric(sf::st_area(ga))
+    diff <- as.numeric(sf::st_area(sf::st_sym_difference(ga, gb)))
+    if (length(diff) == 0) diff <- 0
+    if (diff > 0.01 * area) report(file, path, sprintf("shapes differ by %.2f%% of the area", 100 * diff / area))
+  } else if (grepl("LINESTRING", type)) {
+    d <- as.numeric(sf::st_distance(ga, gb, which = "Hausdorff"))
+    if (d > 250) report(file, path, sprintf("lines are %.0f m apart", d))
+  } else report(file, path, "points moved")
+}
+
 # Walks two parsed JSON values side by side. `tol` applies to numbers.
 same <- function(a, b, file, path = character(), tol = 0, coords = FALSE) {
   if ((counts[[file]] %||% 0) > 200) return(invisible())
@@ -48,8 +75,14 @@ same <- function(a, b, file, path = character(), tol = 0, coords = FALSE) {
     if (!is.null(names(a)) || !is.null(names(b))) {
       keys <- union(names(a), names(b))
       if (!length(path)) keys <- setdiff(keys, ignored)
+      # Sizes and checksums of the layer files are reported through the files.
+      if (grepl("library[.]json$", file)) keys <- setdiff(keys, c("bytes", "output"))
       for (k in keys) {
         if (!k %in% names(a) || !k %in% names(b)) { report(file, c(path, k), "missing on one side"); next }
+        if (k == "geometry" && grepl("[.]geojson$", file) && is.list(a[[k]]) && is.list(b[[k]])) {
+          same_shape(a[[k]], b[[k]], file, c(path, k))
+          next
+        }
         same(a[[k]], b[[k]], file, c(path, k), tol, coords || k == "coordinates")
       }
     } else {
