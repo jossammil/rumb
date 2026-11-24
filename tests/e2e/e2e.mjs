@@ -1018,6 +1018,9 @@ await check("tables", async () => {
     window.rumb.app.layer().collection.features.filter((f) => Number.isFinite(f.properties.places_diabetes)).length,
   );
   expect(drawn === 870, "PLACES values on " + drawn + " tracts");
+  // The values came from the Parquet copy, read by hyparquet, not the JSON.
+  const fetched = await p.evaluate(() => performance.getEntriesByType("resource").map((e) => e.name).filter((n) => /tracts-places\./.test(n)));
+  expect(fetched.some((n) => n.endsWith(".parquet")) && !fetched.some((n) => n.endsWith(".json")), "tables read: " + fetched.join());
   await p.evaluate((id) => window.rumb.app.selectFeature(id), ids[0]);
   await waitText("#inspect-panel", "95% confidence interval", p);
   await waitText("#inspect-panel", "Model-based", p);

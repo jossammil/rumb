@@ -153,6 +153,7 @@ if (watch) {
     ["@geoda/lisa", "GeoDaLib local Moran statistics"],
     ["jsts", "polygon contiguity"],
     ["@zip.js/zip.js", ".rumb project files"],
+    ["hyparquet", "reads attribute tables stored as Parquet"],
     ["@fontsource-variable/jetbrains-mono", "font, Field Terminal"],
     ["@fontsource-variable/antonio", "font, Starship"],
     ["@fontsource/chakra-petch", "font, Tactical HUD"],

@@ -239,6 +239,8 @@ Rscript scripts/prepare-tables.R
 
 `tables/index.json` records each export's data-file SHA-256, the PLACES file hash, the center files' hashes, and each output's size and hash.
 
+Each table is also written as Parquet (`tracts-acs.parquet`, `tracts-places.parquet`: `GEOID`, then one double column per field, Snappy-compressed). The app reads that copy with [hyparquet](https://github.com/hyparam/hyparquet) 1.32.0 (MIT, pure JavaScript), a 58 KB chunk loaded only when a table is first needed. Values are rounded to the 15 significant digits the JSON carries, so both copies read back to the same numbers; `tests/parquet.test.js` checks every column of Mississippi's and Delaware's tables. The JSON copies stay for builds that read them.
+
 ### Independent fixtures for the map tools
 
 Six R scripts write the fixtures the unit tests compare against. Each uses

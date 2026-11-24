@@ -116,7 +116,12 @@ export function createWorkspace(catalog, { status = () => {}, onDatabase = () =>
     const table = index.tables.find((t) => t.id === id);
     if (!table) throw new Error("This region has no table called " + id + ".");
     if (!tableColumns.has(id)) {
-      const data = await json(table.file);
+      // The Parquet copy when the region has one (hyparquet, a lazy chunk), else JSON.
+      const data = table.parquet
+        ? await import("../data/parquet.js").then(async ({ readTable }) =>
+            readTable(await (await asset(table.parquet)).arrayBuffer()),
+          )
+        : await json(table.file);
       if (!Array.isArray(data.ids) || !data.columns) throw new Error(table.name + " is not a table file.");
       tableColumns.set(id, data);
       merged = null;

@@ -8,7 +8,7 @@
 #   Rscript scripts/prepare-tables.R [--state MS] [--out DIR] [--cache DIR] [--pin]
 # (options in scripts/lib/region.R). Downloads: DP02–DP05 exports for the
 # state's tracts, the national PLACES CSV and the state's center files.
-# R packages: jsonlite, digest, httr2.
+# R packages: jsonlite, digest, httr2, arrow, sf.
 source("scripts/lib/region.R")
 ctx <- region_context()
 spec <- jsonlite::read_json("scripts/tables.json")
@@ -222,9 +222,20 @@ write <- function(x, name) {
   name
 }
 table_file <- function(id, cols) list(version = 1, table = id, ids = I(ids), columns = cols)
+# The same table as Parquet (Snappy, which the app's reader handles without
+# extra codecs): GEOID, then one double column per field. Values are rounded
+# to the 15 significant digits the JSON carries, so both read back to the same
+# numbers.
+write_parquet_table <- function(cols, name) {
+  df <- data.frame(GEOID = ids, lapply(cols, function(x) signif(as.numeric(x), 15)), check.names = FALSE)
+  arrow::write_parquet(df, file.path(stage, name), compression = "snappy")
+  name
+}
 files <- c(
   write(table_file("acs", acs_cols), "tracts-acs.json"),
   write(table_file("places", places_cols), "tracts-places.json"),
+  write_parquet_table(acs_cols, "tracts-acs.parquet"),
+  write_parquet_table(places_cols, "tracts-places.parquet"),
   write(centers(tc$d, ids), "tracts-centers.json"),
   write(centers(cc$d, county_ids), "counties-centers.json")
 )
@@ -234,9 +245,11 @@ index <- list(
   layer = "tracts",
   tables = list(
     list(id = "acs", name = "ACS 2020–2024 profile", group = acs$group, file = "tables/tracts-acs.json",
+         parquet = "tables/tracts-acs.parquet",
          credit = acs$credit, vintage = acs$vintage, confidence = acs$confidence,
          measures = I(acs_measures), fields = acs_fields),
     list(id = "places", name = "CDC PLACES 2025", group = places$group, file = "tables/tracts-places.json",
+         parquet = "tables/tracts-places.parquet",
          credit = places$credit, vintage = places$vintage, modelBased = TRUE, note = places$note,
          url = places$url, methodology = places$methodology, confidence = 95,
          measures = I(places_measures), fields = places_fields)
@@ -257,7 +270,7 @@ index <- list(
                    tracts_without_centers = if (length(new_tracts)) I(new_tracts)))
   ),
   assets = setNames(lapply(files, asset), files),
-  packages = list(jsonlite = as.character(packageVersion("jsonlite")))
+  packages = list(jsonlite = as.character(packageVersion("jsonlite")), arrow = as.character(packageVersion("arrow")))
 )
 invisible(write(index, "index.json"))
 stopifnot(all(file.copy(file.path(stage, c(files, "index.json")), output, overwrite = TRUE)))
