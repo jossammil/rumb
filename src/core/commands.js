@@ -17,6 +17,7 @@ export const COMMANDS = [
   { id: "style", label: "Show map style", group: "Map" },
   { id: "analyze", label: "Show spatial analysis", group: "Map" },
   { id: "find", label: "Find a feature", group: "Map" },
+  { id: "regions", label: "Change state…", group: "Map" },
   { id: "fit", label: "Fit the layer to the map", group: "Map" },
   { id: "zoom-in", label: "Zoom in", group: "Map" },
   { id: "zoom-out", label: "Zoom out", group: "Map" },

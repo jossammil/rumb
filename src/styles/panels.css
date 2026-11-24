@@ -354,9 +354,7 @@
   .brand {
     padding: 0 8px;
   }
-  .brand .tag {
-    display: none;
-  }
+  /* The region tag stays: it is how a phone changes state. */
   .appbar nav button {
     padding: 5px 7px;
     font-size: 0.74rem;
@@ -503,7 +501,16 @@
 }
 @media (max-width: 400px) {
   .appbar nav button {
-    padding: 4px 5px;
+    padding: 4px 4px;
+  }
+  /* Room for the region tag at 320 px. */
+  .brand {
+    gap: 5px;
+    padding: 0 5px;
+  }
+  .brand svg {
+    width: 20px;
+    height: 20px;
   }
   /* The status bar's ⌘K button opens the palette on small phones. */
   .palette-trigger {
@@ -761,4 +768,13 @@
 }
 .stat-table td {
   white-space: nowrap;
+}
+
+/* The state picker: 51 states scroll inside the dialog. */
+#region-results {
+  max-height: min(55vh, 440px);
+  overflow-y: auto;
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
 }

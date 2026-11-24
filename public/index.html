@@ -26,14 +26,17 @@
   </head>
   <body>
     <header class="appbar">
-      <a class="brand" href="./" aria-label="rumb home">
-        <svg width="24" height="24" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-          <circle cx="16" cy="16" r="12.5" />
-          <path d="M16 2v5M16 25v5M2 16h5M25 16h5" />
-          <path d="M9.5 22.5 22.5 9.5M22.5 9.5h-5.5M22.5 9.5V15" />
-        </svg>
-        <span class="wordmark">rumb</span><span class="tag" id="brand-region"></span>
-      </a>
+      <div class="brand">
+        <a class="brand-home" href="./" aria-label="rumb home">
+          <svg width="24" height="24" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <circle cx="16" cy="16" r="12.5" />
+            <path d="M16 2v5M16 25v5M2 16h5M25 16h5" />
+            <path d="M9.5 22.5 22.5 9.5M22.5 9.5h-5.5M22.5 9.5V15" />
+          </svg>
+          <span class="wordmark">rumb</span>
+        </a>
+        <button class="tag" id="brand-region" type="button" title="Change state"></button>
+      </div>
       <nav aria-label="Workspace" id="nav">
         <button data-view="map" class="active"><i data-icon="map"></i>Map<kbd>1</kbd></button
         ><button data-view="compare" aria-label="Compare areas"><i data-icon="chart"></i>Compare<kbd>2</kbd></button

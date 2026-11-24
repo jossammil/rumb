@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { chooseRegion, listed, projectRegion, regionHref, unknownRegion } from "../src/core/regions.js";
+import { matchRegions } from "../src/panels/regions.js";
 
 const index = { default: "ms", regions: [{ id: "ms" }, { id: "de" }, { id: "tx" }] };
 
@@ -28,4 +29,12 @@ test("projects saved without a region are Mississippi's", () => {
   assert.equal(projectRegion({ region: "de" }), "de");
   assert.equal(projectRegion({}), "ms");
   assert.equal(projectRegion({ region: "" }), "ms");
+});
+
+test("the state picker finds states by name or abbreviation, in name order", () => {
+  const regions = [{ id: "ms", name: "Mississippi" }, { id: "mo", name: "Missouri" }, { id: "de", name: "Delaware" }];
+  assert.deepEqual(matchRegions(regions, "").map((r) => r.id), ["de", "ms", "mo"]);
+  assert.deepEqual(matchRegions(regions, "miss").map((r) => r.id), ["ms", "mo"]);
+  assert.deepEqual(matchRegions(regions, "DE").map((r) => r.id), ["de"]);
+  assert.deepEqual(matchRegions(regions, " zz ").map((r) => r.id), []);
 });

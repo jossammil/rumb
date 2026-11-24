@@ -1114,8 +1114,19 @@ await check("share", async () => {
 });
 
 await check("regions", async () => {
-  // ?r= opens another region, and the app remembers it for the next visit.
+  // The state picker (the region tag by the wordmark) reopens the app in
+  // another region, and the app remembers it for the next visit.
   const p = await openPage();
+  await p.click("#brand-region");
+  await p.locator("#region-results [data-region=ms][aria-current=true]").waitFor();
+  await p.fill("#region-term", "dela");
+  expect((await p.locator("#region-results [data-region]").count()) === 1, "one match for dela");
+  await Promise.all([p.waitForURL(/\?r=de/), p.keyboard.press("Enter")]);
+  await ready(p);
+  await waitText("#foot-status", "262 features", p);
+  await p.goto(base + "?r=ms");
+  await ready(p);
+  await waitText("#foot-status", "878 features", p);
   await p.goto(base + "?r=de");
   await ready(p);
   await waitText("#foot-status", "262 features", p);

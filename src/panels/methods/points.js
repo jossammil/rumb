@@ -28,7 +28,7 @@ export function render(app, mount) {
       id: "points-note",
       text:
         app.kindOf(l) === "point"
-          ? "Tests " + l.name + " against random placement inside Mississippi's outline, and draws their centers and spread. Neighbors don't apply."
+          ? "Tests " + l.name + " against random placement inside " + app.catalog.region.name + "'s outline, and draws their centers and spread. Neighbors don't apply."
           : "Make a point layer the focus (Add layer, then click it) for a point pattern.",
     }),
   );

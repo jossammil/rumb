@@ -37,6 +37,7 @@ import { basisOf, methodOf } from "./stats/methods.js";
 import { createCompare } from "./panels/compare.js";
 import { createFiles } from "./panels/files.js";
 import { findFeatures, openFind } from "./panels/find.js";
+import { openRegions } from "./panels/regions.js";
 import { createInspector } from "./panels/inspector.js";
 import { describeLayer, openLibrary, renderLayers } from "./panels/layers.js";
 import { createStyle } from "./panels/style.js";
@@ -83,6 +84,7 @@ async function start() {
   );
   savePref("region", catalog.region.id);
   $("brand-region").textContent = catalog.region.id.toUpperCase();
+  $("brand-region").setAttribute("aria-label", catalog.region.name + ": change state");
   const ws = createWorkspace(catalog, {
     status: (m) => status(m, "loading"),
     onDatabase: (s) => app.statusbar?.database(s),
@@ -857,6 +859,7 @@ function wire(app) {
       if (app.state.view !== "map") app.setView("map");
       openFind(app);
     },
+    regions: () => openRegions(app),
     fit: () => inMap() && $("fit").click(),
     "zoom-in": () => inMap() && app.atlas.map.zoomIn(),
     "zoom-out": () => inMap() && app.atlas.map.zoomOut(),
@@ -1030,6 +1033,7 @@ function wire(app) {
     app.renderAll();
   });
   on("find-feature", "click", () => openFind(app));
+  on("brand-region", "click", () => openRegions(app));
   on("file-picker", "change", (event) => {
     const files = [...event.target.files];
     event.target.value = "";

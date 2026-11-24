@@ -58,7 +58,7 @@ export async function openDensity(app) {
       h("h2", { text: "Density surface" }),
       h("p", {
         class: "subtle",
-        text: "A quartic kernel spreads each point (or its weight) over a circle of the bandwidth, and the surface sums them per square mile, inside Mississippi's outline.",
+        text: "A quartic kernel spreads each point (or its weight) over a circle of the bandwidth, and the surface sums them per square mile, inside " + app.catalog.region.name + "'s outline.",
       }),
       h("label", { for: "density-source", text: "Points" }),
       source,
