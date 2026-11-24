@@ -49,9 +49,9 @@ tract_filter <- function(ctx) paste0("040XX00US", ctx$fips, "$1400000")
 
 # Downloads may take minutes (CDC's 75 MB PLACES export is slow). R's default
 # 60-second timeout cut it short in CI, and a timeout is only a warning, so
-# fetch() turns every warning into a failed attempt.
+# fetch_url() turns every warning into a failed attempt. (Not "fetch": prepare-layers.R defines its own.)
 options(timeout = max(1800, getOption("timeout")))
-fetch <- function(url, dest) {
+fetch_url <- function(url, dest) {
   unlink(dest)
   tryCatch(download.file(url, dest, mode = "wb", quiet = TRUE) == 0 && file.size(dest) > 0,
            warning = function(w) FALSE, error = function(e) FALSE)
@@ -63,7 +63,7 @@ cached <- function(ctx, url, name = basename(url), national = FALSE) {
   if (!file.exists(dest)) {
     part <- paste0(dest, ".part")
     for (attempt in 1:3) {
-      ok <- fetch(url, part)
+      ok <- fetch_url(url, part)
       if (ok) break
       Sys.sleep(5 * attempt)
     }
@@ -100,7 +100,7 @@ census_export <- function(ctx, table) {
       }
       stopifnot(!is.null(url))
       part <- paste0(dest, ".part")
-      if (!fetch(url, part)) stop("the download of the finished export failed")
+      if (!fetch_url(url, part)) stop("the download of the finished export failed")
       file.rename(part, dest)
     }, error = function(e) {
       message("Census export of ", table, " for ", ctx$name, " failed (", conditionMessage(e), "); retrying");
