@@ -747,6 +747,7 @@ async function start() {
   window.addEventListener("hashchange", () => /^#state=/.test(location.hash) && share().then((s) => s.fromAddress()));
   app.loadShare = share;
   const offline = createOffline({
+    region: catalog.region.id,
     status,
     notify: app.notify,
     onState: (state) =>

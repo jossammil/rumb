@@ -1538,6 +1538,37 @@ await check("offline", async () => {
 });
 
 // ---- across all checks --------------------------------------------------------
+await check("offline-region", async () => {
+  // "Download for offline" in Delaware keeps Delaware's data, in its own cache.
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 850 }, serviceWorkers: "allow" });
+  const p = await ctx.newPage();
+  p.setDefaultTimeout(60000);
+  p.on("pageerror", (e) => errors.push(e.message));
+  await p.goto(base + "?r=de");
+  await ready(p);
+  const controlled = await p
+    .waitForFunction(() => navigator.serviceWorker?.controller, null, { timeout: 20000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!controlled) {
+    await ctx.close();
+    return "skip";
+  }
+  await p.evaluate(() => window.rumb.runCommand("offline"));
+  await waitText("#sb-net", "offline ready", p);
+  const names = await p.evaluate(async () => (await caches.keys()).filter((k) => k.startsWith("rumb-data-")));
+  expect(names.some((k) => k.startsWith("rumb-data-de-")) && names.some((k) => k.startsWith("rumb-data-shared-")), JSON.stringify(names));
+  const msTables = await p.evaluate(async () => !!(await caches.match(new URL("data/ms/tables/tracts-acs.json", document.baseURI).href)));
+  expect(!msTables, "Mississippi's tables were not downloaded for Delaware");
+  await ctx.setOffline(true);
+  await p.reload();
+  await ready(p);
+  await waitText("#foot-status", "262 features", p);
+  await p.click("#analyze");
+  await waitText("#inspect-panel", "Moran", p);
+  await ctx.close();
+});
+
 await check("same-origin", async () => {
   expect(external.size === 0, `requests to ${[...external].join(", ")}`);
 });

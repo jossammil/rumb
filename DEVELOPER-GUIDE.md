@@ -459,11 +459,21 @@ The build fills in `public/sw.js` and writes `dist/offline.json`.
 | Cache | Holds | Filled |
 | --- | --- | --- |
 | `rumb-shell-<version>` | Page, scripts, CSS, fonts, icons | At install; version is a hash of the shell |
-| `rumb-data-<data version>` | Region catalog, display geography, backdrop; then any data file | Some at install, the rest on first use |
+| `rumb-data-<id>-<hash>` | One region's `data/<id>/` files; the hash covers only that region, so rebuilding one state leaves the others cached | The default region's catalog, display geography and backdrop at install; the rest on first use |
+| `rumb-data-shared-<hash>` | `data/index.json` and `data/shared/` (the world outline every region uses) | The index at install |
 | `rumb-vendor-v1` | `vendor/duckdb-<v>/`, `vendor/geoda-lisa-<v>/` | On first use |
+| `rumb-pending` | A project opened in another region, while the app reopens there | By the restore, then emptied |
 
-**Download for offline** (palette or command) fetches every file in
-`offline.json` through the worker and asks for persistent storage. Range and
+`offline.json` lists `vendor`, `shared` and `regions: { <id>: [...] }` files.
+**Download for offline** (palette or command) fetches the vendor files, the
+shared data and the open region's data through the worker and asks for
+persistent storage. A new worker deletes data caches it does not name,
+including the single `rumb-data-<hash>` cache of builds before regions.
+
+`RUMB_REGIONS=.cache/data npm run build` adds every state built by
+`scripts/build-regions.mjs` to `dist/data/` and to the index, after the
+committed regions (Mississippi and Delaware), in name order. With all 51,
+`dist` is about 544 MB. Range and
 HEAD requests are answered from cached files. A new version installs itself
 and the page offers **Reload**. The dev server (`npm run dev`) unregisters the
 worker. There is no cross-origin isolation (COOP/COEP); single-threaded DuckDB

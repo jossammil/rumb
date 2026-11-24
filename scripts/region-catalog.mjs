@@ -102,7 +102,7 @@ export function regionCatalog(region, dir, { template, backdrop }) {
       outline: "outline.geojson",
       backdrop: {
         context: "context.geojson",
-        world: "world-land.geojson",
+        world: "../shared/world-land.geojson",
         roads: "roads.geojson",
         extent: backdrop.extent,
         labels: backdrop.labels,

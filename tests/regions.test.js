@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { chooseRegion, listed, projectRegion, regionHref, unknownRegion } from "../src/core/regions.js";
 import { matchRegions } from "../src/panels/regions.js";
+import { offlineFiles } from "../src/data/offline.js";
 
 const index = { default: "ms", regions: [{ id: "ms" }, { id: "de" }, { id: "tx" }] };
 
@@ -37,4 +38,11 @@ test("the state picker finds states by name or abbreviation, in name order", () 
   assert.deepEqual(matchRegions(regions, "miss").map((r) => r.id), ["ms", "mo"]);
   assert.deepEqual(matchRegions(regions, "DE").map((r) => r.id), ["de"]);
   assert.deepEqual(matchRegions(regions, " zz ").map((r) => r.id), []);
+});
+
+test("offline downloads cover the vendor files, shared data and the open region", () => {
+  const list = { vendor: ["vendor/a"], shared: ["data/index.json"], regions: { ms: ["data/ms/x"], de: ["data/de/y"] }, files: ["old"] };
+  assert.deepEqual(offlineFiles(list, "de"), ["vendor/a", "data/index.json", "data/de/y"]);
+  assert.deepEqual(offlineFiles(list, "tx"), ["vendor/a", "data/index.json"]);
+  assert.deepEqual(offlineFiles({ files: ["old"] }, "ms"), ["old"]);
 });

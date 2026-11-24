@@ -3,10 +3,19 @@
 // file in offline.json through the worker so it is cached.
 
 /**
- * createOffline({ status, notify, onState(state) }) where state is
- * "unsupported", "online", "partial" (some files cached) or "ready".
+ * The files "Download for offline" fetches for region `id`: the vendor
+ * runtimes, the shared data and that region's data. Older offline lists had
+ * only `files`.
  */
-export function createOffline({ status, notify, onState }) {
+export const offlineFiles = (list, id) =>
+  list.regions ? [...list.vendor, ...list.shared, ...(list.regions[id] || [])] : list.files;
+
+/**
+ * createOffline({ status, notify, onState(state), region }) where state is
+ * "unsupported", "online", "partial" (some files cached) or "ready", and
+ * `region` is the open region's id.
+ */
+export function createOffline({ status, notify, onState, region }) {
   const supported = "serviceWorker" in navigator && "caches" in self;
   const url = (file) => new URL(file, document.baseURI).href;
 
@@ -20,7 +29,7 @@ export function createOffline({ status, notify, onState }) {
   async function check() {
     if (!supported) return onState("unsupported");
     try {
-      const { files } = await manifest();
+      const files = offlineFiles(await manifest(), region);
       let cached = 0;
       for (const file of files) if (await caches.match(url(file), { ignoreSearch: true })) cached++;
       onState(cached === files.length ? "ready" : cached ? "partial" : "online");
@@ -50,7 +59,7 @@ export function createOffline({ status, notify, onState }) {
   async function download() {
     if (!supported) throw new Error("This browser cannot keep rumb for offline use.");
     await controlled();
-    const { files } = await manifest();
+    const files = offlineFiles(await manifest(), region);
     let done = 0;
     for (const file of files) {
       status("Caching for offline… " + ++done + " of " + files.length, "loading");

@@ -34,7 +34,7 @@ export function checkRegion(dir) {
   const region = catalog.region;
   for (const name of [...Object.values(ref.files), ref.tables, catalog.library, region.outline,
     region.backdrop?.context, region.backdrop?.world, region.backdrop?.roads, ref.compare?.reference].filter(Boolean))
-    exists(name);
+    if (!name.startsWith("../shared/")) exists(name); // data/shared/ is checked with the index
 
   // The reference tracts and their neighbors.
   const display = read(ref.files.display);

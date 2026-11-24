@@ -75,6 +75,8 @@ async function build(region) {
       ? template
       : regionCatalog(region, out, { template, backdrop: JSON.parse(fs.readFileSync(path.join(buildDir, "backdrop.json"), "utf8")) });
   fs.writeFileSync(path.join(out, "catalog.json"), JSON.stringify(catalog, null, 1) + "\n");
+  // Every region shares public/data/shared/world-land.geojson.
+  fs.rmSync(path.join(out, "world-land.geojson"), { force: true });
   const { problems, notes } = checkRegion(out);
   if (problems.length) throw new Error(region.name + " failed its checks:\n  " + problems.join("\n  "));
   return { region, seconds: (Date.now() - started) / 1000, notes };
