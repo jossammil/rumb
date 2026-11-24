@@ -489,7 +489,7 @@ including the single `rumb-data-<hash>` cache of builds before regions.
 `RUMB_REGIONS=.cache/data npm run build` adds every state built by
 `scripts/build-regions.mjs` to `dist/data/` and to the index, after the
 committed regions (Mississippi and Delaware), in name order. With all 51,
-`dist` is about 544 MB. Range and
+`dist` is 503 MB on the published site (544 MB from a local macOS build). Range and
 HEAD requests are answered from cached files. A new version installs itself
 and the page offers **Reload**. The dev server (`npm run dev`) unregisters the
 worker. There is no cross-origin isolation (COOP/COEP); single-threaded DuckDB
@@ -662,12 +662,26 @@ Build constants: `__RUMB_VERSION__`, `__RUMB_DEV__`, `__DUCKDB_FOLDER__`,
 | Job | What it does |
 | --- | --- |
 | `data` (6 shards) | Builds the 49 states that are not committed with the R pipeline (`renv.lock` pins the R packages), in shards balanced by tract count (`scripts/shards.mjs`), and checks each one. Downloads must match `scripts/sources/`. Downloads and each shard's output are cached, so a deploy without data or script changes rebuilds nothing. |
-| `verify` | Rebuilds Mississippi and Delaware and compares them with `public/data/` (`scripts/compare-region.R`). |
+| `verify` | Rebuilds Mississippi and Delaware and compares them with `public/data/` (`scripts/compare-region.R --geometry 2e-4`). Values, ids, neighbors, tables and the analytical GeoParquet must match exactly; display geometry may differ by Linux's GDAL and GEOS rounding (see REPRODUCIBILITY.md). |
 | `build` | `npm ci`, `npm test`, then `RUMB_REGIONS=.cache/data npm run build` with every shard's states, and `scripts/check-size.mjs` (under 900 MB, no file over 100 MB). |
 | `deploy` | Publishes `dist/` to <https://jossammil.github.io/rumb/>. |
 
-A cold run (no caches) takes roughly 45–60 minutes, most of it Census
-downloads; a warm one a few minutes. All paths are relative, so the same build
+A run that rebuilds every state (any change under `scripts/`, `renv.lock`
+or the pins) takes about 40 minutes, most of it Census exports; the first
+successful one was run 45358371426 on November 24, 2026. A run with no data
+or script changes reuses every shard's cache and takes a few minutes.
+
+**When the data jobs fail**, read `gh run view <id> --log-failed` and the
+uploaded `data-logs-<n>`, `verify-logs` and `verify-rebuild` artifacts.
+Before pushing a change to the pipeline, build one state from an empty
+download cache (`RUMB_SOURCE_CACHE=$(mktemp -d) node scripts/build-regions.mjs de --out-root $(mktemp -d)`):
+with everything cached, download code never runs. Four of the first five
+deploys after phase 3 failed on things only a cold CI run exposes:
+- CDC regenerates the PLACES CSV on each download (handled with
+  `places.equivalent` in `scripts/tables.json`);
+- its 75 MB export outlasted R's 60-second download timeout;
+- `prepare-layers.R`'s own `fetch()` shadowed a shared helper;
+- Linux rounds display geometry differently from macOS. All paths are relative, so the same build
 works under any subpath. The repository was renamed from `bgis` in November
 2026; GitHub redirects the old repository URL but not the old Pages address
 (`/bgis/` no longer serves).
