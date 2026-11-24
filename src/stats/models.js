@@ -7,7 +7,7 @@
 import { countModel } from "./glm.js";
 import { randomGenerator, shuffle } from "./random.js";
 import { lag, ols, standardize } from "./regression.js";
-import { spatialModel, weightEigenvalues } from "./spatial-models.js";
+import { spatialModel, weightSpectrum } from "./spatial-models.js";
 import { prepareUniverse } from "./stats.js";
 
 export const MODEL_TYPES = {
@@ -105,7 +105,7 @@ export function fitModel(input) {
       ? olsFit
       : {
           ...olsFit,
-          ...spatialModel(type, X, y, W, weightEigenvalues(rows, w), { names: ["(Intercept)", ...names], olsLogLik: olsFit.logLik }),
+          ...spatialModel(type, X, y, W, weightSpectrum(rows, w), { names: ["(Intercept)", ...names], olsLogLik: olsFit.logLik }),
           olsAic: olsFit.aic,
         };
   ids.forEach((id, i) => {
@@ -135,7 +135,9 @@ export function fitModel(input) {
       " with an intercept" +
       (type === "ols"
         ? "; standard errors from σ²(XᵀX)⁻¹"
-        : "; log|I − ρW| from the eigenvalues of W; asymptotic standard errors from the information matrix") +
+        : fit.logDetMethod === "chebyshev"
+          ? "; log|I − ρW| by the Chebyshev approximation of order 7 (Pace & LeSage 2004), with exact traces; standard errors from a numerical Hessian; impacts from power-series traces"
+          : "; log|I − ρW| from the eigenvalues of W; asymptotic standard errors from the information matrix") +
       "; OLS residual Moran's I with its exact moments and Lagrange multiplier tests over row-standardized " +
       weights.label +
       ".",
