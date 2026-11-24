@@ -402,11 +402,27 @@ never changes type: a point layer switches between `-point` (circles) and
 `normalizeState()` brings older projects up to date. Their single active
 layer becomes the stack.
 
-Nothing about Mississippi is in `src/`. To **add a state**, make
-`public/data/<st>/` with the same files and a catalog, and add it to
-`index.json`. `tests/core.test.js` checks the catalog against its files; copy
-that test for the new region. National data (all states) is planned as one
-folder per state, loaded on demand.
+Nothing about Mississippi is in `src/`. **Regions.** Two are committed:
+Mississippi (the default, with the MARIS library) and Delaware (the small
+fixture the pipeline builds). The other 49 are built in CI by
+`scripts/build-regions.mjs` and merged into `dist/data/` and the index
+(`RUMB_REGIONS`). `tests/core.test.js` runs `scripts/check-region.mjs` on
+every committed region.
+
+- **Which region opens** (`src/core/regions.js`): `?r=<id>`, then the
+  region used last on the device (`rumb.region` in localStorage), then
+  `index.default`.
+- **Changing region reloads the page.** The catalog, projection and
+  workspace are fixed when the app starts. The state picker
+  (`src/panels/regions.js`, the region tag or **Change state…**), share
+  links for another region, and projects from another region all go through
+  `app.openRegion()`. A project waits in the `rumb-pending` cache across the
+  reload (`?restore=1`).
+- **Index entries** carry `id`, `name`, `path`, `tracts` and `bounds`, so
+  the picker reads nothing else.
+- **To add or refresh a state:** `node scripts/build-regions.mjs <id> --pin`,
+  review `scripts/sources/<id>.json`, and commit the pins. CI builds it on
+  the next deploy.
 
 ## 7. The design system and themes
 
@@ -641,9 +657,17 @@ Build constants: `__RUMB_VERSION__`, `__RUMB_DEV__`, `__DUCKDB_FOLDER__`,
 
 ## 15. Publishing on GitHub Pages
 
-`.github/workflows/pages.yml` runs on every push to `main`: `npm ci`,
-`npm test`, `npm run build`, then deploys `dist/` to
-<https://jossammil.github.io/rumb/>. All paths are relative, so the same build
+`.github/workflows/pages.yml` runs on every push to `main`:
+
+| Job | What it does |
+| --- | --- |
+| `data` (6 shards) | Builds the 49 states that are not committed with the R pipeline (`renv.lock` pins the R packages), in shards balanced by tract count (`scripts/shards.mjs`), and checks each one. Downloads must match `scripts/sources/`. Downloads and each shard's output are cached, so a deploy without data or script changes rebuilds nothing. |
+| `verify` | Rebuilds Mississippi and Delaware and compares them with `public/data/` (`scripts/compare-region.R`). |
+| `build` | `npm ci`, `npm test`, then `RUMB_REGIONS=.cache/data npm run build` with every shard's states, and `scripts/check-size.mjs` (under 900 MB, no file over 100 MB). |
+| `deploy` | Publishes `dist/` to <https://jossammil.github.io/rumb/>. |
+
+A cold run (no caches) takes roughly 45–60 minutes, most of it Census
+downloads; a warm one a few minutes. All paths are relative, so the same build
 works under any subpath. The repository was renamed from `bgis` in November
 2026; GitHub redirects the old repository URL but not the old Pages address
 (`/bgis/` no longer serves).
