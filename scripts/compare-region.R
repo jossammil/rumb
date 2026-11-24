@@ -7,8 +7,9 @@
 #     package versions and output checksums are reported, not compared;
 #   - reference.json statistics must agree to 1e-12;
 #   - coordinates must agree to --geometry degrees (default exact), because
-#     simplification may differ in the last digits across GDAL or mapshaper
-#     versions;
+#     simplification may differ in the last digits across GDAL, GEOS or
+#     mapshaper versions (CI on Linux rounds some road vertices 1e-4° apart
+#     from macOS; it compares with --geometry 2e-4, about 20 m);
 #   - tracts.parquet columns must be equal and its geometries equal to the same
 #     tolerance;
 #   - the layer library (layers/*.geojson, *.neighbors.json, library.json) is
@@ -30,13 +31,18 @@ files <- c(files, file.path("layers", layers))
 ignored <- c("packages", "assets")
 problems <- character()
 notes <- character()
+# Each file lists its first five problems and a count, so one file's many
+# small differences cannot hide another's.
+counts <- list()
 report <- function(file, path, what) {
-  problems <<- c(problems, sprintf("%s %s: %s", file, if (length(path)) paste(path, collapse = "/") else "(top)", what))
+  counts[[file]] <<- (counts[[file]] %||% 0) + 1
+  if (counts[[file]] <= 5)
+    problems <<- c(problems, sprintf("%s %s: %s", file, if (length(path)) paste(path, collapse = "/") else "(top)", what))
 }
 
 # Walks two parsed JSON values side by side. `tol` applies to numbers.
 same <- function(a, b, file, path = character(), tol = 0, coords = FALSE) {
-  if (length(problems) > 40) return(invisible())
+  if ((counts[[file]] %||% 0) > 200) return(invisible())
   if (is.list(a) || is.list(b)) {
     if (!is.list(a) || !is.list(b)) return(report(file, path, "one side is a list"))
     if (!is.null(names(a)) || !is.null(names(b))) {
@@ -97,6 +103,7 @@ if (file.exists(a) && file.exists(b)) {
 if (length(notes)) message(paste("note:", notes, collapse = "\n"))
 if (length(problems)) {
   message(paste(problems, collapse = "\n"))
+  message(paste0(names(counts), ": ", unlist(counts), " problem(s)", collapse = "\n"))
   quit(status = 1)
 }
 message(built, " matches ", committed)
