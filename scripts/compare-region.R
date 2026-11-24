@@ -83,7 +83,8 @@ same <- function(a, b, file, path = character(), tol = 0, coords = FALSE) {
           same_shape(a[[k]], b[[k]], file, c(path, k))
           next
         }
-        same(a[[k]], b[[k]], file, c(path, k), tol, coords || k == "coordinates")
+        # Bounding boxes are coordinates too (library.json rounds them to 4 decimals).
+        same(a[[k]], b[[k]], file, c(path, k), tol, coords || k %in% c("coordinates", "bbox"))
       }
     } else {
       if (length(a) != length(b)) return(report(file, path, sprintf("%d against %d items", length(a), length(b))))
