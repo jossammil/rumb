@@ -218,8 +218,8 @@ The spatial query returned one result per tract and counted 39,670 points inside
 ## Limits
 
 - Each state is analysed on its own: weights, scans and models stop at its
-  border. A national map of every tract and county-level statistics for the
-  whole country come in the next phase. Puerto Rico is not included.
+  border. There is no whole-country map yet, and no county-level statistics
+  across state lines. Puerto Rico is not included.
 - Outside Mississippi the GeoParquet for spatial SQL is simplified to about
   10 m, so a point within a few metres of a tract boundary can be counted in
   its neighbor. Mississippi's keeps full TIGER resolution.
