@@ -47,13 +47,23 @@ sha256 <- function(path) digest::digest(path, algo = "sha256", file = TRUE)
 # The data.census.gov geography filter for every tract in the state.
 tract_filter <- function(ctx) paste0("040XX00US", ctx$fips, "$1400000")
 
+# Downloads may take minutes (CDC's 75 MB PLACES export is slow). R's default
+# 60-second timeout cut it short in CI, and a timeout is only a warning, so
+# fetch() turns every warning into a failed attempt.
+options(timeout = max(1800, getOption("timeout")))
+fetch <- function(url, dest) {
+  unlink(dest)
+  tryCatch(download.file(url, dest, mode = "wb", quiet = TRUE) == 0 && file.size(dest) > 0,
+           warning = function(w) FALSE, error = function(e) FALSE)
+}
+
 # A cached download: national files under us/, the state's under its FIPS code.
 cached <- function(ctx, url, name = basename(url), national = FALSE) {
   dest <- file.path(ctx$cache, if (national) "us" else ctx$fips, name)
   if (!file.exists(dest)) {
     part <- paste0(dest, ".part")
     for (attempt in 1:3) {
-      ok <- tryCatch(download.file(url, part, mode = "wb", quiet = TRUE) == 0, error = function(e) FALSE)
+      ok <- fetch(url, part)
       if (ok) break
       Sys.sleep(5 * attempt)
     }
@@ -90,7 +100,7 @@ census_export <- function(ctx, table) {
       }
       stopifnot(!is.null(url))
       part <- paste0(dest, ".part")
-      download.file(url, part, mode = "wb", quiet = TRUE)
+      if (!fetch(url, part)) stop("the download of the finished export failed")
       file.rename(part, dest)
     }, error = function(e) {
       message("Census export of ", table, " for ", ctx$name, " failed (", conditionMessage(e), "); retrying");

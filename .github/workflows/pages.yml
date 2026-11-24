@@ -86,13 +86,22 @@ jobs:
           key: sources-verify-${{ hashFiles('scripts/sources/**', 'scripts/tables.json', 'scripts/layers.json') }}
           restore-keys: sources-verify-
       - run: node scripts/build-regions.mjs ms de --out-root .cache/verify --jobs 2
-      - run: Rscript scripts/compare-region.R public/data/ms .cache/verify/ms
-      - run: Rscript scripts/compare-region.R public/data/de .cache/verify/de
+      # Values, ids, neighbors and tables must match exactly. Coordinates may
+      # differ by 2e-4° (about 20 m): Linux's GDAL and GEOS simplify and round
+      # some display vertices differently from the machine that built them.
+      - run: Rscript scripts/compare-region.R public/data/ms .cache/verify/ms --geometry 2e-4
+      - run: Rscript scripts/compare-region.R public/data/de .cache/verify/de --geometry 2e-4
       - uses: actions/upload-artifact@v7.0.2
         if: failure()
         with:
           name: verify-logs
           path: .cache/build/*/build.log
+      - uses: actions/upload-artifact@v7.0.2
+        if: failure()
+        with:
+          name: verify-rebuild
+          path: .cache/verify
+          retention-days: 7
 
   build:
     needs: [data, verify]
