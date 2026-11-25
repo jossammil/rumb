@@ -64,30 +64,57 @@ const errors = [];
 // and the check that was running when it fired, if that is another one: some
 // errors arrive after their check has finished (WebKit's "Context is stopped").
 let running = "setup";
-// WebKit (on Linux) reports work it refuses for a page it has already left:
+// WebKit (on Linux) reports work it refuses for a page it is leaving:
 // reading a Blob ("Cannot load blob:… due to access control checks") and
 // Cache API calls ("Cache API operation failed: Context is stopped"). The
-// app's handlers cannot see these; they arrive 0.5–0.8 s after a check moves
-// the page on before it has gone idle, and nothing a reader sees depends on
-// them. Only those two errors, in WebKit, within 2 s of the page navigating,
-// are left out; they are counted in the summary.
+// app's handlers cannot see these, and nothing a reader sees depends on
+// them. They come when a check navigates a page, or closes its context,
+// before its startup work (the offline check's cache lookups take seconds on
+// a slow machine) is done, and they can arrive before the next document
+// commits. Only those two errors, in WebKit, within 5 s of the page asking for
+// a new document or once its context is closing, are left out; they are
+// counted in the summary.
 const TEARDOWN = /^(Cache API operation failed: Context is stopped|Cannot load blob:\S+ due to access control checks\.)$/;
-let teardown = 0;
+const TEARDOWN_MS = 5000;
+let teardown = 0,
+  teardownLatest = 0;
 function watchErrors(target) {
   const opener = running;
-  let navigated = 0;
-  target.on("framenavigated", (frame) => {
-    if (frame === target.mainFrame()) navigated = Date.now();
+  let navigated = 0,
+    closing = false;
+  // From the moment the page asks for its next document: on a slow machine
+  // the old one's teardown errors arrive before the new one commits.
+  target.on("request", (request) => {
+    if (request.isNavigationRequest() && request.frame() === target.mainFrame()) navigated = Date.now();
   });
+  // Closing the context leaves the page too; mark it when the close starts.
+  const context = target.context();
+  if (!context.__watched) {
+    context.__watched = new Set();
+    const close = context.close.bind(context);
+    context.close = (...args) => {
+      for (const mark of context.__watched) mark();
+      return close(...args);
+    };
+  }
+  context.__watched.add(() => (closing = true));
   target.on("pageerror", (e) => {
     // Playwright splits WebKit's text at its first colon into name and message;
     // the stack's first line keeps it whole, when there is a stack.
     const text = (e.stack || "").split("\n")[0] || e.name + ": " + e.message;
-    if (which === "webkit" && Date.now() - navigated < 2000 && TEARDOWN.test(text)) return void teardown++;
+    const since = navigated ? Date.now() - navigated : null;
+    if (which === "webkit" && TEARDOWN.test(text) && (closing || (since != null && since < TEARDOWN_MS))) {
+      teardown++;
+      if (!closing) teardownLatest = Math.max(teardownLatest, since);
+      return;
+    }
     const where = (e.stack || "").split("\n").slice(1, 3).join(" ").trim();
-    // The page's address says which step of a check it was on (a region, a restore).
+    // The page's address says which step of a check it was on (a region, a
+    // restore), and the time since it last navigated says whether it came
+    // from a page being left.
     const page = target.url().replace(/^https?:\/\/[^/]+/, "");
-    errors.push(`[${opener}${running !== opener ? " → " + running : ""} · ${page}] ${e.message}${where ? " @ " + where : ""}`);
+    const after = since == null ? "" : ` · ${since} ms after navigating`;
+    errors.push(`[${opener}${running !== opener ? " → " + running : ""} · ${page}${after}] ${text}${where ? " @ " + where : ""}`);
   });
 }
 const external = new Set();
@@ -1804,7 +1831,8 @@ await check("offline-us", async () => {
 await check("same-origin", async () => {
   expect(external.size === 0, `requests to ${[...external].join(", ")}`);
 });
-if (teardown) console.log(`NOTE  ${teardown} WebKit teardown error${teardown > 1 ? "s" : ""} after navigations, not counted`);
+if (teardown)
+  console.log(`NOTE  ${teardown} WebKit teardown error${teardown > 1 ? "s" : ""} from pages being left, not counted (latest ${teardownLatest} ms after a navigation began)`);
 if (errors.length) {
   failed++;
   console.log(`FAIL  page errors (${errors.length}):`);
