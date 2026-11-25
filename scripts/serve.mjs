@@ -1,15 +1,24 @@
 // A small static server for dist/ that behaves like GitHub Pages: the site
 // lives under a subpath (RUMB_BASE, default /rumb/), no special headers are
-// sent, and byte ranges are honored (DuckDB and the service worker read
-// parquet files in ranges).
+// sent, byte ranges are honored (the Parquet reader, PMTiles and the service
+// worker read files in ranges), and whole files are gzipped for clients that
+// accept it, so a HEAD request's Content-Length is the compressed size.
 //   RUMB_BASE=/rumb/ RUMB_PORT=4180 node scripts/serve.mjs
 import http from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { gzipSync } from "node:zlib";
 
 const root = path.resolve(process.env.RUMB_ROOT || "dist");
 const port = Number(process.env.RUMB_PORT || 4180);
 const base = (process.env.RUMB_BASE || "/rumb/").replace(/\/?$/, "/");
+// Gzipped files, by path and modification time.
+const gzipped = new Map();
+async function gzip(file, content) {
+  const key = file + ":" + (await stat(file)).mtimeMs;
+  if (!gzipped.has(key)) gzipped.set(key, gzipSync(content));
+  return gzipped.get(key);
+}
 const types = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript",
@@ -68,9 +77,11 @@ http
         );
         return;
       }
-      headers["Content-Length"] = String(content.length);
+      const body = /\bgzip\b/.test(request.headers["accept-encoding"] || "") ? await gzip(file, content) : content;
+      if (body !== content) headers["Content-Encoding"] = "gzip";
+      headers["Content-Length"] = String(body.length);
       response.writeHead(200, headers);
-      response.end(request.method === "HEAD" ? undefined : content);
+      response.end(request.method === "HEAD" ? undefined : body);
     } catch {
       response.writeHead(404).end("Not found");
     }
