@@ -680,7 +680,9 @@ Build constants: `__RUMB_VERSION__`, `__RUMB_DEV__`, `__DUCKDB_FOLDER__`,
 - `npm run e2e` runs `tests/e2e/e2e.mjs` against `dist/`, served under `/rumb/`
   with no special headers. It prints PASS, FAIL or SKIP for each check.
   - Switches: `BROWSER=webkit`, `SHOTS=dir` (screenshots; always on failure),
-    `ONLY=clusters,keys`, `HEADED=1`, `RUMB_BASE=/other/` (another subpath).
+    `ONLY=clusters,keys`, `HEADED=1`, `RUMB_BASE=/other/` (another subpath),
+    `STRICT=1` (a check that skips, or a name in `ONLY` that no check has,
+    fails).
   - What it checks:
     - **startup:** the map before any analytics, roads or library layers load;
     - **statistics:** queen and rook global I; distance weights; hot spots;
@@ -704,7 +706,7 @@ Build constants: `__RUMB_VERSION__`, `__RUMB_DEV__`, `__DUCKDB_FOLDER__`,
       merged `us` (`RUMB_REGIONS`), the counties (`us-counties`), the tract
       map and Open <state> (`us-tracts`), and its offline download
       (`offline-us`). CI's test workflow builds only the committed regions,
-      so it skips the last three.
+      so it skips the last three; Publish's `national` job runs them.
   - Wait for the condition the next step needs, not for time. For example, a
     model check waits for its note to count the covariates before it runs
     (ticks wait for their table to load), and the tiles check waits until
@@ -729,7 +731,8 @@ Build constants: `__RUMB_VERSION__`, `__RUMB_DEV__`, `__DUCKDB_FOLDER__`,
 | `verify` | Rebuilds Mississippi and Delaware and compares them with `public/data/` (`scripts/compare-region.R --geometry 2e-4`). Values, ids, neighbors, tables and the analytical GeoParquet must match exactly; display geometry may differ by Linux's GDAL and GEOS rounding (see REPRODUCIBILITY.md). |
 | `tiles` | Builds tippecanoe 2.79.0 from its source tarball (SHA-256 pinned, cached by version), then the national tract tiles and values from the shards' states and the committed Mississippi and Delaware (`scripts/build-tiles.mjs`). Uploads only `us/tiles/`. |
 | `build` | `npm ci`, `npm test`, `scripts/check-tiles.mjs` on Delaware's and the national tiles, then `RUMB_REGIONS=.cache/data npm run build` with every shard's states and the tiles, and `scripts/check-size.mjs` (under 900 MB, no file over 100 MB). |
-| `deploy` | Publishes `dist/` to <https://jossammil.github.io/rumb/>. |
+| `national` | Unpacks the Pages artifact `build` made and runs `us-counties`, `us-tracts` and `offline-us` on it in Chromium and WebKit, with `STRICT=1`. A failure in either browser stops the deploy. |
+| `deploy` | Publishes `dist/` to <https://jossammil.github.io/rumb/>, only from `main`. Running **Publish rumb** by hand on another branch runs every other job, including `national`, and deploys nothing. |
 
 A run that rebuilds every state (any change under `scripts/`, `renv.lock`
 or the pins) takes about 40 minutes when it must download the Census
