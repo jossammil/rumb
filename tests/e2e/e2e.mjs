@@ -5,6 +5,7 @@
 //   BROWSER=webkit npm run e2e       WebKit (Safari's engine); needs `npx playwright install webkit`
 //   SHOTS=/some/dir npm run e2e      also save screenshots (always on failure)
 //   ONLY=clusters,join npm run e2e   run some checks (boot always runs)
+//   STRICT=1 npm run e2e             a check that skips fails instead (for data that must be there)
 //   HEADED=1 npm run e2e             watch it in a browser window
 //   RUMB_BASE=/rumb/ npm run e2e     serve under another subpath
 import { chromium, webkit } from "playwright";
@@ -24,6 +25,7 @@ import {
 const which = process.env.BROWSER || "chromium";
 const shots = process.env.SHOTS;
 const only = process.env.ONLY ? new Set(process.env.ONLY.split(",")) : null;
+const strict = process.env.STRICT === "1";
 const basePath = (process.env.RUMB_BASE || "/rumb/").replace(/\/?$/, "/");
 const port = 4500 + Math.floor(Math.random() * 400);
 const base = `http://127.0.0.1:${port}${basePath}`;
@@ -157,12 +159,19 @@ const ready = (p) =>
 let passed = 0,
   failed = 0,
   skipped = 0;
+const ran = new Set();
 async function check(name, fn) {
   if (only && !only.has(name) && name !== "boot") return;
+  ran.add(name);
   running = name;
   const started = Date.now();
   try {
     const result = await fn();
+    if (result === "skip" && strict) {
+      failed++;
+      console.log(`FAIL  ${name}: skipped, and STRICT=1 does not allow that`);
+      return;
+    }
     if (result === "skip") {
       skipped++;
       console.log(`SKIP  ${name}`);
@@ -1841,6 +1850,12 @@ await check("same-origin", async () => {
 });
 if (teardown)
   console.log(`NOTE  ${teardown} WebKit teardown error${teardown > 1 ? "s" : ""} from pages being left, not counted (latest ${teardownLatest} ms after a navigation began)`);
+// Under STRICT=1, a name in ONLY that no check has (a typo, a rename) fails too.
+for (const name of strict && only ? only : [])
+  if (!ran.has(name)) {
+    failed++;
+    console.log(`FAIL  ${name}: no check has this name`);
+  }
 if (errors.length) {
   failed++;
   console.log(`FAIL  page errors (${errors.length}):`);
