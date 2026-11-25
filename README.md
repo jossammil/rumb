@@ -32,6 +32,12 @@ navigator's course of constant bearing. It was called Field Atlas (repository
   its counties. The 32 MARIS layers are Mississippi's only. Share links and
   projects remember their state and reopen it; **Download for offline** keeps
   the open state.
+- **The whole country.** **United States (counties)** holds all 3,144
+  counties, with neighbors across state lines, and every statistic runs on
+  them. Its library adds **All U.S. tracts**: the 84,415 tracts of every
+  state, drawn from map tiles from zoom 5. They can be styled, classified
+  and clicked, and a tract's **Open <state>** opens its state at the same
+  place.
 - **Layers.** Stack several layers, reorder, hide and remove them.
   - **Add layer** (**N**) opens the library: 33 public layers for Mississippi.
     These include fire stations, schools, hospitals and pharmacies, districts,
@@ -201,6 +207,12 @@ To rebuild the data or check a result against R, see the [reproducibility guide]
   holds.
 - Statistics run in a worker that stays alive between runs, so the page keeps
   drawing while 9,999 permutations run.
+- Distance searches (nearest neighbors, bands, scans, access, density) look
+  only at nearby points through a grid index, with the same results as
+  comparing every pair.
+- The national tract map reads its tiles from one 37 MB file, and a field's
+  values from a 20 MB file, a column at a time, by range requests. Coloring
+  all 84,415 tracts takes about 150 ms.
 - DuckDB reads local files through browser file handles, so it reads only the
   parts of a large file a query needs.
 
