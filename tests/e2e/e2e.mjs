@@ -1721,6 +1721,50 @@ await check("offline-region", async () => {
   await ctx.close();
 });
 
+await check("offline-us", async () => {
+  // The national map is large: "Download for offline" says its size first,
+  // then keeps it, and its tiles are read offline as ranges of the cached file.
+  if (!existsSync("dist/data/us/tiles/tiles.json")) return "skip";
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 850 }, serviceWorkers: "allow" });
+  const p = await ctx.newPage();
+  p.setDefaultTimeout(120000);
+  p.on("pageerror", (e) => errors.push(e.message));
+  await p.goto(base + "?r=us");
+  await ready(p);
+  const controlled = await p
+    .waitForFunction(() => navigator.serviceWorker?.controller, null, { timeout: 20000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!controlled) {
+    await ctx.close();
+    return "skip";
+  }
+  const list = JSON.parse(await readFile("dist/offline.json", "utf8"));
+  const mb = Math.round((list.bytes.base + list.bytes.us) / 1048576);
+  await p.evaluate(() => window.rumb.runCommand("offline"));
+  await waitText("#toast", `downloads ${mb} MB`, p);
+  const tiles = () => p.evaluate(async () => !!(await caches.match(new URL("data/us/tiles/tracts.pmtiles", document.baseURI).href)));
+  expect(!(await tiles()), "the tiles are not downloaded before the yes");
+  await p.click("#toast .toast-action");
+  await waitText("#sb-net", "offline ready", p);
+  expect(await tiles(), "the tiles are cached");
+  await ctx.setOffline(true);
+  await p.reload();
+  await ready(p);
+  await p.evaluate(() => window.rumb.map.jumpTo({ center: [-90.2, 38.63], zoom: 9 }));
+  await p.evaluate(() => window.rumb.app.addLibraryLayer("tracts_tiles"));
+  await p.evaluate(() => window.rumb.app.setMeasure("places_diabetes"));
+  await p.waitForFunction(() => {
+    const m = window.rumb.map;
+    return (
+      m.getFeatureState({ source: "lyr-tracts_tiles", sourceLayer: "tracts", id: "29510125500" }).color &&
+      m.areTilesLoaded() &&
+      m.queryRenderedFeatures({ layers: ["lyr-tracts_tiles-fill"] }).length > 100
+    );
+  });
+  await ctx.close();
+});
+
 await check("same-origin", async () => {
   expect(external.size === 0, `requests to ${[...external].join(", ")}`);
 });

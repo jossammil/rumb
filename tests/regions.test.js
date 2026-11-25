@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { cameraFromSearch, cameraParam, chooseRegion, listed, projectRegion, regionHref, stateOf, unknownRegion } from "../src/core/regions.js";
 import { matchRegions } from "../src/panels/regions.js";
 import { commandAllowed, layerScope, SCOPED_COMMANDS } from "../src/core/scope.js";
-import { offlineFiles } from "../src/data/offline.js";
+import { offlineAsks, offlineBytes, offlineFiles } from "../src/data/offline.js";
 
 const index = { default: "ms", regions: [{ id: "ms" }, { id: "de" }, { id: "tx" }] };
 
@@ -72,4 +72,14 @@ test("a tile layer is for viewing: the commands that need its shapes are off", (
   }
   // Styling, the library and the region picker stay.
   for (const id of ["style", "add-layer", "regions", "fit", "view-map"]) assert.equal(commandAllowed(id, tiled), true, id);
+});
+
+test("offline downloads know their size, so a large region can ask first", () => {
+  const list = { vendor: [], shared: [], regions: { us: [] }, bytes: { base: 61e6, us: 87e6, de: 2e6 } };
+  assert.equal(offlineBytes(list, "us"), 148e6);
+  // The region's own data decides, not the runtimes every region shares.
+  assert.equal(offlineAsks(list, "us"), true);
+  assert.equal(offlineAsks(list, "de"), false);
+  assert.equal(offlineAsks({ files: [] }, "us"), false);
+  assert.equal(offlineBytes({ files: [] }, "us"), null);
 });

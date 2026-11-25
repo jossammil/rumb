@@ -229,6 +229,15 @@ if (watch) {
   const predata = ["data/index.json", base + "catalog.json", base + catalog.layers[0].files.display];
   if (catalog.region.backdrop?.context) predata.push(base + catalog.region.backdrop.context);
   const { shared, ...regions } = groups;
+  // What "Download for offline" fetches, in bytes: the vendor runtimes and
+  // shared data, and each region's data (the app asks before a large one).
+  const sizeOf = async (list) => {
+    let n = 0;
+    for (const f of list) n += (await stat(path.join("dist", f))).size;
+    return n;
+  };
+  const bytes = { base: await sizeOf([...vendorFiles, ...shared]) };
+  for (const [id, list] of Object.entries(regions)) bytes[id] = await sizeOf(list);
   await writeFile(
     "dist/offline.json",
     JSON.stringify(
@@ -238,6 +247,7 @@ if (watch) {
         vendor: vendorFiles,
         shared,
         regions,
+        bytes,
         // Builds before regions were cached separately read `files`.
         files: [...vendorFiles, ...shared, ...(regions[index.default] || [])],
       },
