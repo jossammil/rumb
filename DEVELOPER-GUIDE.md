@@ -73,7 +73,9 @@ only when the reader first needs them:
 - the **layer library** (`data/ms/layers/library.json`, 33 add-on layers) and
   each library layer's file;
 - the roads, which wait for the first map;
-- DuckDB (about 59 MB) and the statistics code.
+- DuckDB (about 59 MB) and the statistics code;
+- for a tile layer (the national tract map), the PMTiles reader, its tiles
+  and its values, read by range requests (section 6).
 
 The map draws a **stack** of layers, one GeoJSON source each. The **focus
 layer** (`state.active`) is the one the style panel, inspector and analysis
@@ -520,8 +522,8 @@ including the single `rumb-data-<hash>` cache of builds before regions.
 `RUMB_REGIONS=.cache/data npm run build` adds every state built by
 `scripts/build-regions.mjs` to `dist/data/` and to the index, after the
 committed regions (Mississippi and Delaware), in name order. With all 51,
-`dist` was 503 MB on the published site (544 MB from a local macOS build).
-With the national region and its tiles, a local build is 589 MB. Range
+`dist` is 589 MB on the published site, with the national region and its
+tiles (503 MB before them). Range
 requests are answered by slicing the cached file as a Blob, and HEAD requests
 by its size. Neither reads the whole file, which matters for the 37 MB of
 tiles. A new version installs itself
@@ -561,6 +563,9 @@ least two weeks old.
 | @geoda/lisa | 0.0.25 | MIT | GeoDaLib observed Local Moran on binary weights (everything else is rumb's own code) |
 | jsts | 2.12.1 | EDL-1.0 / EPL-1.0 | DE-9IM contiguity for imported polygons |
 | @zip.js/zip.js | 2.8.11 | BSD-3-Clause | Project files |
+| hyparquet | 1.32.0 | MIT | Parquet tables and tile-layer values, a lazy chunk |
+| pmtiles (with fflate) | 4.5.0 | BSD-3-Clause (MIT) | Vector tiles from one file by range requests, a lazy chunk |
+| @mapbox/vector-tile, pbf | 3.0.0, 5.2.0 | BSD-3-Clause | Decoding tiles in `scripts/check-tiles.mjs` (dev) |
 | @fontsource(-variable)/* | 5.3.0 | OFL-1.1 | Theme fonts |
 | esbuild | 0.28.2 | MIT | Bundling (dev) |
 | playwright | 1.65.1 | Apache-2.0 | Browser tests (dev) |
@@ -692,7 +697,16 @@ Build constants: `__RUMB_VERSION__`, `__RUMB_DEV__`, `__DUCKDB_FOLDER__`,
       (CSV, GeoJSON, GeoParquet read back); the printed report as PDF;
     - **shell:** Compare; themes; the palette; keys; the status bar; 320px
       layouts; offline reload;
-    - **privacy:** every request stays on the site's own origin.
+    - **privacy:** every request stays on the site's own origin;
+    - **national:** Delaware's tile layer (`tiles`); and, only when the build
+      merged `us` (`RUMB_REGIONS`), the counties (`us-counties`), the tract
+      map and Open <state> (`us-tracts`), and its offline download
+      (`offline-us`). CI's test workflow builds only the committed regions,
+      so it skips the last three.
+  - Wait for the condition the next step needs, not for time. For example, a
+    model check waits for its note to count the covariates before it runs
+    (ticks wait for their table to load), and the tiles check waits until
+    every tract is drawn, not just colored.
 - CI (`.github/workflows/test.yml`) runs both on Chromium and WebKit, and a
   failure in either fails the run. On Linux, WebKit reports work it refuses
   for a page being left ("Cannot load blob:… due to access control checks",
@@ -715,9 +729,12 @@ Build constants: `__RUMB_VERSION__`, `__RUMB_DEV__`, `__DUCKDB_FOLDER__`,
 | `deploy` | Publishes `dist/` to <https://jossammil.github.io/rumb/>. |
 
 A run that rebuilds every state (any change under `scripts/`, `renv.lock`
-or the pins) takes about 40 minutes, most of it Census exports; the first
-successful one was run 45358371426 on November 24, 2026. A run with no data
-or script changes reuses every shard's cache and takes a few minutes.
+or the pins) takes about 40 minutes when it must download the Census
+exports; the first successful one was run 45358371426 on November 24, 2026.
+With the downloads cached (they are keyed on the pins), a rebuild takes
+about 12 minutes, as the national map's first deploy did (run 45545303865).
+A run with no data or script changes reuses every shard's cache and takes a
+few minutes.
 
 **When the data jobs fail**, read `gh run view <id> --log-failed` and the
 uploaded `data-logs-<n>`, `verify-logs` and `verify-rebuild` artifacts.
@@ -729,7 +746,19 @@ deploys after phase 3 failed on things only a cold CI run exposes:
   `places.equivalent` in `scripts/tables.json`);
 - its 75 MB export outlasted R's 60-second download timeout;
 - `prepare-layers.R`'s own `fetch()` shadowed a shared helper;
-- Linux rounds display geometry differently from macOS. All paths are relative, so the same build
+- Linux rounds display geometry differently from macOS.
+
+Since then:
+- **Socrata retired CDC's `rows.csv` download links in October 2026**; they
+  now answer with an error, ahead of a sunset on December 21, 2026. PLACES
+  downloads from the v3 export (`api/v3/views/<id>/export.csv`), which
+  serves the same bytes. Outputs still record the old URL as provenance, so
+  Mississippi's files did not change.
+- **Wait for CI before merging.** `pages.yml` runs only on `main`, so the
+  tiles job first ran after the merge. And three fixes for flaky checks were
+  merged before their WebKit result came in.
+
+All paths are relative, so the same build
 works under any subpath. The repository was renamed from `bgis` in November
 2026; GitHub redirects the old repository URL but not the old Pages address
 (`/bgis/` no longer serves).
