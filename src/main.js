@@ -71,6 +71,17 @@ function status(message, kind = "ready") {
   document.documentElement.dataset.status = kind;
 }
 
+// Once the page is going away (a region switch, a project restore, a reload),
+// work it started is abandoned: WebKit rejects its pending promises with
+// "Context is stopped". Nothing can act on those any more, so they are marked
+// handled rather than reported as errors.
+let leaving = false;
+addEventListener("pagehide", () => (leaving = true));
+addEventListener("pageshow", () => (leaving = false));
+addEventListener("unhandledrejection", (event) => {
+  if (leaving) event.preventDefault();
+});
+
 async function fetchJSON(path) {
   const res = await fetch(path);
   if (!res.ok) throw new Error("Unable to read " + path + " (" + res.status + ").");
