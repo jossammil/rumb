@@ -115,6 +115,25 @@ Building every state on November 23, 2026 (419 MB in all; California is the larg
 
 `public/data/de/` (Delaware: 262 tracts, 3 counties, 1.3 MB) is committed as the second, small region, built by this pipeline. CI rebuilds both committed regions and compares them by meaning.
 
+### The national region and the national tract map
+
+`--state US` builds the national region (`us`, "United States (counties)") with the same scripts: every county of the 50 states and DC (3,144, with Connecticut's nine planning regions) is a reference area, and `node scripts/build-regions.mjs us` builds it in about a minute. Its sources are pinned in `scripts/sources/national.json`:
+
+- **Shapes:** the 2024 cartographic boundary counties (`cb_2024_us_county_500k.zip`), shoreline-clipped, simplified to 12% of their removable vertices for display (1.1 MB gzipped) and at a 50 m interval for SQL. **Contiguity:** 2024 TIGER/Line counties (`tl_2024_us_county.zip`), whose boundaries run through water, so neighbors cross state lines, lakes and bays (1,306 queen links cross a state line).
+- **Measures:** the S1701 and DP02–DP05 exports for every county (`g=010XX00US$0500000`; Puerto Rico's municipios are dropped), and CDC PLACES 2025 county estimates ([`i46a-9kgh`](https://data.cdc.gov/d/i46a-9kgh), the v3 export, pinned in `scripts/tables.json` as `placesCounties`; its `FOODSTAMP_Crude95ci` heading is read as `…95CI`). Loving County, Texas, has no PLACES row. County Health Rankings 2025 is a library layer on the same counties; its eight rows for Connecticut's former counties are left out (`rowsLeftOut`).
+- **Centers of population:** the national 2020 county file. Connecticut's planning regions get the population-weighted mean of their 2020 tract centers (latitude weighted by population, longitude by population × cos latitude), each tract placed by its 2024 TIGER tract code, or, where a code repeats, by the tract holding its center. They sum to Connecticut's 3,605,944 people.
+- **Projection:** EPSG:5070 (CONUS Albers). The backdrop has Natural Earth and the interstates (`tl_2024_us_primaryroads.zip`, simplified to 500 m).
+
+The national tract map is a tile layer of the national region, built from the states' own folders after they are built:
+
+```sh
+brew install tippecanoe   # 2.79.0 (CI builds the same version from its pinned source tarball)
+node scripts/build-tiles.mjs --out .cache/data/us public/data/ms public/data/de .cache/data/al …   # every state and DC
+node scripts/check-tiles.mjs .cache/data/us
+```
+
+[`scripts/build-tiles.mjs`](scripts/build-tiles.mjs) runs tippecanoe on every state's display `tracts.geojson` (GEOID only; zooms 5–11; `--detect-shared-borders --no-feature-limit --no-tile-size-limit --no-tiny-polygon-reduction`) into `us/tiles/tracts.pmtiles` (36.7 MB, largest tile 550 KB), and [`scripts/prepare-tract-values.R`](scripts/prepare-tract-values.R) writes every state's display fields and table columns into `us/tiles/tracts-values.parquet` (19.5 MB, one row group, states in FIPS order), so the numbers are the states' own. Tracts start at zoom 5 because at zoom 4 a dozen small city tracts vanish even with tiny polygons kept, and the largest tile passes 800 KB. [`scripts/check-tiles.mjs`](scripts/check-tiles.mjs) decodes every tile at zooms 5 and 11 and requires every tract of the values file at both, no tile over 1 MB and a file under 150 MB. Delaware's tiles are committed in `public/data/de/tiles/` as a hidden test layer, built the same way with `--hidden`.
+
 ### Census geography, poverty and spatial weights
 
 ```sh

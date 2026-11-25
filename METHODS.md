@@ -39,8 +39,15 @@ centers, as the Bureau computes a mean center.
   touches four Michigan counties across Lake Michigan. Within a state, tract
   neighbors work the same way. Hawaii, Honolulu and Kauaʻi counties have no
   neighbors.
-- **Distance searches** go through a uniform grid at every scale, with
-  exactly the results of comparing every pair.
+- **Distance searches** (k nearest, distance bands, nearest distances,
+  Ripley's pair counts, kernel density, access and the scan's radius cap) go
+  through a uniform grid over the points, here and in every state. Each
+  keeps its own distance test, and visits candidates in index order where
+  sums or sorting depend on it, so results are exactly those of comparing
+  every pair (`tests/grid.test.js`). At 9,129 areas, 6 nearest neighbors
+  take under 0.05 s instead of 0.3 s.
+- **The national tract map** is for viewing. Statistics run on these
+  counties or on one state.
 
 **PLACES values are model-based.** CDC estimates them from BRFSS with ACS
 and county-level covariates, so their spatial patterns partly reflect the
