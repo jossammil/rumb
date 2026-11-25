@@ -61,6 +61,7 @@
     "vintage": "BRFSS 2023 (2022 for five measures)",
     "url": "https://data.cdc.gov/d/yjkw-uj5s",
     "download": "https://data.cdc.gov/api/views/yjkw-uj5s/rows.csv?accessType=DOWNLOAD",
+    "fetch": "https://data.cdc.gov/api/v3/views/yjkw-uj5s/export.csv",
     "sha256": "201b7eb5e6df3053115712debd436e76cda1d51058612420a1636249b808709c",
     "equivalent": [
       { "sha256": "d6db01cef81316fb32b9ef97228db1921c2914398c69803b72951c2b9a906481", "checked": "2026-11-24",

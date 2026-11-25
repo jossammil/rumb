@@ -127,7 +127,10 @@ for (f in acs$fields) {
 
 # ---- CDC PLACES ----------------------------------------------------------------
 places <- spec$places
-places_csv <- cached(ctx, places$download, "PLACES_tract_GIS_2025.csv", national = TRUE)
+# Socrata retired the rows.csv link that outputs record as the download (it
+# now answers with an error); places$fetch is its v3 export, which serves the
+# same bytes (the pinned SHA-256 below).
+places_csv <- cached(ctx, places$fetch %||% places$download, "PLACES_tract_GIS_2025.csv", national = TRUE)
 # CDC regenerates the CSV on each download, so its bytes can change while its
 # data does not. tables.json lists exports checked to hold the same values as
 # the pinned one; outputs record the pinned checksum, so they do not depend on

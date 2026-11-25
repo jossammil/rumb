@@ -135,10 +135,10 @@ The script joins one ACS record per TIGER GEOID, checks counts against denominat
 
 ### CDC PLACES and the independent comparison fixture
 
-Download the national **2025 census tract GIS-friendly CSV**. The county file and long-format tract file have different schemas. The script extracts four measures, their confidence limits and the adult population for Mississippi, then checks tract IDs against the Atlas geography. [CDC source table](https://data.cdc.gov/d/yjkw-uj5s) · [Extraction script and measure definitions](scripts/prepare-places.py)
+Download the national **2025 census tract GIS-friendly CSV**. Its v3 export serves the same bytes as the `rows.csv` link the outputs record, which Socrata retired in October 2026 (SHA-256 `201b7eb5…709c` either way). The county file and long-format tract file have different schemas. The script extracts four measures, their confidence limits and the adult population for Mississippi, then checks tract IDs against the Atlas geography. [CDC source table](https://data.cdc.gov/d/yjkw-uj5s) · [Extraction script and measure definitions](scripts/prepare-places.py)
 
 ```sh
-curl --fail --location 'https://data.cdc.gov/api/views/yjkw-uj5s/rows.csv?accessType=DOWNLOAD' \
+curl --fail --location 'https://data.cdc.gov/api/v3/views/yjkw-uj5s/export.csv' \
   --output "$input_dir/places-2025.csv"
 python3 scripts/prepare-places.py "$input_dir/places-2025.csv"
 Rscript scripts/reference-comparison.R
