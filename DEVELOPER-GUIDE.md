@@ -384,8 +384,10 @@ the usual `measures` and `fields`.
 - **Features.** `ws.loadLayer()` makes one feature per row of the values file,
   with no geometry: its id, name and county. `ensureFields()` reads a field,
   and the fields its meaning rests on (MOE, counts, limits, pooling), as
-  columns by HTTP range requests (`src/data/parquet.js` `readColumns`). So
-  `colorize()` runs unchanged.
+  columns by HTTP range requests (`src/data/parquet.js` `readColumns`). The
+  file's size comes from a one-byte range request, not HEAD: GitHub Pages
+  gzips, so a HEAD's Content-Length is the compressed size (`npm run serve`
+  does the same, so the tests see it). So `colorize()` runs unchanged.
 - **Map.** `addLayer(id, kind, style, tiled)` makes a vector source with
   `promoteId`. `setData()` writes `color`, `out` and `unreliable` as
   feature-state, and `select()` writes `selected` and `neighbor`. Clicks read
