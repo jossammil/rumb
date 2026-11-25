@@ -60,6 +60,17 @@ const ids = JSON.parse(await dataFile("tracts.geojson")).features.map(
 );
 
 const errors = [];
+// The check running now. A page error names the check that opened its page,
+// and the check that was running when it fired, if that is another one: some
+// errors arrive after their check has finished (WebKit's "Context is stopped").
+let running = "setup";
+function watchErrors(target) {
+  const opener = running;
+  target.on("pageerror", (e) => {
+    const where = (e.stack || "").split("\n").slice(1, 3).join(" ").trim();
+    errors.push(`[${opener}${running !== opener ? " → " + running : ""}] ${e.message}${where ? " @ " + where : ""}`);
+  });
+}
 const external = new Set();
 const origin = new URL(base).origin;
 let page;
@@ -69,7 +80,7 @@ async function openPage(viewport = { width: 1440, height: 960 }) {
   const ctx = await browser.newContext({ viewport, acceptDownloads: true });
   const p = await ctx.newPage();
   p.setDefaultTimeout(35000);
-  p.on("pageerror", (e) => errors.push(e.message + " @ " + (e.stack || "").split("\n").slice(1, 3).join(" ").trim()));
+  watchErrors(p);
   p.on("request", (r) => {
     const u = new URL(r.url());
     if (/^https?:$/.test(u.protocol) && u.origin !== origin) external.add(u.origin);
@@ -94,6 +105,7 @@ let passed = 0,
   skipped = 0;
 async function check(name, fn) {
   if (only && !only.has(name) && name !== "boot") return;
+  running = name;
   const started = Date.now();
   try {
     const result = await fn();
@@ -243,7 +255,7 @@ await check("boot", async () => {
   });
   page = await ctx.newPage();
   page.setDefaultTimeout(35000);
-  page.on("pageerror", (e) => errors.push(e.message + " @ " + (e.stack || "").split("\n").slice(1, 3).join(" ").trim()));
+  watchErrors(page);
   page.on("request", (r) => {
     requests.push(r.url());
     const u = new URL(r.url());
@@ -884,7 +896,7 @@ await check("locate", async () => {
   });
   const p = await ctx.newPage();
   p.setDefaultTimeout(35000);
-  p.on("pageerror", (e) => errors.push(e.message));
+  watchErrors(p);
   await p.goto(base);
   await ready(p);
   await p.keyboard.press("g");
@@ -1079,7 +1091,7 @@ await check("share", async () => {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 850 } });
   const q = await ctx.newPage();
   q.setDefaultTimeout(35000);
-  q.on("pageerror", (e) => errors.push(e.message));
+  watchErrors(q);
   const sent = [];
   q.on("request", (r) => sent.push(r.url()));
   await q.goto(url.replace(/^https?:\/\/[^/]+/, origin));
@@ -1626,7 +1638,7 @@ await check("offline", async () => {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 850 }, serviceWorkers: "allow" });
   const p = await ctx.newPage();
   p.setDefaultTimeout(60000);
-  p.on("pageerror", (e) => errors.push(e.message + " @ " + (e.stack || "").split("\n").slice(1, 3).join(" ").trim()));
+  watchErrors(p);
   await p.goto(base);
   await ready(p);
   const controlled = await p
@@ -1695,7 +1707,7 @@ await check("offline-region", async () => {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 850 }, serviceWorkers: "allow" });
   const p = await ctx.newPage();
   p.setDefaultTimeout(60000);
-  p.on("pageerror", (e) => errors.push(e.message));
+  watchErrors(p);
   await p.goto(base + "?r=de");
   await ready(p);
   const controlled = await p
@@ -1728,7 +1740,7 @@ await check("offline-us", async () => {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 850 }, serviceWorkers: "allow" });
   const p = await ctx.newPage();
   p.setDefaultTimeout(120000);
-  p.on("pageerror", (e) => errors.push(e.message));
+  watchErrors(p);
   await p.goto(base + "?r=us");
   await ready(p);
   const controlled = await p
@@ -1770,7 +1782,8 @@ await check("same-origin", async () => {
 });
 if (errors.length) {
   failed++;
-  console.log(`FAIL  page errors: ${errors.slice(0, 3).join(" | ")}`);
+  console.log(`FAIL  page errors (${errors.length}):`);
+  for (const e of errors.slice(0, 12)) console.log("      " + e);
 }
 console.log(
   `${which}: ${passed}/${passed + failed} checks passed${skipped ? `, ${skipped} skipped` : ""}`,
