@@ -109,7 +109,9 @@ export function createOffline({ status, notify, onState, region }) {
     if (!supported) return onState("unsupported");
     if (dev) {
       // The dev server rebuilds on save; a cached shell would hide the changes.
-      navigator.serviceWorker.getRegistrations().then((all) => all.forEach((r) => r.unregister()));
+      navigator.serviceWorker
+        .getRegistrations()
+        .then((all) => all.forEach((r) => r.unregister().catch(() => {})), () => {});
       return onState("online");
     }
     const hadController = !!navigator.serviceWorker.controller;
@@ -119,7 +121,10 @@ export function createOffline({ status, notify, onState, region }) {
         notify("rumb was updated.", { action: () => location.reload(), label: "Reload" });
       check();
     });
-    navigator.serviceWorker.ready.then(check);
+    // WebKit rejects `ready` ("Context is stopped") when the page leaves before
+    // the worker is ready, and a page that has stopped cannot run a handler
+    // added later, so the rejection is handled here, where the promise is made.
+    navigator.serviceWorker.ready.then(check, () => {});
   }
 
   return { supported, register, download, check };
