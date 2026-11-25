@@ -710,7 +710,8 @@ Build constants: `__RUMB_VERSION__`, `__RUMB_DEV__`, `__DUCKDB_FOLDER__`,
 - CI (`.github/workflows/test.yml`) runs both on Chromium and WebKit, and a
   failure in either fails the run. On Linux, WebKit reports work it refuses
   for a page being left ("Cannot load blob:… due to access control checks",
-  "Cache API operation failed: Context is stopped"). The harness leaves out
+  "Cache API operation failed: Context is stopped", and "Fetch API cannot
+  load <this site's URL> due to access control checks"). The harness leaves out
   only those, within 5 s of a navigation request or once a context is
   closing, and counts them on a `NOTE` line. To reproduce a WebKit-only
   failure, run the suite in `mcr.microsoft.com/playwright:v<version>-noble`

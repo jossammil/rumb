@@ -65,16 +65,24 @@ const errors = [];
 // errors arrive after their check has finished (WebKit's "Context is stopped").
 let running = "setup";
 // WebKit (on Linux) reports work it refuses for a page it is leaving:
-// reading a Blob ("Cannot load blob:… due to access control checks") and
-// Cache API calls ("Cache API operation failed: Context is stopped"). The
+// reading a Blob ("Cannot load blob:… due to access control checks"),
+// Cache API calls ("Cache API operation failed: Context is stopped") and
+// fetches (below). The
 // app's handlers cannot see these, and nothing a reader sees depends on
 // them. They come when a check navigates a page, or closes its context,
 // before its startup work (the offline check's cache lookups take seconds on
 // a slow machine) is done, and they can arrive before the next document
-// commits. Only those two errors, in WebKit, within 5 s of the page asking for
+// commits. Only those three errors, in WebKit, within 5 s of the page asking for
 // a new document or once its context is closing, are left out; they are
 // counted in the summary.
-const TEARDOWN = /^(Cache API operation failed: Context is stopped|Cannot load blob:\S+ due to access control checks\.)$/;
+// A fetch the leaving page started is refused the same way ("Fetch API cannot
+// load <url> due to access control checks."), and is left out only when the
+// address is this site's own.
+const TEARDOWN = /^(Cache API operation failed: Context is stopped|Cannot load blob:\S+ due to access control checks\.|Fetch API cannot load (\S+) due to access control checks\.)$/;
+const isTeardown = (text) => {
+  const m = TEARDOWN.exec(text);
+  return !!m && (!m[2] || m[2].startsWith(base));
+};
 const TEARDOWN_MS = 5000;
 let teardown = 0,
   teardownLatest = 0;
@@ -103,7 +111,7 @@ function watchErrors(target) {
     // the stack's first line keeps it whole, when there is a stack.
     const text = (e.stack || "").split("\n")[0] || e.name + ": " + e.message;
     const since = navigated ? Date.now() - navigated : null;
-    if (which === "webkit" && TEARDOWN.test(text) && (closing || (since != null && since < TEARDOWN_MS))) {
+    if (which === "webkit" && isTeardown(text) && (closing || (since != null && since < TEARDOWN_MS))) {
       teardown++;
       if (!closing) teardownLatest = Math.max(teardownLatest, since);
       return;
