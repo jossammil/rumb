@@ -8,7 +8,9 @@
 // indices of i's neighbors, w[i] their weights in the same order (null for
 // binary weights). The analyses row-standardize: each row is divided by its
 // sum. Ties in distance break by index, and indices follow sorted ids, so
-// every build is deterministic.
+// every build is deterministic. Above a few dozen points the searches go
+// through a uniform grid (grid.js), with the same results.
+import { GRID_MIN, nearest, pointGrid, within } from "./grid.js";
 
 export const WEIGHT_KINDS = ["queen", "rook", "knn", "band", "idw"];
 export const DISTANCE_KINDS = new Set(["knn", "band", "idw"]);
@@ -118,35 +120,52 @@ export function centroid(geometry) {
 
 const distance = (a, b) => Math.sqrt((a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]));
 
+/** Whether every point has finite coordinates, which the grid needs. */
+const finite = (xy) => xy.every((p) => p && Number.isFinite(p[0]) && Number.isFinite(p[1]));
+
+/** Whether to use the grid: `grid` true or false forces the choice (for tests). */
+const useGrid = (xy, grid) => (grid ?? xy.length >= GRID_MIN) && finite(xy);
+
+/**
+ * The k nearest of the candidates js (ascending indices, or 0 … count − 1
+ * when js is null) to point i, nearest first with ties by index:
+ * { best, last } with last the k-th distance.
+ */
+function rankNearest(xy, i, js, count, k) {
+  const p = xy[i],
+    best = [],
+    dist = [];
+  for (let t = 0; t < count; t++) {
+    const j = js ? js[t] : t;
+    if (j === i) continue;
+    const d = distance(p, xy[j]);
+    if (best.length === k && d >= dist[k - 1]) continue;
+    let at = best.length === k ? k - 1 : best.length;
+    while (at > 0 && dist[at - 1] > d) {
+      if (at < k) {
+        best[at] = best[at - 1];
+        dist[at] = dist[at - 1];
+      }
+      at--;
+    }
+    best[at] = j;
+    dist[at] = d;
+  }
+  return { best, last: dist[k - 1] };
+}
+
 /** Each point's k nearest others, nearest first (ties by index). */
-export function knn(xy, k) {
+export function knn(xy, k, { grid } = {}) {
   const n = xy.length;
   k = Math.min(k, n - 1);
-  return xy.map((p, i) => {
-    const best = [],
-      dist = [];
-    for (let j = 0; j < n; j++) {
-      if (j === i) continue;
-      const d = distance(p, xy[j]);
-      if (best.length === k && d >= dist[k - 1]) continue;
-      let at = best.length === k ? k - 1 : best.length;
-      while (at > 0 && dist[at - 1] > d) {
-        if (at < k) {
-          best[at] = best[at - 1];
-          dist[at] = dist[at - 1];
-        }
-        at--;
-      }
-      best[at] = j;
-      dist[at] = d;
-    }
-    return best;
-  });
+  if (!useGrid(xy, grid)) return xy.map((p, i) => rankNearest(xy, i, null, n, k).best);
+  const g = pointGrid(xy);
+  return xy.map((p, i) => nearest(g, p[0], p[1], k, (js) => rankNearest(xy, i, js, js.length, k)));
 }
 
 /** The smallest distance at which every point has a neighbor: the largest nearest-neighbor distance. */
-export function connectingBand(xy) {
-  const nearest = knn(xy, 1);
+export function connectingBand(xy, options) {
+  const nearest = knn(xy, 1, options);
   let max = 0;
   nearest.forEach((row, i) => {
     if (row.length) max = Math.max(max, distance(xy[i], xy[row[0]]));
@@ -155,19 +174,26 @@ export function connectingBand(xy) {
 }
 
 /** Every other point within `metres` of each point, by index. */
-export function band(xy, metres) {
+export function band(xy, metres, { grid } = {}) {
   const n = xy.length,
     rows = xy.map(() => []);
-  // Sorting by x lets the scan stop at the band's edge.
-  const order = [...xy.keys()].sort((a, b) => xy[a][0] - xy[b][0] || a - b);
-  for (let a = 0; a < n; a++) {
-    const i = order[a];
-    for (let b = a + 1; b < n; b++) {
-      const j = order[b];
-      if (xy[j][0] - xy[i][0] > metres) break;
-      if (distance(xy[i], xy[j]) <= metres) {
-        rows[i].push(j);
-        rows[j].push(i);
+  if (useGrid(xy, grid) && Number.isFinite(metres)) {
+    const g = pointGrid(xy);
+    for (let i = 0; i < n; i++)
+      for (const j of within(g, xy[i][0], xy[i][1], metres, { sorted: false }))
+        if (j !== i && distance(xy[i], xy[j]) <= metres) rows[i].push(j);
+  } else {
+    // Sorting by x lets the scan stop at the band's edge.
+    const order = [...xy.keys()].sort((a, b) => xy[a][0] - xy[b][0] || a - b);
+    for (let a = 0; a < n; a++) {
+      const i = order[a];
+      for (let b = a + 1; b < n; b++) {
+        const j = order[b];
+        if (xy[j][0] - xy[i][0] > metres) break;
+        if (distance(xy[i], xy[j]) <= metres) {
+          rows[i].push(j);
+          rows[j].push(i);
+        }
       }
     }
   }

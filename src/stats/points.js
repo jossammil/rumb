@@ -13,10 +13,15 @@
 // Pure.
 import { pnorm } from "./dist.js";
 import { pointInPolygon } from "../geo/spatial.js";
+import { GRID_MIN, nearest, pointGrid, within } from "./grid.js";
 
 export const METRES_PER_MILE = 1609.344;
 const SQ_MILE = METRES_PER_MILE * METRES_PER_MILE;
 const dist = (a, b) => Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2);
+// Above a few dozen points the searches go through a uniform grid (grid.js),
+// with the same results; `grid` true or false forces the choice (for tests).
+const finite = (xy) => xy.every((p) => p && Number.isFinite(p[0]) && Number.isFinite(p[1]));
+const useGrid = (xy, grid) => (grid ?? xy.length >= GRID_MIN) && finite(xy);
 
 /** The area of projected polygons (each a list of rings: outer, then holes). */
 export function polygonArea(polygons) {
@@ -32,11 +37,24 @@ export function polygonArea(polygons) {
 export const inside = (p, polygons) => polygons.some((rings) => pointInPolygon(p, rings));
 
 /** Each point's distance to its nearest other point. */
-export function nearestDistances(xy) {
-  return xy.map((p, i) => {
+export function nearestDistances(xy, { grid } = {}) {
+  const closest = (p, i, js, count) => {
     let best = Infinity;
-    for (let j = 0; j < xy.length; j++) if (j !== i) best = Math.min(best, dist(p, xy[j]));
+    for (let t = 0; t < count; t++) {
+      const j = js ? js[t] : t;
+      if (j !== i) best = Math.min(best, dist(p, xy[j]));
+    }
     return best;
+  };
+  if (!useGrid(xy, grid)) return xy.map((p, i) => closest(p, i, null, xy.length));
+  const g = pointGrid(xy);
+  return xy.map((p, i) => {
+    let d = Infinity;
+    nearest(g, p[0], p[1], 1, (js) => {
+      d = closest(p, i, js, js.length);
+      return { best: d < Infinity ? [d] : [], last: d };
+    });
+    return d;
   });
 }
 
@@ -64,16 +82,20 @@ export function averageNearestNeighbor(xy, area) {
  * edge correction. Pairs are counted into the distance bands directly, so
  * large patterns need no sort.
  */
-export function ripleyL(xy, area, distances) {
+export function ripleyL(xy, area, distances, { grid } = {}) {
   const n = xy.length,
     m = distances.length,
     max = distances[m - 1],
     max2 = max * max,
     squared = distances.map((d) => d * d);
   const bands = new Float64Array(m);
+  // Pair counts are whole numbers, so the order the grid visits them in does not matter.
+  const g = useGrid(xy, grid) && Number.isFinite(max) ? pointGrid(xy) : null;
+  const all = g ? null : Int32Array.from(xy.keys());
   for (let i = 0; i < n; i++) {
     const [xi, yi] = xy[i];
-    for (let j = i + 1; j < n; j++) {
+    for (const j of g ? within(g, xi, yi, max, { sorted: false }) : all.subarray(i + 1)) {
+      if (j <= i) continue;
       const dx = xy[j][0] - xi,
         dy = xy[j][1] - yi,
         d2 = dx * dx + dy * dy;
@@ -230,9 +252,13 @@ export function defaultBandwidth(xy, weights = null) {
 }
 
 /** Quartic kernel density at a location (per square mile), bandwidth r in metres. */
-export function quarticDensity(at, xy, weights, r) {
+export function quarticDensity(at, xy, weights, r, g = null) {
   let s = 0;
-  for (let i = 0; i < xy.length; i++) {
+  // From the grid, the candidates come in index order, so the sum is the same.
+  const js = g ? within(g, at[0], at[1], r) : null,
+    count = js ? js.length : xy.length;
+  for (let t = 0; t < count; t++) {
+    const i = js ? js[t] : t;
     const d2 = (xy[i][0] - at[0]) ** 2 + (xy[i][1] - at[1]) ** 2;
     if (d2 < r * r) s += (weights ? weights[i] : 1) * (1 - d2 / (r * r)) ** 2;
   }
@@ -244,7 +270,7 @@ export function quarticDensity(at, xy, weights, r) {
  * cells: [[x, y, density]] } with cell centers in metres and density per
  * square mile. Cells with no density are left out.
  */
-export function densityGrid(xy, weights, polygons, { bandwidth, cell } = {}) {
+export function densityGrid(xy, weights, polygons, { bandwidth, cell, grid } = {}) {
   if (xy.length < 2) throw new Error("A density surface needs at least two points.");
   const r = bandwidth || defaultBandwidth(xy, weights);
   let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
@@ -256,11 +282,12 @@ export function densityGrid(xy, weights, polygons, { bandwidth, cell } = {}) {
       y1 = Math.max(y1, y);
     }
   const size = cell || Math.min(x1 - x0, y1 - y0) / 100;
+  const g = useGrid(xy, grid) && Number.isFinite(r) ? pointGrid(xy, { cell: r }) : null;
   const cells = [];
   for (let y = y0 + size / 2; y < y1; y += size)
     for (let x = x0 + size / 2; x < x1; x += size) {
       if (!inside([x, y], polygons)) continue;
-      const v = quarticDensity([x, y], xy, weights, r);
+      const v = quarticDensity([x, y], xy, weights, r, g);
       if (v > 0) cells.push([x, y, v]);
     }
   return { cell: size, bandwidth: r, cells };
