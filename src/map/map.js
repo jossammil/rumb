@@ -1,11 +1,15 @@
 // The MapLibre map: the region backdrop, the stack of data layers (one source
 // each, see map/layer-specs.js), Compare's own source, the selection, click
 // picking with layer identity, fitting, and repainting when the theme changes.
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { buildStyle, graticuleLines, mapColors, themedPaint } from "./basemap-style.js";
 import { ANCHORS, layerSpecs, sourceId, specShape } from "./layer-specs.js";
 import { addShapeImages } from "./shapes.js";
+// MapLibre's tile worker as text (scripts/build.mjs says why it starts from a blob).
+import workerSource from "map-worker:source";
+
+let workerUrl;
 
 function extent(collection) {
   const bounds = new maplibregl.LngLatBounds();
@@ -30,6 +34,8 @@ const collection = (features) => ({ type: "FeatureCollection", features });
  * `layer` in onSelect is a rumb layer id, or "cmp" while Compare is showing.
  */
 export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) {
+  workerUrl ??= URL.createObjectURL(new Blob([workerSource], { type: "text/javascript" }));
+  maplibregl.setWorkerUrl(workerUrl);
   const map = new maplibregl.Map({
     container: "map",
     bounds: region.bounds,
@@ -39,6 +45,9 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
     dragRotate: false,
     pitchWithRotate: false,
     style: buildStyle(region, regionPath),
+    // Past a tiled source's maxzoom, draw from its last tiles as they are
+    // (MapLibre 5's behaviour), so source queries see whole tract features.
+    zoomLevelsToOverscale: undefined,
   });
   map.touchZoomRotate.disableRotation();
 

@@ -558,7 +558,7 @@ least two weeks old.
 
 | Package | Version | Licence | Why |
 | --- | --- | --- | --- |
-| maplibre-gl | 5.24.1 | BSD-3-Clause | WebGL map, globe and terrain ready for later |
+| maplibre-gl | 6.17.0 | BSD-3-Clause | WebGL2 map, globe and terrain ready for later; its tile worker is built into `app.js` (`scripts/build.mjs`) |
 | @duckdb/duckdb-wasm | 1.32.0 | MIT | SQL, spatial joins and Parquet in the browser |
 | @geoda/lisa | 0.0.25 | MIT | GeoDaLib observed Local Moran on binary weights (everything else is rumb's own code) |
 | jsts | 2.12.1 | EDL-1.0 / EPL-1.0 | DE-9IM contiguity for imported polygons |

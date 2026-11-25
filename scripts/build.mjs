@@ -83,6 +83,31 @@ await cp(
   `dist/vendor/${lisaFolder}/geoda-lisa.wasm`,
 );
 
+const target = ["safari16", "chrome110", "firefox115"];
+// MapLibre's tile worker is built to the same targets as one file and imported
+// by src/map/map.js as text. The map starts it from a blob, as MapLibre 5 did,
+// so WebKit sends its requests through the service worker; offline, WebKit
+// fails the imports and fetches of a worker loaded from its own URL.
+const workerFile = "node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs";
+const mapWorker = {
+  name: "map-worker",
+  setup(b) {
+    b.onResolve({ filter: /^map-worker:source$/ }, () => ({ path: workerFile, namespace: "map-worker" }));
+    b.onLoad({ filter: /.*/, namespace: "map-worker" }, async () => {
+      const out = await build({
+        entryPoints: [workerFile],
+        bundle: true,
+        format: "esm",
+        write: false,
+        target,
+        minify: !debug && !watch,
+        legalComments: "eof",
+        logLevel: "warning",
+      });
+      return { contents: out.outputFiles[0].text, loader: "text" };
+    });
+  },
+};
 // 3. The app (src/main.js and what it imports) and the statistics worker, as ES
 //    modules. Dynamic imports (DuckDB's bindings, zip.js, jsts, GeoDaLib) become
 //    chunks that load only when first used. CSS imported from JS lands in app.css.
@@ -94,7 +119,7 @@ const options = {
   chunkNames: "chunks/[name]-[hash]",
   outdir: "dist",
   platform: "browser",
-  target: ["safari16", "chrome110", "firefox115"],
+  target,
   minify: !debug && !watch,
   sourcemap: debug || watch ? "linked" : false,
   define: {
@@ -110,6 +135,7 @@ const options = {
   legalComments: "linked",
   metafile: true,
   logLevel: "warning",
+  plugins: [mapWorker],
 };
 
 async function walk(dir) {
@@ -136,7 +162,7 @@ if (watch) {
       });
     },
   };
-  const ctx = await context({ ...options, plugins: [recopy] });
+  const ctx = await context({ ...options, plugins: [...options.plugins, recopy] });
   await ctx.watch();
   await import("./serve.mjs");
   console.log("Watching src/ and public/ for changes.");
