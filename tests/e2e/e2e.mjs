@@ -64,9 +64,26 @@ const errors = [];
 // and the check that was running when it fired, if that is another one: some
 // errors arrive after their check has finished (WebKit's "Context is stopped").
 let running = "setup";
+// WebKit (on Linux) reports work it refuses for a page it has already left:
+// reading a Blob ("Cannot load blob:… due to access control checks") and
+// Cache API calls ("Cache API operation failed: Context is stopped"). The
+// app's handlers cannot see these; they arrive 0.5–0.8 s after a check moves
+// the page on before it has gone idle, and nothing a reader sees depends on
+// them. Only those two errors, in WebKit, within 2 s of the page navigating,
+// are left out; they are counted in the summary.
+const TEARDOWN = /^(Cache API operation failed: Context is stopped|Cannot load blob:\S+ due to access control checks\.)$/;
+let teardown = 0;
 function watchErrors(target) {
   const opener = running;
+  let navigated = 0;
+  target.on("framenavigated", (frame) => {
+    if (frame === target.mainFrame()) navigated = Date.now();
+  });
   target.on("pageerror", (e) => {
+    // Playwright splits WebKit's text at its first colon into name and message;
+    // the stack's first line keeps it whole, when there is a stack.
+    const text = (e.stack || "").split("\n")[0] || e.name + ": " + e.message;
+    if (which === "webkit" && Date.now() - navigated < 2000 && TEARDOWN.test(text)) return void teardown++;
     const where = (e.stack || "").split("\n").slice(1, 3).join(" ").trim();
     // The page's address says which step of a check it was on (a region, a restore).
     const page = target.url().replace(/^https?:\/\/[^/]+/, "");
@@ -1787,6 +1804,7 @@ await check("offline-us", async () => {
 await check("same-origin", async () => {
   expect(external.size === 0, `requests to ${[...external].join(", ")}`);
 });
+if (teardown) console.log(`NOTE  ${teardown} WebKit teardown error${teardown > 1 ? "s" : ""} after navigations, not counted`);
 if (errors.length) {
   failed++;
   console.log(`FAIL  page errors (${errors.length}):`);
