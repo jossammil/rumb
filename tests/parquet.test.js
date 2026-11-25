@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { readTable } from "../src/data/parquet.js";
+import { readColumns, readTable } from "../src/data/parquet.js";
 
 const read = (p) => readFileSync(new URL(p, import.meta.url));
 const buffer = (p) => {
@@ -28,3 +28,45 @@ test("a Parquet table can be read for some columns only", async () => {
   assert.deepEqual(Object.keys(t.columns), ["acs_population"]);
   assert.equal(t.ids.length, 878);
 });
+
+// A server like GitHub Pages: HEAD reports the gzip size (with
+// Content-Encoding), and a range request gets the file's own bytes. With
+// `ranges` false it ignores Range and sends the whole file.
+async function serve(bytes, { ranges = true } = {}) {
+  const { createServer } = await import("node:http");
+  const { gzipSync } = await import("node:zlib");
+  const gzipped = gzipSync(bytes).length;
+  const server = createServer((req, res) => {
+    const m = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range || "");
+    if (req.method === "HEAD") {
+      res.writeHead(200, { "Content-Length": gzipped, "Content-Encoding": "gzip" });
+      return res.end();
+    }
+    if (!ranges || !m) {
+      res.writeHead(200, { "Content-Length": bytes.length });
+      return res.end(bytes);
+    }
+    const start = Number(m[1]);
+    const end = m[2] ? Math.min(Number(m[2]), bytes.length - 1) : bytes.length - 1;
+    res.writeHead(206, { "Content-Range": `bytes ${start}-${end}/${bytes.length}`, "Content-Length": end - start + 1 });
+    res.end(bytes.subarray(start, end + 1));
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  return { url: `http://127.0.0.1:${server.address().port}/tracts-values.parquet`, close: () => server.close() };
+}
+
+for (const ranges of [true, false]) {
+  test(`a remote Parquet file reads right when HEAD gives the gzip size (${ranges ? "ranges" : "no ranges"})`, async () => {
+    const path = "../public/data/de/tiles/tracts-values.parquet";
+    const local = await readTable(buffer(path));
+    const names = Object.keys(local.columns).slice(0, 3);
+    const { url, close } = await serve(read(path), { ranges });
+    try {
+      const got = await readColumns(url, names);
+      assert.deepEqual(got.ids, local.ids);
+      for (const name of names) assert.deepEqual(got.columns[name], local.columns[name], name);
+    } finally {
+      close();
+    }
+  });
+}

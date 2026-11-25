@@ -27,18 +27,32 @@ export async function readTable(file, { idColumn = "GEOID", names } = {}) {
  * A Parquet file on the server, read by HTTP range requests: only the footer
  * and the column chunks asked for are fetched. Kept per URL, so each byte is
  * fetched once.
+ *
+ * The size comes from a one-byte range request, not HEAD: GitHub Pages
+ * compresses, and its HEAD Content-Length is the gzip size, while a 206's
+ * Content-Range always ends with the file's own. A server that ignores ranges
+ * sends the whole file, which is then read from memory.
  */
 const remote = new Map();
 export async function remoteFile(url) {
   if (!remote.has(url))
     remote.set(
       url,
-      asyncBufferFromUrl({ url }).then(cachedAsyncBuffer, (error) => {
+      openRemote(url).catch((error) => {
         remote.delete(url);
         throw error;
       }),
     );
   return remote.get(url);
+}
+
+async function openRemote(url) {
+  const res = await fetch(url, { headers: { Range: "bytes=0-0" } });
+  if (!res.ok) throw new Error(`fetch failed ${res.status}: ${url}`);
+  const total = res.status === 206 && /\/(\d+)$/.exec(res.headers.get("Content-Range") || "")?.[1];
+  if (!total) return res.arrayBuffer();
+  await res.body?.cancel();
+  return cachedAsyncBuffer(await asyncBufferFromUrl({ url, byteLength: Number(total) }));
 }
 
 /**
