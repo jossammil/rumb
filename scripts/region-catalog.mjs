@@ -135,6 +135,8 @@ export function regionCatalog(region, dir, { template, backdrop }) {
       },
     },
     library: template.library,
+    // Tile layers (scripts/build-tiles.mjs) join the library when built.
+    ...(fs.existsSync(path.join(dir, "tiles", "tiles.json")) && { tiles: "tiles/tiles.json" }),
     layers: [layer],
   };
 }

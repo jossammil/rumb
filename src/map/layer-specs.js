@@ -7,6 +7,10 @@
 //   labels (text)                     above selections  → before "anchor-labels"
 // Within a band, layers follow the stack order, bottom to top. So points always
 // draw over polygons, and the stack order decides which polygons cover which.
+//
+// A tile layer's source is vector tiles (a PMTiles file) whose features carry
+// only their id. Its colors, filter fading, hatching and selection are
+// feature-state, set by id (map.js), instead of GeoJSON properties.
 
 export const ANCHORS = { area: "anchor-areas", point: "anchor-points", label: "anchor-labels" };
 
@@ -62,21 +66,56 @@ const is = (type) => ["==", ["geometry-type"], type];
 /** Shape images are 24 px with a half-size of 8 (map/shapes.js). */
 const SHAPE_HALF = 8;
 
+/** A feature-state flag as a boolean expression (unset is false). */
+const state = (key) => ["boolean", ["feature-state", key], false];
+
 /**
  * [{ id, band, interactive, spec }] for a rumb layer of a given kind, with
- * theme colors { outline, pointStroke, label, halo } and a style (DEFAULT_STYLE keys).
+ * theme colors { outline, pointStroke, label, halo, selected, neighbor } and a
+ * style (DEFAULT_STYLE keys). `tiled` ({ sourceLayer }) makes them read a tile
+ * layer's feature-state; tile layers are polygons and carry no labels.
  */
-export function layerSpecs(id, kind, colors, style = {}) {
+export function layerSpecs(id, kind, colors, style = {}, tiled = null) {
   const st = { ...DEFAULT_STYLE, ...style };
   // Opacity reads each feature's __rumb_out only while a filter is on; plain
   // numbers otherwise keep drawing cheap.
-  const fade = (value, by) => (st.faded ? fadeOut(value, by) : value);
+  const fade = (value, by = 0.16) =>
+    !st.faded ? value : tiled ? ["case", state("out"), value * by, value] : fadeOut(value, by);
   const source = sourceId(id);
-  const color = ["get", "__rumb_color"];
+  // Before a tile layer is first colored its features are transparent.
+  const color = tiled ? ["coalesce", ["feature-state", "color"], "rgba(0,0,0,0)"] : ["get", "__rumb_color"];
   const mixed = kind === "mixed";
   const out = [];
+  const layerOf = tiled ? { "source-layer": tiled.sourceLayer } : {};
   const add = (suffix, band, interactive, spec) =>
-    out.push({ id: source + "-" + suffix, band, interactive, spec: { id: source + "-" + suffix, source, ...spec } });
+    out.push({ id: source + "-" + suffix, band, interactive, spec: { id: source + "-" + suffix, source, ...layerOf, ...spec } });
+  if (tiled) {
+    add("fill", "area", true, { type: "fill", paint: { "fill-color": color, "fill-opacity": fade(st.fillOpacity) } });
+    add("outline", "area", false, {
+      type: "line",
+      paint: {
+        "line-color": st.outlineColor || colors.outline,
+        "line-opacity": fade(st.outlineWidth == null ? st.outlineOpacity : 0.9, 0.3),
+        "line-width": st.outlineWidth == null ? zoomed([5, 0.2, 8, 0.6, 11, 1.2]) : st.outlineWidth,
+      },
+    });
+    // Filters cannot read feature-state, so the hatch shows where the state says.
+    if (st.hatch)
+      add("hatch", "area", false, {
+        type: "fill",
+        paint: { "fill-pattern": "rumb-hatch", "fill-opacity": ["case", state("unreliable"), fade(0.9), 0] },
+      });
+    // The selection, drawn from the tiles (the features have no geometry of their own).
+    add("neighbor", "point", false, {
+      type: "line",
+      paint: { "line-color": colors.neighbor, "line-width": 2, "line-dasharray": [2, 1], "line-opacity": ["case", state("neighbor"), 1, 0] },
+    });
+    add("selected", "point", false, {
+      type: "line",
+      paint: { "line-color": colors.selected, "line-width": 3.3, "line-opacity": ["case", state("selected"), 1, 0] },
+    });
+    return out;
+  }
   if (kind === "polygon" || mixed) {
     add("fill", "area", true, {
       type: "fill",

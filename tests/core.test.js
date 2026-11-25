@@ -210,6 +210,31 @@ test("the layer stack keeps order, visibility and its focus layer", async () => 
   assert.deepEqual(normalizeState({}, catalog).stack, [{ id: "tracts", visible: true }]);
 });
 
+test("tile layers read feature-state from their source layer and join the library", async () => {
+  const { layerSpecs } = await import("../src/map/layer-specs.js");
+  const { loadLibrary } = await import("../src/catalog/catalog.js");
+  const colors = { outline: "#000", pointStroke: "#fff", selected: "#111", neighbor: "#222" };
+  const tiled = { sourceLayer: "tracts" };
+  const specs = layerSpecs("t", "polygon", colors, { label: "name" }, tiled);
+  assert.deepEqual(specs.map((s) => [s.id, s.band, s.interactive]), [
+    ["lyr-t-fill", "area", true], ["lyr-t-outline", "area", false],
+    ["lyr-t-neighbor", "point", false], ["lyr-t-selected", "point", false],
+  ]);
+  assert.ok(specs.every((s) => s.spec["source-layer"] === "tracts"), "every layer reads the tiles' layer");
+  assert.deepEqual(specs[0].spec.paint["fill-color"], ["coalesce", ["feature-state", "color"], "rgba(0,0,0,0)"]);
+  const faded = layerSpecs("t", "polygon", colors, { fillOpacity: 0.5, faded: true }, tiled)[0].spec.paint;
+  assert.deepEqual(faded["fill-opacity"], ["case", ["boolean", ["feature-state", "out"], false], 0.08, 0.5]);
+  const hatch = layerSpecs("t", "polygon", colors, { hatch: true }, tiled).find((s) => s.id === "lyr-t-hatch");
+  assert.ok(hatch && !hatch.spec.filter, "the hatch shows by feature-state, not a filter");
+  // Delaware's catalog adds its tile layer to the library, hidden.
+  const de = { ...read("../public/data/de/catalog.json"), path: "data/de/" };
+  const files = { "data/de/layers/library.json": "../public/data/de/layers/library.json", "data/de/tiles/tiles.json": "../public/data/de/tiles/tiles.json" };
+  const library = await loadLibrary(async (p) => read(files[p]), de);
+  const meta = library.layers.find((l) => l.id === "tracts_tiles");
+  assert.ok(meta.tiled && meta.hidden && meta.count === 262 && meta.fields[meta.labelField]);
+  assert.equal(library.layers.filter((l) => l.id === "tracts_tiles").length, 1);
+});
+
 test("map layers for a stacked layer, by kind and band", async () => {
   const { layerSpecs, kindOf, orderMapLayers, sourceId } = await import("../src/map/layer-specs.js");
   const colors = { outline: "#000", pointStroke: "#fff" };

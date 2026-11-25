@@ -58,10 +58,22 @@ export const fieldLabel = (catalog, field, meta) =>
 
 export const GEOMETRIES = ["point", "line", "polygon"];
 
-/** Loads a region's library, or an empty one when the region has none. */
+/**
+ * Loads a region's library, or an empty one when the region has none. Tile
+ * layers (catalog.tiles, written by scripts/build-tiles.mjs) join it, marked
+ * `tiled`: their shapes come from vector tiles and their values from a Parquet
+ * file, read a column at a time.
+ */
 export async function loadLibrary(fetchJSON, catalog) {
-  if (!catalog.library) return { version: 1, groups: [], layers: [] };
-  return validateLibrary(await fetchJSON(catalog.path + catalog.library), catalog);
+  const library = catalog.library ? await fetchJSON(catalog.path + catalog.library) : { version: 1, groups: [], layers: [] };
+  if (catalog.tiles) {
+    const tiled = await fetchJSON(catalog.path + catalog.tiles);
+    for (const layer of tiled.layers || []) {
+      library.layers.push({ ...layer, tiled: true });
+      if (!layer.hidden && !library.groups.includes(layer.group)) library.groups.push(layer.group);
+    }
+  }
+  return validateLibrary(library, catalog);
 }
 
 /** Throws with a readable message when a library entry lacks what the app needs. */
@@ -76,7 +88,9 @@ export function validateLibrary(library, catalog) {
     if (seen.has(layer.id)) fail("a unique id for " + layer.id);
     seen.add(layer.id);
     if (!GEOMETRIES.includes(layer.geometry)) fail(layer.id + "'s geometry type");
-    if (!layer.file) fail(layer.id + "'s file");
+    if (layer.tiled) {
+      for (const key of ["tiles", "sourceLayer", "values", "idField"]) if (!layer[key]) fail(layer.id + "'s " + key);
+    } else if (!layer.file) fail(layer.id + "'s file");
     for (const key of ["labelField", "typeField", "placeField", "populationField"])
       if (layer[key] && !layer.fields?.[layer[key]]) fail(layer.id + "'s " + key);
     for (const field of [...(layer.popupFields || []), ...(layer.measures || [])])

@@ -90,8 +90,12 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
 
   const specsFor = (id) => {
     const l = layers.get(id);
-    return layerSpecs(id, l.kind, mapColors(), l.style);
+    return layerSpecs(id, l.kind, mapColors(), l.style, l.tiled);
   };
+  /** A tile layer's feature-state target for one feature id. */
+  const tileFeature = (id, l, featureId) => ({ source: sourceId(id), sourceLayer: l.tiled.sourceLayer, id: featureId });
+  /** A picked feature's rumb id: its property, or a tile feature's promoted id. */
+  const pickedId = (f) => String(f.properties.__rumb_id ?? f.id);
   // Visibility is set only where it changes: every style change costs a redraw.
   const shown = new Map();
   const show = (id, on) => {
@@ -125,7 +129,7 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
       const layer = pickable.get(f.layer.id);
       if (seen.has(layer)) continue;
       seen.add(layer);
-      found.push({ layer, id: String(f.properties.__rumb_id) });
+      found.push({ layer, id: pickedId(f) });
     }
     if (found.length)
       onSelect({ ...found[0], hits: found, lngLat: e.lngLat, additive: e.originalEvent?.shiftKey || false });
@@ -155,6 +159,8 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
     map,
     ready,
     fit,
+    /** Registers a URL scheme MapLibre can load sources from (map/tiles.js). */
+    addProtocol: (name, load) => maplibregl.addProtocol(name, load),
     /** Hands clicks and moves to a tool ({ click(lonlat), move(lonlat) }), or back with null. */
     capture(handlers) {
       captured = handlers;
@@ -195,11 +201,20 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
       popupNow?.remove();
       popupNow = null;
     },
-    /** Adds a layer's source and MapLibre layers (once); kind from layer-specs KINDS. */
-    addLayer(id, kind, style = {}) {
+    /**
+     * Adds a layer's source and MapLibre layers (once); kind from layer-specs
+     * KINDS. `tiled` ({ url, sourceLayer, idField, minzoom, maxzoom }) makes the
+     * source vector tiles, with features identified by idField.
+     */
+    addLayer(id, kind, style = {}, tiled = null) {
       if (layers.has(id)) return;
-      map.addSource(sourceId(id), { type: "geojson", data: collection([]) });
-      const l = { kind, style, specs: [], byId: new Map(), visible: true };
+      map.addSource(
+        sourceId(id),
+        tiled
+          ? { type: "vector", url: tiled.url, promoteId: tiled.idField, minzoom: tiled.minzoom, maxzoom: tiled.maxzoom }
+          : { type: "geojson", data: collection([]) },
+      );
+      const l = { kind, style, specs: [], byId: new Map(), visible: true, tiled, picked: { selected: [], neighbor: [] } };
       layers.set(id, l);
       l.specs = specsFor(id);
       for (const s of l.specs) {
@@ -224,12 +239,26 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
       orderKey = "";
     },
     has: (id) => layers.has(id),
-    /** Features must carry properties.__rumb_id and __rumb_color. */
+    /**
+     * Features must carry properties.__rumb_id and __rumb_color. A tile layer
+     * takes them as feature-state (color, out, unreliable), replacing every
+     * earlier state, then puts its selection back.
+     */
     setData(id, features) {
       const l = layers.get(id);
       if (!l) return;
       l.byId = new Map(features.map((f) => [String(f.properties.__rumb_id), f]));
-      map.getSource(sourceId(id)).setData(collection(features));
+      if (!l.tiled) return map.getSource(sourceId(id)).setData(collection(features));
+      map.removeFeatureState({ source: sourceId(id), sourceLayer: l.tiled.sourceLayer });
+      for (const f of features) {
+        const p = f.properties;
+        map.setFeatureState(tileFeature(id, l, String(p.__rumb_id)), {
+          color: p.__rumb_color,
+          out: p.__rumb_out === true,
+          unreliable: p.__rumb_unreliable === true,
+        });
+      }
+      for (const role of ["selected", "neighbor"]) for (const fid of l.picked[role]) map.setFeatureState(tileFeature(id, l, fid), { [role]: true });
     },
     /** Changes a layer's look (DEFAULT_STYLE keys); layers are rebuilt when a shape or label comes or goes. */
     setStyle(id, style) {
@@ -288,6 +317,16 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
     select({ layer, ids = [], neighbors = [] } = {}) {
       const byId = layer === "cmp" ? cmpById : layers.get(layer)?.byId;
       const list = (Array.isArray(ids) ? ids : [ids]).filter((x) => x != null).map(String);
+      // Tile layers mark their selection in feature-state (their features have no geometry here).
+      for (const [lid, l] of layers) {
+        if (!l.tiled) continue;
+        const next = lid === layer ? { selected: list, neighbor: (neighbors || []).map(String) } : { selected: [], neighbor: [] };
+        for (const role of ["selected", "neighbor"]) {
+          for (const fid of l.picked[role]) map.setFeatureState(tileFeature(lid, l, fid), { [role]: false });
+          for (const fid of next[role]) map.setFeatureState(tileFeature(lid, l, fid), { [role]: true });
+        }
+        l.picked = next;
+      }
       const features = [];
       const add = (id, role) => {
         const f = byId?.get(String(id));
@@ -302,7 +341,7 @@ export function initMap({ region, regionPath, onSelect, onPointer = () => {} }) 
       const l = layers.get(id);
       const shown = (l?.specs || []).filter((s) => s.interactive && map.getLayer(s.id)).map((s) => s.id);
       if (!shown.length) return [];
-      return [...new Set(map.queryRenderedFeatures({ layers: shown }).map((f) => String(f.properties.__rumb_id)))];
+      return [...new Set(map.queryRenderedFeatures({ layers: shown }).map(pickedId))];
     },
     /** True once a layer has features drawn in the view (the first-map mark). */
     drawn: (id) => api.visibleIds(id).length > 0,

@@ -162,6 +162,8 @@ if (watch) {
     ["jsts", "polygon contiguity"],
     ["@zip.js/zip.js", ".rumb project files"],
     ["hyparquet", "reads attribute tables stored as Parquet"],
+    ["pmtiles", "reads tract tiles from one file by range requests"],
+    ["fflate", "decompresses PMTiles directories"],
     ["@fontsource-variable/jetbrains-mono", "font, Field Terminal"],
     ["@fontsource-variable/antonio", "font, Starship"],
     ["@fontsource/chakra-petch", "font, Tactical HUD"],

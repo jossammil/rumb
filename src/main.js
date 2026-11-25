@@ -88,6 +88,8 @@ async function start() {
   const ws = createWorkspace(catalog, {
     status: (m) => status(m, "loading"),
     onDatabase: (s) => app.statusbar?.database(s),
+    // Tile layers need the PMTiles reader, a lazy chunk.
+    onTiles: () => import("./map/tiles.js").then((m) => m.registerTiles(app.atlas.addProtocol)),
   });
   const store = createStore(defaults(catalog));
 
@@ -282,7 +284,7 @@ async function start() {
         if (!l) continue;
         const kind = app.kindOf(l),
           style = { ...entryStyle(e, kind), faded: !!store.state.filter && store.state.filterMode !== "hide" };
-        if (!app.atlas.has(e.id)) app.atlas.addLayer(e.id, kind, style);
+        if (!app.atlas.has(e.id)) app.atlas.addLayer(e.id, kind, style, tileSource(l));
         else if (JSON.stringify(app.atlas.styleOf(e.id)) !== JSON.stringify(style)) app.atlas.setStyle(e.id, style);
         app.atlas.setVisible(e.id, e.visible);
         app.mapped.add(e.id);
@@ -397,7 +399,7 @@ async function start() {
     /** Maps a field, first reading the table it comes from when needed. */
     async setMeasure(field) {
       if (ws.missingFields([field]).length) {
-        status("Reading " + ws.tableOf(field).name + "…", "loading");
+        status("Reading " + (ws.tableOf(field)?.name || app.layer()?.name || "values") + "…", "loading");
         await ws.ensureFields([field]).catch(report);
       }
       app.analysis.clearResults();
@@ -614,6 +616,18 @@ async function start() {
     return view.collection.features.map((f) =>
       (graph[featureId(f)] || []).filter((id) => index.has(id)).map((id) => index.get(id)),
     );
+  }
+  /** Where a tile layer's tiles are, for the map; null for other layers. */
+  function tileSource(l) {
+    const meta = l?.meta;
+    if (!meta?.tiled) return null;
+    return {
+      url: "pmtiles://" + new URL(catalog.path + meta.tiles, location.href).href,
+      sourceLayer: meta.sourceLayer,
+      idField: meta.idField,
+      minzoom: meta.minzoom,
+      maxzoom: meta.maxzoom,
+    };
   }
   /** A layer without point counts. */
   function baseLayer(id) {

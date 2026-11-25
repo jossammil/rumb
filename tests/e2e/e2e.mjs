@@ -1173,6 +1173,52 @@ await check("regions", async () => {
   await p.context().close();
 });
 
+await check("tiles", async () => {
+  // Delaware's tract tiles (a hidden library layer, the fixture for the
+  // national tract map): drawn from PMTiles by range requests, colored by
+  // feature-state from values that match the state's own, and clickable.
+  const display = JSON.parse(await readFile("public/data/de/tracts.geojson", "utf8")).features;
+  const p = await openPage();
+  const tileRequests = [];
+  p.on("request", (r) => {
+    if (r.url().includes(".pmtiles")) tileRequests.push({ url: r.url(), range: r.headers().range || "" });
+  });
+  await p.goto(base + "?r=de");
+  await ready(p);
+  expect(!tileRequests.length, "no tile requests before the layer is added");
+  await p.evaluate(() => window.rumb.app.addLibraryLayer("tracts_tiles"));
+  await waitText("#toast", "Added Delaware tracts (tiles)", p);
+  await p.evaluate(() => window.rumb.app.setMeasure("poverty_pct"));
+  await p.waitForFunction(() => {
+    const m = window.rumb.map;
+    return m.getFeatureState({ source: "lyr-tracts_tiles", sourceLayer: "tracts", id: "10001040100" }).color && m.areTilesLoaded();
+  });
+  const got = await p.evaluate(() => {
+    const m = window.rumb.map,
+      l = window.rumb.app.layer();
+    const colored = l.collection.features.filter(
+      (f) => m.getFeatureState({ source: "lyr-tracts_tiles", sourceLayer: "tracts", id: f.id }).color,
+    ).length;
+    const drawn = new Set(m.queryRenderedFeatures({ layers: ["lyr-tracts_tiles-fill"] }).map((f) => f.id));
+    return { values: Object.fromEntries(l.collection.features.map((f) => [f.id, f.properties.poverty_pct])), colored, drawn: drawn.size };
+  });
+  // Every value is the state's own; every tract has a color and is drawn.
+  for (const f of display) expect(got.values[f.properties.GEOID] === (f.properties.poverty_pct ?? null), "value of " + f.properties.GEOID);
+  expect(got.colored === display.length && got.drawn === display.length, `colored ${got.colored}, drawn ${got.drawn} of ${display.length}`);
+  // A click selects the tract under it, by its promoted id.
+  const box = await p.locator("#map canvas").boundingBox();
+  const at = await p.evaluate(() => window.rumb.map.project([-75.55, 39.16]));
+  await p.mouse.click(box.x + at.x, box.y + at.y);
+  await waitText("#inspect-panel", "10001040700", p);
+  const selected = await p.evaluate(
+    () => window.rumb.map.getFeatureState({ source: "lyr-tracts_tiles", sourceLayer: "tracts", id: "10001040700" }).selected,
+  );
+  expect(selected === true, "selected in feature-state");
+  // Tiles came from this origin, by range requests.
+  expect(tileRequests.length > 0 && tileRequests.every((r) => r.url.startsWith(origin) && /^bytes=\d+-\d+$/.test(r.range)), JSON.stringify(tileRequests.slice(0, 3)));
+  await p.context().close();
+});
+
 await check("us-counties", async () => {
   // The national region: every county, with neighbors across state lines.
   // Only where the build merged it (scripts/build-regions.mjs us).

@@ -96,6 +96,8 @@ export function renderLayers(app) {
 export async function openLibrary(app) {
   const dialog = $("dialog");
   const library = await app.ws.library();
+  // Hidden layers (Delaware's tile fixture) can be added, but are not listed.
+  const listed = library.layers.filter((m) => !m.hidden);
   const input = h("input", { id: "library-term", type: "search", autocomplete: "off", placeholder: "Fire stations, schools, health…" });
   const results = h("div", { id: "library-results" });
   const onMap = new Set(app.state.stack.map((e) => e.id));
@@ -128,7 +130,7 @@ export async function openLibrary(app) {
     const q = input.value.trim();
     if (q) {
       const ranked = rankItems(
-        library.layers.map((meta) => ({ label: meta.name, group: meta.group, hint: meta.credit, meta })),
+        listed.map((meta) => ({ label: meta.name, group: meta.group, hint: meta.credit, meta })),
         q,
         40,
       );
@@ -137,7 +139,7 @@ export async function openLibrary(app) {
     }
     results.replaceChildren(
       ...library.groups.flatMap((group) => {
-        const layers = library.layers.filter((m) => m.group === group);
+        const layers = listed.filter((m) => m.group === group);
         return layers.length ? [h("h3", { class: "library-group", text: group }), ...layers.map(item)] : [];
       }),
     );
