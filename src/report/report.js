@@ -131,7 +131,7 @@ export async function buildReport(app, { sections, title, notes }) {
     if (filter)
       for (const e of [...state.stack].reverse()) {
         const x = app.layerById(e.id);
-        if (x && e.visible) rows.push([x.name, number(app.filter.keptFor(x).size, 0) + " of " + number(x.collection.features.length, 0) + " kept"]);
+        if (x && e.visible && !x.meta?.tiled) rows.push([x.name, number(app.filter.keptFor(x).size, 0) + " of " + number(x.collection.features.length, 0) + " kept"]);
       }
     for (const f of l.countFields || [])
       if (f.startsWith("count_"))

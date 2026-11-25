@@ -89,6 +89,7 @@
   }
  },
  "library": "layers/library.json",
+ "tiles": "tiles/tiles.json",
  "layers": [
   {
    "id": "tracts",

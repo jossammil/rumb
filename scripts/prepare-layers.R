@@ -7,7 +7,9 @@
 # (options in scripts/lib/region.R). Mississippi gets every layer, most of them
 # from MARIS. Other states get the layers whose source covers the nation:
 # County Health Rankings, on the Census Bureau's 2024 cartographic boundary
-# counties, with neighbors taken from the state's tract neighbors.
+# counties, with neighbors taken from the state's tract neighbors. The national
+# region (--state US) gets County Health Rankings for every county, with the
+# national counties' own neighbors.
 # R packages: sf, rmapshaper, jsonlite, digest.
 suppressPackageStartupMessages(library(sf))
 sf_use_s2(FALSE)
@@ -168,13 +170,14 @@ build_chr <- function(l, built) {
   labels <- read.csv(csv, nrows = 1, header = FALSE, colClasses = "character", check.names = FALSE)
   d <- read.csv(csv, skip = 1, colClasses = "character", check.names = FALSE)
   names(labels) <- names(d)
-  d <- d[d$statecode == ctx$fips & d$countycode != "000", ]
+  d <- d[(if (ctx$national) d$statecode %in% ctx$states else d$statecode == ctx$fips) & d$countycode != "000", ]
   geo <- built[[l$geometryFrom]]$sf
   # County Health Rankings 2025 lists Connecticut twice: its eight former
   # counties carry the health measures, its nine planning regions only
   # population and a few newer ones. The former counties are kept.
   dropped_rows <- character()
-  if (!is.null(l[["outsideGeometryFor"]][[ctx$fips]])) {
+  # Nationally the 2024 geometry has the planning regions, so the former counties' rows go.
+  if (!is.null(l[["outsideGeometryFor"]][[ctx$fips]]) || ctx$national) {
     dropped_rows <- setdiff(d$fipscode, geo$feature_id)
     d <- d[d$fipscode %in% geo$feature_id, ]
     message(l$id, ": left out ", length(dropped_rows), " rows the ", l$geometryFrom, " geometry does not have")
@@ -250,7 +253,7 @@ build_counties <- function(l) {
   zip <- cached(ctx, l$url, national = TRUE)
   pin(ctx, paste0("layer_", l$id), l$url, zip, national = TRUE)
   x <- st_read(paste0("/vsizip/", zip), quiet = TRUE)
-  x <- x[x$STATEFP == ctx$fips, ]
+  x <- x[if (ctx$national) x$STATEFP %in% ctx$states else x$STATEFP == ctx$fips, ]
   stopifnot(nrow(x) > 0, !anyDuplicated(x$GEOID))
   x <- x[order(x$GEOID), ]
   ids <- x$GEOID
@@ -292,7 +295,8 @@ for (l in layers[is_chr]) built[[l$id]] <- build_chr(l, built)
 is_listed <- function(l) !identical(l$source, "counties")
 for (l in Filter(is_listed, layers)) {
   b <- built[[l$id]]
-  written <- write_layer(b$sf, l$id, l$geometry, l[["keep"]] %||% 0.03)
+  # The national counties keep what the reference counties keep (prepare-data.R).
+  written <- write_layer(b$sf, l$id, l$geometry, if (ctx$national) 0.12 else l[["keep"]] %||% 0.03)
   file <- paste0(l$id, ".geojson")
   files <- file
   entry <- list(

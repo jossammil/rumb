@@ -7,6 +7,7 @@
 // the total case count redistributed in proportion to population, and the
 // largest ratio recorded each time. Secondary clusters may not overlap a
 // stronger one. Checked against smerc::scan.test. Pure.
+import { GRID_MIN, pointGrid, within } from "./grid.js";
 import { multinomial, randomGenerator, suffixSums } from "./random.js";
 
 /**
@@ -55,7 +56,7 @@ function digit(lo, hi, pass) {
  * the squared distances is stable, so ties keep index order, exactly as a
  * comparison sort on (distance, index) would.
  */
-function distanceOrder(xy) {
+function distanceOrder(xy, { grid } = {}) {
   const n = xy.length,
     xs = Float64Array.from(xy, (p) => p[0]),
     ys = Float64Array.from(xy, (p) => p[1]);
@@ -67,13 +68,22 @@ function distanceOrder(xy) {
     b = new Int32Array(n);
   const sorted = new Int32Array(n),
     dist2 = new Float64Array(n);
+  // A radius cap searches a uniform grid (grid.js), built on first use. Its
+  // candidates come in index order, so the sort sees the same input.
+  const finite = xs.every(Number.isFinite) && ys.every(Number.isFinite);
+  let index = null;
   /** Fills sorted[0 … m) with the areas within maxMetres of center i, nearest first; returns m. */
   const fill = (i, maxMetres) => {
     const x0 = xs[i],
       y0 = ys[i],
       capped = maxMetres < Infinity;
+    const gridded = capped && finite && (grid ?? n >= GRID_MIN);
+    if (gridded && !index) index = pointGrid(xy);
+    const js = gridded ? within(index, x0, y0, maxMetres) : null,
+      total = js ? js.length : n;
     let m = 0;
-    for (let j = 0; j < n; j++) {
+    for (let t = 0; t < total; t++) {
+      const j = js ? js[t] : t;
       const v = (xs[j] - x0) ** 2 + (ys[j] - y0) ** 2;
       if (capped && Math.sqrt(v) > maxMetres) continue;
       d2[m] = v;
@@ -113,10 +123,10 @@ function distanceOrder(xy) {
  * last bin, 301, everything past 300 mi), from which a radius cap's entries
  * follow without another pass.
  */
-function windowSizes(xy, population, maxPop, maxMetres) {
+function windowSizes(xy, population, maxPop, maxMetres, grid) {
   const n = xy.length,
     limit = maxPop * population.reduce((s, p) => s + p, 0);
-  const nearest = distanceOrder(xy),
+  const nearest = distanceOrder(xy, { grid }),
     { sorted, dist2 } = nearest,
     sizes = new Int32Array(n),
     histogram = new Float64Array(302);
@@ -144,8 +154,8 @@ function windowSizes(xy, population, maxPop, maxMetres) {
  * in two passes, sizes then members, so nothing larger than the result is
  * ever held.
  */
-export function windows(xy, population, { maxPop = 0.5, maxMetres = Infinity } = {}) {
-  return fillWindows(windowSizes(xy, population, maxPop, maxMetres), maxMetres);
+export function windows(xy, population, { maxPop = 0.5, maxMetres = Infinity, grid } = {}) {
+  return fillWindows(windowSizes(xy, population, maxPop, maxMetres, grid), maxMetres);
 }
 
 // The second pass: the members, into arrays sized by the first.

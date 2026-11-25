@@ -22,10 +22,13 @@
     "@zip.js/zip.js": "2.8.11",
     "hyparquet": "1.32.0",
     "jsts": "2.12.1",
-    "maplibre-gl": "5.24.1"
+    "maplibre-gl": "5.24.1",
+    "pmtiles": "4.5.0"
   },
   "devDependencies": {
+    "@mapbox/vector-tile": "3.0.0",
     "esbuild": "0.28.2",
+    "pbf": "5.2.0",
     "playwright": "1.65.1"
   }
 }

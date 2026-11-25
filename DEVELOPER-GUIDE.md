@@ -372,6 +372,30 @@ Feature IDs are the top-level GeoJSON `id`. The catalog points at the library
 (`"library": "layers/library.json"`). `validateLibrary()` checks it, and a unit
 test checks it against every file.
 
+**Tile layers.** A catalog's `"tiles": "tiles/tiles.json"` adds tile layers
+to the library, marked `tiled`: the national tract map (`us`), and Delaware's
+hidden test copy. `scripts/build-tiles.mjs` writes them (section 13). An entry
+has `tiles` (a PMTiles file), `sourceLayer`, `minzoom`, `maxzoom`, `idField`,
+`values` (a Parquet file), `states` (each state's `start` row and `rows`), and
+the usual `measures` and `fields`.
+
+- **Features.** `ws.loadLayer()` makes one feature per row of the values file,
+  with no geometry: its id, name and county. `ensureFields()` reads a field,
+  and the fields its meaning rests on (MOE, counts, limits, pooling), as
+  columns by HTTP range requests (`src/data/parquet.js` `readColumns`). So
+  `colorize()` runs unchanged.
+- **Map.** `addLayer(id, kind, style, tiled)` makes a vector source with
+  `promoteId`. `setData()` writes `color`, `out` and `unreliable` as
+  feature-state, and `select()` writes `selected` and `neighbor`. Clicks read
+  the promoted id.
+- **The reader.** `src/map/tiles.js` (pmtiles) is a lazy chunk. It takes
+  `addProtocol` from the map, so MapLibre stays in `app.js`.
+- **Scope.** `src/core/scope.js` makes a tile layer view-only. Analysis and
+  Filter are inert under a note (`src/panels/scope.js`), and Find, the
+  filters, Compare and the analysis commands refuse with the reason. The
+  inspector's **Open <state>** reloads into the tract's state with
+  `?at=lon,lat,zoom`, which the app applies once and drops.
+
 **The map's layers.** Each stacked layer gets a source `lyr-<id>` and the
 layers `-fill`, `-outline`, `-line`, `-point` or `-shape` and `-label`. They
 sit in three bands, each closed by a hidden anchor layer:
@@ -418,8 +442,12 @@ every committed region.
   links for another region, and projects from another region all go through
   `app.openRegion()`. A project waits in the `rumb-pending` cache across the
   reload (`?restore=1`).
-- **Index entries** carry `id`, `name`, `path`, `tracts` and `bounds`, so
-  the picker reads nothing else.
+- **Index entries** carry `id`, `name`, `path`, `tracts` (or `counties`
+  for the national region) and `bounds`, so the picker reads nothing else.
+- **The national region** (`us`, `scripts/regions.json` `national`) is built
+  by the same scripts with `--state US`. Its reference layer is `counties`,
+  in EPSG:5070. `--all` and the CI shards leave it out of the states; it
+  joins the lightest shard.
 - **To add or refresh a state:** `node scripts/build-regions.mjs <id> --pin`,
   review `scripts/sources/<id>.json`, and commit the pins. CI builds it on
   the next deploy.
@@ -480,17 +508,23 @@ The build fills in `public/sw.js` and writes `dist/offline.json`.
 | `rumb-vendor-v1` | `vendor/duckdb-<v>/`, `vendor/geoda-lisa-<v>/` | On first use |
 | `rumb-pending` | A project opened in another region, while the app reopens there | By the restore, then emptied |
 
-`offline.json` lists `vendor`, `shared` and `regions: { <id>: [...] }` files.
+`offline.json` lists `vendor`, `shared` and `regions: { <id>: [...] }` files,
+and `bytes` for the runtimes and shared data (`base`) and for each region.
 **Download for offline** (palette or command) fetches the vendor files, the
 shared data and the open region's data through the worker and asks for
-persistent storage. A new worker deletes data caches it does not name,
+persistent storage. A region with more than 50 MB of its own data (only the
+national region: its tiles) first says how much it downloads and waits for
+a yes. A new worker deletes data caches it does not name,
 including the single `rumb-data-<hash>` cache of builds before regions.
 
 `RUMB_REGIONS=.cache/data npm run build` adds every state built by
 `scripts/build-regions.mjs` to `dist/data/` and to the index, after the
 committed regions (Mississippi and Delaware), in name order. With all 51,
-`dist` is 503 MB on the published site (544 MB from a local macOS build). Range and
-HEAD requests are answered from cached files. A new version installs itself
+`dist` was 503 MB on the published site (544 MB from a local macOS build).
+With the national region and its tiles, a local build is 589 MB. Range
+requests are answered by slicing the cached file as a Blob, and HEAD requests
+by its size. Neither reads the whole file, which matters for the 37 MB of
+tiles. A new version installs itself
 and the page offers **Reload**. The dev server (`npm run dev`) unregisters the
 worker. There is no cross-origin isolation (COOP/COEP); single-threaded DuckDB
 does not need it.
@@ -599,6 +633,13 @@ Build constants: `__RUMB_VERSION__`, `__RUMB_DEV__`, `__DUCKDB_FOLDER__`,
      `LAYER_VIEW_KEYS` and the share whitelist.
   5. Add an R fixture to `scripts/reference-stats.R`, a unit test and an e2e
      check.
+- **The national tract map:** after the states are built, run
+  `node scripts/build-tiles.mjs --out .cache/data/us <every state folder>`
+  (tippecanoe 2.79.0 on the PATH: `brew install tippecanoe`), then
+  `node scripts/check-tiles.mjs .cache/data/us`. Delaware's committed test
+  copy is rebuilt with `node scripts/build-tiles.mjs --out public/data/de
+  --hidden public/data/de`. REPRODUCIBILITY.md gives the flags and why
+  tracts start at zoom 5.
 - **The logo:** edit `public/rumb.svg`, then `node scripts/make-icons.mjs`.
 - **Review screenshots:** `npm run build`, then
   `node scripts/screens.mjs <stage>`.
@@ -661,9 +702,10 @@ Build constants: `__RUMB_VERSION__`, `__RUMB_DEV__`, `__DUCKDB_FOLDER__`,
 
 | Job | What it does |
 | --- | --- |
-| `data` (6 shards) | Builds the 49 states that are not committed with the R pipeline (`renv.lock` pins the R packages), in shards balanced by tract count (`scripts/shards.mjs`), and checks each one. Downloads must match `scripts/sources/`. Downloads and each shard's output are cached, so a deploy without data or script changes rebuilds nothing. |
+| `data` (6 shards) | Builds the 49 states that are not committed, and the national counties (`us`, on the lightest shard), with the R pipeline (`renv.lock` pins the R packages), in shards balanced by tract count (`scripts/shards.mjs`), and checks each one. Downloads must match `scripts/sources/`. Downloads and each shard's output are cached, so a deploy without data or script changes rebuilds nothing. |
 | `verify` | Rebuilds Mississippi and Delaware and compares them with `public/data/` (`scripts/compare-region.R --geometry 2e-4`). Values, ids, neighbors, tables and the analytical GeoParquet must match exactly; display geometry may differ by Linux's GDAL and GEOS rounding (see REPRODUCIBILITY.md). |
-| `build` | `npm ci`, `npm test`, then `RUMB_REGIONS=.cache/data npm run build` with every shard's states, and `scripts/check-size.mjs` (under 900 MB, no file over 100 MB). |
+| `tiles` | Builds tippecanoe 2.79.0 from its source tarball (SHA-256 pinned, cached by version), then the national tract tiles and values from the shards' states and the committed Mississippi and Delaware (`scripts/build-tiles.mjs`). Uploads only `us/tiles/`. |
+| `build` | `npm ci`, `npm test`, `scripts/check-tiles.mjs` on Delaware's and the national tiles, then `RUMB_REGIONS=.cache/data npm run build` with every shard's states and the tiles, and `scripts/check-size.mjs` (under 900 MB, no file over 100 MB). |
 | `deploy` | Publishes `dist/` to <https://jossammil.github.io/rumb/>. |
 
 A run that rebuilds every state (any change under `scripts/`, `renv.lock`

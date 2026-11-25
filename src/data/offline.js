@@ -11,6 +11,19 @@ export const offlineFiles = (list, id) =>
   list.regions ? [...list.vendor, ...list.shared, ...(list.regions[id] || [])] : list.files;
 
 /**
+ * Above this many bytes of a region's own data (the national map's tiles; the
+ * largest state, California, has 36 MB), "Download for offline" says how much
+ * it downloads in all and waits for a yes.
+ */
+export const LARGE_OFFLINE = 50 * 1024 * 1024;
+
+/** Whether keeping region `id` offline should ask first. */
+export const offlineAsks = (list, id) => (list.bytes?.[id] || 0) > LARGE_OFFLINE;
+
+/** What keeping region `id` offline downloads, in bytes, or null when the list does not say. */
+export const offlineBytes = (list, id) => (list.bytes ? (list.bytes.base || 0) + (list.bytes[id] || 0) : null);
+
+/**
  * createOffline({ status, notify, onState(state), region }) where state is
  * "unsupported", "online", "partial" (some files cached) or "ready", and
  * `region` is the open region's id.
@@ -56,10 +69,24 @@ export function createOffline({ status, notify, onState, region }) {
     });
   }
 
-  async function download() {
+  /**
+   * Caches the app and the open region. A large region (the national map's
+   * tiles) is opt-in: the first call says its size and offers the download.
+   */
+  async function download({ confirmed = false } = {}) {
     if (!supported) throw new Error("This browser cannot keep rumb for offline use.");
+    const list = await manifest();
+    const bytes = offlineBytes(list, region);
+    if (!confirmed && offlineAsks(list, region)) {
+      const mb = Math.round(bytes / 1048576) + " MB";
+      notify("Keeping this region offline downloads " + mb + ".", {
+        action: () => download({ confirmed: true }).catch((e) => notify(e.message, { error: true })),
+        label: "Download " + mb,
+      });
+      return;
+    }
     await controlled();
-    const files = offlineFiles(await manifest(), region);
+    const files = offlineFiles(list, region);
     let done = 0;
     for (const file of files) {
       status("Caching for offline… " + ++done + " of " + files.length, "loading");

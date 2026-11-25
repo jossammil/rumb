@@ -35,7 +35,7 @@ export function openRegions(app) {
                 "span",
                 { class: "layer-text" },
                 h("strong", { text: r.name }),
-                h("small", { text: [r.id.toUpperCase(), r.tracts && number(r.tracts) + " tracts", r.id === current && "open now"].filter(Boolean).join(" · ") }),
+                h("small", { text: [r.id.toUpperCase(), r.tracts && number(r.tracts) + " tracts", r.counties && number(r.counties) + " counties", r.id === current && "open now"].filter(Boolean).join(" · ") }),
               ),
             ),
           )

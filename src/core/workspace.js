@@ -4,7 +4,7 @@
 import { loadLibrary, referenceLayer, validateTables } from "../catalog/catalog.js";
 import { numericFields } from "./features.js";
 
-export function createWorkspace(catalog, { status = () => {}, onDatabase = () => {} } = {}) {
+export function createWorkspace(catalog, { status = () => {}, onDatabase = () => {}, onTiles = async () => {} } = {}) {
   const ref = referenceLayer(catalog);
   let blobs = {},
     display = null,
@@ -131,6 +131,7 @@ export function createWorkspace(catalog, { status = () => {}, onDatabase = () =>
   /** Loads whatever tables the given fields come from. Unknown fields are left alone. */
   async function ensureFields(fields) {
     const wanted = [...new Set(fields.filter(Boolean))];
+    if (wanted.length && tiledColumns.size) await loadTiledFields(wanted);
     if (!wanted.length || !ref.tables) return;
     await tables();
     for (const id of new Set(wanted.map((f) => tableOf(f)?.id).filter(Boolean))) await loadTable(id);
@@ -177,7 +178,7 @@ export function createWorkspace(catalog, { status = () => {}, onDatabase = () =>
 
   /** The library of add-on layers, read once on first use. */
   function library() {
-    libraryPromise ??= loadLibrary(async () => json(catalog.library), catalog).catch((error) => {
+    libraryPromise ??= loadLibrary(async (file) => json(file.slice(catalog.path.length)), catalog).catch((error) => {
       libraryPromise = null;
       throw error;
     });
@@ -185,16 +186,78 @@ export function createWorkspace(catalog, { status = () => {}, onDatabase = () =>
   }
   /** A library layer's metadata (after library() has resolved), or undefined. */
   const libraryMeta = (id, lib) => lib?.layers.find((l) => l.id === id);
-  /** Reads a library layer's features; returns { meta, collection }. */
+  /**
+   * Reads a library layer's features; returns { meta, collection }. A tile
+   * layer's features have no geometry (the map draws them from its tiles):
+   * their ids, names and places come from its values file, and its other
+   * columns as fields need them (ensureFields).
+   */
   async function loadLayer(id) {
-    const meta = libraryMeta(id, await library());
+    // Remembered here too, so a layer added without opening the library has its metadata.
+    const meta = libraryMeta(id, (libraryNow = await library()));
     if (!meta) throw new Error("This region has no layer called " + id + ".");
     if (!layerData.has(id)) {
-      const collection = await json(meta.file);
+      let collection;
+      if (meta.tiled) {
+        await onTiles();
+        const names = [meta.labelField, meta.placeField].filter(Boolean);
+        const { ids, columns } = await (await import("../data/parquet.js")).readColumns(valuesUrl(meta), names, { idColumn: meta.idField });
+        collection = {
+          type: "FeatureCollection",
+          tiled: true,
+          features: ids.map((fid, i) => ({
+            type: "Feature",
+            id: fid,
+            geometry: null,
+            properties: Object.fromEntries([[meta.idField, fid], ...names.map((n) => [n, columns[n][i]])]),
+          })),
+        };
+        tiledColumns.set(id, new Set([meta.idField, ...names]));
+      } else collection = await json(meta.file);
       if (!Array.isArray(collection.features)) throw new Error(meta.name + " has no features.");
       layerData.set(id, collection);
     }
     return { meta, collection: layerData.get(id) };
+  }
+  // Tile layers: the columns read so far, by layer id.
+  const tiledColumns = new Map();
+  const valuesUrl = (meta) => new URL(catalog.path + meta.values, globalThis.location?.href || "http://localhost/").href;
+  /** A field and the fields its meaning rests on (margin of error, counts, limits, pooling). */
+  const withRelated = (meta, field) => {
+    const info = meta.fields?.[field];
+    if (!info) return [];
+    const pool = info.pool || {};
+    return [field, info.moe, info.count, info.universe, info.lcl, info.ucl, pool.numerator, pool.denominator, pool.weight, pool.flag]
+      .filter((f) => f && meta.fields[f]);
+  };
+  /** Tile layer fields named here that are not read yet, by layer id. */
+  function tiledMissing(fields) {
+    const out = new Map();
+    for (const [id, have] of tiledColumns) {
+      const meta = libraryMeta(id, libraryNow);
+      const want = [...new Set(fields.filter(Boolean).flatMap((f) => withRelated(meta, f)))].filter((f) => !have.has(f));
+      if (want.length) out.set(id, want);
+    }
+    return out;
+  }
+  /** Reads tile layer columns and adds them to that layer's features (a new collection). */
+  async function loadTiledFields(fields) {
+    for (const [id, want] of tiledMissing(fields)) {
+      const meta = libraryMeta(id, libraryNow);
+      const { ids, columns } = await (await import("../data/parquet.js")).readColumns(valuesUrl(meta), want, { idColumn: meta.idField });
+      const before = layerData.get(id);
+      if (ids.length !== before.features.length || ids.some((x, i) => x !== before.features[i].id))
+        throw new Error(meta.name + "'s values do not line up with its features.");
+      layerData.set(id, {
+        ...before,
+        features: before.features.map((f, i) => {
+          const properties = { ...f.properties };
+          for (const name of want) properties[name] = columns[name][i];
+          return { ...f, properties };
+        }),
+      });
+      for (const name of want) tiledColumns.get(id).add(name);
+    }
   }
   /** Queen and rook neighbors of a library polygon layer, keyed by feature id. */
   async function loadLayerNeighbors(id) {
@@ -248,11 +311,13 @@ export function createWorkspace(catalog, { status = () => {}, onDatabase = () =>
     /** A table field's metadata, or undefined. */
     tableField: (field) => tableOf(field)?.fields[field],
     /** Table fields named here whose values are not loaded yet. */
-    missingFields: (fields) =>
-      fields.filter((f) => {
+    missingFields: (fields) => {
+      const tiled = new Set([...tiledMissing(fields).values()].flat());
+      return fields.filter((f) => {
         const t = f && tableOf(f);
-        return t && !tableColumns.has(t.id);
-      }),
+        return (t && !tableColumns.has(t.id)) || tiled.has(f);
+      });
+    },
     /** A library layer's neighbor graph ({ queen, rook }) once loaded, or undefined. */
     layerNeighbors: (id) => layerGraphs.get(id) ?? undefined,
     /** A loaded library layer's features, or undefined. */

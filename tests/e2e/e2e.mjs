@@ -60,6 +60,17 @@ const ids = JSON.parse(await dataFile("tracts.geojson")).features.map(
 );
 
 const errors = [];
+// The check running now. A page error names the check that opened its page,
+// and the check that was running when it fired, if that is another one: some
+// errors arrive after their check has finished (WebKit's "Context is stopped").
+let running = "setup";
+function watchErrors(target) {
+  const opener = running;
+  target.on("pageerror", (e) => {
+    const where = (e.stack || "").split("\n").slice(1, 3).join(" ").trim();
+    errors.push(`[${opener}${running !== opener ? " → " + running : ""}] ${e.message}${where ? " @ " + where : ""}`);
+  });
+}
 const external = new Set();
 const origin = new URL(base).origin;
 let page;
@@ -69,7 +80,7 @@ async function openPage(viewport = { width: 1440, height: 960 }) {
   const ctx = await browser.newContext({ viewport, acceptDownloads: true });
   const p = await ctx.newPage();
   p.setDefaultTimeout(35000);
-  p.on("pageerror", (e) => errors.push(e.message + " @ " + (e.stack || "").split("\n").slice(1, 3).join(" ").trim()));
+  watchErrors(p);
   p.on("request", (r) => {
     const u = new URL(r.url());
     if (/^https?:$/.test(u.protocol) && u.origin !== origin) external.add(u.origin);
@@ -94,6 +105,7 @@ let passed = 0,
   skipped = 0;
 async function check(name, fn) {
   if (only && !only.has(name) && name !== "boot") return;
+  running = name;
   const started = Date.now();
   try {
     const result = await fn();
@@ -243,7 +255,7 @@ await check("boot", async () => {
   });
   page = await ctx.newPage();
   page.setDefaultTimeout(35000);
-  page.on("pageerror", (e) => errors.push(e.message + " @ " + (e.stack || "").split("\n").slice(1, 3).join(" ").trim()));
+  watchErrors(page);
   page.on("request", (r) => {
     requests.push(r.url());
     const u = new URL(r.url());
@@ -884,7 +896,7 @@ await check("locate", async () => {
   });
   const p = await ctx.newPage();
   p.setDefaultTimeout(35000);
-  p.on("pageerror", (e) => errors.push(e.message));
+  watchErrors(p);
   await p.goto(base);
   await ready(p);
   await p.keyboard.press("g");
@@ -1079,7 +1091,7 @@ await check("share", async () => {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 850 } });
   const q = await ctx.newPage();
   q.setDefaultTimeout(35000);
-  q.on("pageerror", (e) => errors.push(e.message));
+  watchErrors(q);
   const sent = [];
   q.on("request", (r) => sent.push(r.url()));
   await q.goto(url.replace(/^https?:\/\/[^/]+/, origin));
@@ -1170,6 +1182,155 @@ await check("regions", async () => {
   expect(after.region === "de" && after.palette === "Viridis" && !after.search.includes("restore") && after.pending === 0, JSON.stringify(after));
   await m.context().close();
   await q.context().close();
+  await p.context().close();
+});
+
+await check("tiles", async () => {
+  // Delaware's tract tiles (a hidden library layer, the fixture for the
+  // national tract map): drawn from PMTiles by range requests, colored by
+  // feature-state from values that match the state's own, and clickable.
+  const display = JSON.parse(await readFile("public/data/de/tracts.geojson", "utf8")).features;
+  const p = await openPage();
+  const tileRequests = [];
+  p.on("request", (r) => {
+    if (r.url().includes(".pmtiles")) tileRequests.push({ url: r.url(), range: r.headers().range || "" });
+  });
+  await p.goto(base + "?r=de");
+  await ready(p);
+  expect(!tileRequests.length, "no tile requests before the layer is added");
+  // A filter set on the reference layer leaves the tile layer as it is.
+  await p.evaluate(() => window.rumb.app.filter.set({ kind: "radius", center: [-75.55, 39.16], miles: 5 }));
+  await p.evaluate(() => window.rumb.app.addLibraryLayer("tracts_tiles"));
+  await waitText("#toast", "Added Delaware tracts (tiles)", p);
+  await p.evaluate(() => window.rumb.app.filter.set(null));
+  await p.evaluate(() => window.rumb.app.setMeasure("poverty_pct"));
+  await p.waitForFunction(() => {
+    const m = window.rumb.map;
+    return m.getFeatureState({ source: "lyr-tracts_tiles", sourceLayer: "tracts", id: "10001040100" }).color && m.areTilesLoaded();
+  });
+  const got = await p.evaluate(() => {
+    const m = window.rumb.map,
+      l = window.rumb.app.layer();
+    const colored = l.collection.features.filter(
+      (f) => m.getFeatureState({ source: "lyr-tracts_tiles", sourceLayer: "tracts", id: f.id }).color,
+    ).length;
+    const drawn = new Set(m.queryRenderedFeatures({ layers: ["lyr-tracts_tiles-fill"] }).map((f) => f.id));
+    return { values: Object.fromEntries(l.collection.features.map((f) => [f.id, f.properties.poverty_pct])), colored, drawn: drawn.size };
+  });
+  // Every value is the state's own; every tract has a color and is drawn.
+  for (const f of display) expect(got.values[f.properties.GEOID] === (f.properties.poverty_pct ?? null), "value of " + f.properties.GEOID);
+  expect(got.colored === display.length && got.drawn === display.length, `colored ${got.colored}, drawn ${got.drawn} of ${display.length}`);
+  // A click selects the tract under it, by its promoted id.
+  const box = await p.locator("#map canvas").boundingBox();
+  const at = await p.evaluate(() => window.rumb.map.project([-75.55, 39.16]));
+  await p.mouse.click(box.x + at.x, box.y + at.y);
+  await waitText("#inspect-panel", "10001040700", p);
+  const selected = await p.evaluate(
+    () => window.rumb.map.getFeatureState({ source: "lyr-tracts_tiles", sourceLayer: "tracts", id: "10001040700" }).selected,
+  );
+  expect(selected === true, "selected in feature-state");
+  // On the tile layer, the methods that need shapes are off, and say why.
+  for (const id of ["sec-filter", "sec-analyze"]) {
+    await waitText(`#${id} .scope-note`, "for viewing", p);
+    expect(await p.evaluate((sid) => document.querySelector("#" + sid + " #analyze, #" + sid + " #filter-kind")?.closest("[inert]") != null, id), id + " is inert");
+  }
+  await p.keyboard.press("f");
+  await waitText("#toast", "Statistics, filters, search and Compare run on", p);
+  expect(!(await p.locator("#find-term").count()), "Find does not open");
+  await p.evaluate(() => window.rumb.app.setView("compare"));
+  expect((await p.evaluate(() => window.rumb.state.view)) === "map", "Compare does not open");
+  // "Use Delaware tracts" puts the reference layer in focus, where everything runs.
+  await p.click('#sec-analyze [data-scope-action="counties"]');
+  await p.waitForFunction(() => window.rumb.state.active === "tracts");
+  expect(!(await p.locator(".scope-note").count()), "notes gone with the reference layer in focus");
+  // Tiles came from this origin, by range requests.
+  expect(tileRequests.length > 0 && tileRequests.every((r) => r.url.startsWith(origin) && /^bytes=\d+-\d+$/.test(r.range)), JSON.stringify(tileRequests.slice(0, 3)));
+  await p.context().close();
+});
+
+await check("us-counties", async () => {
+  // The national region: every county, with neighbors across state lines.
+  // Only where the build merged it (scripts/build-regions.mjs us).
+  if (!existsSync("dist/data/us/catalog.json")) return "skip";
+  const ref = JSON.parse(await readFile("dist/data/us/reference.json", "utf8"));
+  const count = JSON.parse(await readFile("dist/data/us/counties.geojson", "utf8")).features.length;
+  const p = await openPage();
+  await p.goto(base + "?r=us");
+  await ready(p);
+  await waitText("#foot-status", count.toLocaleString("en-US") + " features", p);
+  expect((await p.evaluate(() => window.rumb.app.catalog.region.projection.epsg)) === 5070, "CONUS Albers");
+  // Moran's I on poverty, queen and rook, as spdep computed them in the build.
+  await p.click("#analyze");
+  await waitText("#inspect-panel", ref.queen.globalI.toFixed(4), p);
+  await p.selectOption("#rule", "rook");
+  await p.click("#analyze");
+  await waitText("#inspect-panel", ref.rook.globalI.toFixed(4), p);
+  // Distance weights go through the grid; Hawaii's islands are far from all.
+  await p.selectOption("#rule", "knn");
+  await p.waitForSelector("#k", { state: "visible" });
+  await p.click("#analyze");
+  await waitText("#weights-note", "6 neighbors each · no islands", p);
+  // A spatial lag model at 3,141 areas (Hawaii's three islands left out)
+  // takes the Chebyshev log-determinant. spatialreg::lagsarlm(poverty_pct ~
+  // acs_bachelors_pct, method = "Chebyshev", cheb_q = 7) on the 2024 build
+  // gives ρ 0.605113 and an intercept of 9.380723.
+  await p.selectOption("#rule", "queen");
+  await p.selectOption("#method", "model");
+  await p.waitForSelector("#covariates");
+  await p.check('[data-covariate="acs_bachelors_pct"]');
+  await p.selectOption("#model-type", "lag");
+  await p.click("#analyze");
+  await waitText("#inspect-panel", "Areas3,141", p);
+  await waitText("#inspect-panel", "ρ (rho)0.6051", p);
+  await waitText("#inspect-panel", "Intercept9.3807", p);
+  await p.context().close();
+});
+
+await check("us-tracts", async () => {
+  // Every tract in the country, from tiles, listed in the national library.
+  // Only where the build merged the national tiles (CI's tiles job, or
+  // scripts/build-tiles.mjs --out .cache/data/us).
+  if (!existsSync("dist/data/us/tiles/tiles.json")) return "skip";
+  const p = await openPage();
+  await p.goto(base + "?r=us");
+  await ready(p);
+  await p.evaluate(() => window.rumb.map.jumpTo({ center: [-90.2, 38.63], zoom: 9 }));
+  await p.keyboard.press("n");
+  await p.click('[data-library="tracts_tiles"]');
+  await waitText("#toast", "Added All U.S. tracts", p);
+  await p.evaluate(() => window.rumb.app.setMeasure("places_diabetes"));
+  const tract = "29510125500";
+  await p.waitForFunction((id) => window.rumb.map.getFeatureState({ source: "lyr-tracts_tiles", sourceLayer: "tracts", id }).color, tract);
+  // The values are Missouri's own, where the build has Missouri.
+  if (existsSync("dist/data/mo/tables/tracts-places.json")) {
+    const mo = JSON.parse(await readFile("dist/data/mo/tables/tracts-places.json", "utf8"));
+    const got = await p.evaluate(
+      (ids) => {
+        const byId = new Map(window.rumb.app.layer().collection.features.map((f) => [f.id, f.properties.places_diabetes]));
+        return ids.map((id) => byId.get(id));
+      },
+      mo.ids,
+    );
+    got.forEach((v, i) => expect(v === mo.columns.places_diabetes[i], "Missouri value for " + mo.ids[i]));
+  }
+  // Feature-state is set before tiles arrive; click once the tract is drawn.
+  await p.waitForFunction(() => {
+    const m = window.rumb.map;
+    return m.areTilesLoaded() && m.queryRenderedFeatures(m.project([-90.2, 38.63]), { layers: ["lyr-tracts_tiles-fill"] }).length > 0;
+  });
+  const box = await p.locator("#map canvas").boundingBox();
+  const at = await p.evaluate(() => window.rumb.map.project([-90.2, 38.63]));
+  await p.mouse.click(box.x + at.x, box.y + at.y);
+  await waitText("#inspect-panel", tract, p);
+  // "Open Missouri" goes to the state at the same place.
+  if (await p.locator("#open-state").count()) {
+    const camera = await p.evaluate(() => window.rumb.app.atlas.camera());
+    await Promise.all([p.waitForURL(/\?r=mo/), p.click("#open-state")]);
+    await ready(p);
+    const after = await p.evaluate(() => ({ region: window.rumb.app.catalog.region.id, camera: window.rumb.app.atlas.camera(), search: location.search }));
+    expect(after.region === "mo" && !after.search.includes("at="), JSON.stringify(after));
+    expect(Math.abs(after.camera.center[0] - camera.center[0]) < 1e-3 && Math.abs(after.camera.zoom - camera.zoom) < 0.02, JSON.stringify([camera, after.camera]));
+  }
   await p.context().close();
 });
 
@@ -1477,7 +1638,7 @@ await check("offline", async () => {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 850 }, serviceWorkers: "allow" });
   const p = await ctx.newPage();
   p.setDefaultTimeout(60000);
-  p.on("pageerror", (e) => errors.push(e.message + " @ " + (e.stack || "").split("\n").slice(1, 3).join(" ").trim()));
+  watchErrors(p);
   await p.goto(base);
   await ready(p);
   const controlled = await p
@@ -1546,7 +1707,7 @@ await check("offline-region", async () => {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 850 }, serviceWorkers: "allow" });
   const p = await ctx.newPage();
   p.setDefaultTimeout(60000);
-  p.on("pageerror", (e) => errors.push(e.message));
+  watchErrors(p);
   await p.goto(base + "?r=de");
   await ready(p);
   const controlled = await p
@@ -1572,12 +1733,57 @@ await check("offline-region", async () => {
   await ctx.close();
 });
 
+await check("offline-us", async () => {
+  // The national map is large: "Download for offline" says its size first,
+  // then keeps it, and its tiles are read offline as ranges of the cached file.
+  if (!existsSync("dist/data/us/tiles/tiles.json")) return "skip";
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 850 }, serviceWorkers: "allow" });
+  const p = await ctx.newPage();
+  p.setDefaultTimeout(120000);
+  watchErrors(p);
+  await p.goto(base + "?r=us");
+  await ready(p);
+  const controlled = await p
+    .waitForFunction(() => navigator.serviceWorker?.controller, null, { timeout: 20000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!controlled) {
+    await ctx.close();
+    return "skip";
+  }
+  const list = JSON.parse(await readFile("dist/offline.json", "utf8"));
+  const mb = Math.round((list.bytes.base + list.bytes.us) / 1048576);
+  await p.evaluate(() => window.rumb.runCommand("offline"));
+  await waitText("#toast", `downloads ${mb} MB`, p);
+  const tiles = () => p.evaluate(async () => !!(await caches.match(new URL("data/us/tiles/tracts.pmtiles", document.baseURI).href)));
+  expect(!(await tiles()), "the tiles are not downloaded before the yes");
+  await p.click("#toast .toast-action");
+  await waitText("#sb-net", "offline ready", p);
+  expect(await tiles(), "the tiles are cached");
+  await ctx.setOffline(true);
+  await p.reload();
+  await ready(p);
+  await p.evaluate(() => window.rumb.map.jumpTo({ center: [-90.2, 38.63], zoom: 9 }));
+  await p.evaluate(() => window.rumb.app.addLibraryLayer("tracts_tiles"));
+  await p.evaluate(() => window.rumb.app.setMeasure("places_diabetes"));
+  await p.waitForFunction(() => {
+    const m = window.rumb.map;
+    return (
+      m.getFeatureState({ source: "lyr-tracts_tiles", sourceLayer: "tracts", id: "29510125500" }).color &&
+      m.areTilesLoaded() &&
+      m.queryRenderedFeatures({ layers: ["lyr-tracts_tiles-fill"] }).length > 100
+    );
+  });
+  await ctx.close();
+});
+
 await check("same-origin", async () => {
   expect(external.size === 0, `requests to ${[...external].join(", ")}`);
 });
 if (errors.length) {
   failed++;
-  console.log(`FAIL  page errors: ${errors.slice(0, 3).join(" | ")}`);
+  console.log(`FAIL  page errors (${errors.length}):`);
+  for (const e of errors.slice(0, 12)) console.log("      " + e);
 }
 console.log(
   `${which}: ${passed}/${passed + failed} checks passed${skipped ? `, ${skipped} skipped` : ""}`,

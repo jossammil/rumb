@@ -29,8 +29,9 @@ states_zip <- cached(ctx, states_url, national = TRUE)
 pin(ctx, "cb_states", states_url, states_zip, national = TRUE)
 states <- st_transform(st_read(paste0("/vsizip/", states_zip), quiet = TRUE), 4326)
 states <- region_lonlat(states, ctx)
-state <- states[states$STATEFP == ctx$fips, ]
-stopifnot(nrow(state) == 1)
+# The national region frames all 51 together.
+state <- if (ctx$national) states[states$STATEFP %in% ctx$states, ] else states[states$STATEFP == ctx$fips, ]
+stopifnot(nrow(state) == if (ctx$national) length(ctx$states) else 1)
 b <- st_bbox(state)
 extent <- unname(c(round(b[["xmin"]] - 6), max(-85, round(b[["ymin"]] - 4)),
                    round(b[["xmax"]] + 6), min(85, round(b[["ymax"]] + 4))))
@@ -64,7 +65,8 @@ st_write(world, file.path(ctx$out, "world-land.geojson"), quiet=TRUE, delete_dsn
 # that lies in the extent on open water. Written to .cache/build/<id>/backdrop.json
 # for the catalog; Mississippi's committed catalog keeps its hand-placed labels.
 view <- st_as_sfc(box(extent))
-others <- suppressWarnings(st_intersection(states[states$STATEFP != ctx$fips, ], view))
+# Nationally no state is "another" state, and territories are not labelled.
+others <- suppressWarnings(st_intersection(states[if (ctx$national) FALSE else states$STATEFP != ctx$fips, ], view))
 # Only states with at least 10,000 km² in view, the 8 nearest to the state
 # (Hawaii and Alaska have none).
 others <- others[!st_is_empty(others), ]
@@ -97,10 +99,13 @@ write_json_file(list(bounds = list(bounds[1:2], bounds[3:4]), extent = extent, l
 # scale). Each route is dissolved into one feature per class and route, simplified
 # to about 40 m and written with 4 decimals; `ref` is the short route label
 # (I-55, US 49, MS 25; the state route prefix is the state's abbreviation).
-roads_url <- sprintf("https://www2.census.gov/geo/tiger/TIGER2024/PRISECROADS/tl_2024_%s_prisecroads.zip", ctx$fips)
-roads_zip <- cached(ctx, roads_url)
-pin(ctx, "tiger_roads", roads_url, roads_zip)
+# Nationally: primary roads only, and of those the interstates, simplified to 500 m.
+roads_url <- if (ctx$national) "https://www2.census.gov/geo/tiger/TIGER2024/PRIMARYROADS/tl_2024_us_primaryroads.zip" else
+  sprintf("https://www2.census.gov/geo/tiger/TIGER2024/PRISECROADS/tl_2024_%s_prisecroads.zip", ctx$fips)
+roads_zip <- cached(ctx, roads_url, national = ctx$national)
+pin(ctx, "tiger_roads", roads_url, roads_zip, national = ctx$national)
 roads <- st_read(paste0("/vsizip/", roads_zip), quiet = TRUE)
+if (ctx$national) roads <- roads[roads$RTTYP %in% "I", ]
 stopifnot(all(roads$MTFCC %in% c("S1100", "S1200")))
 roads$class <- ifelse(roads$MTFCC == "S1100", "primary", "secondary")
 number <- sub("^.*?([0-9]+[A-Z]?).*$", "\\1", roads$FULLNAME)
@@ -115,7 +120,7 @@ merged <- do.call(rbind, lapply(split(seq_len(nrow(roads)), key), function(rows)
   line <- st_line_merge(st_cast(st_union(st_geometry(roads)[rows]), "MULTILINESTRING"))
   st_sf(class = roads$class[rows[1]], name = roads$ref[rows[1]], ref = roads$ref[rows[1]], geometry = line)
 }))
-merged <- region_lonlat(st_transform(st_simplify(merged, dTolerance = 40, preserveTopology = FALSE), "OGC:CRS84"), ctx)
+merged <- region_lonlat(st_transform(st_simplify(merged, dTolerance = if (ctx$national) 500 else 40, preserveTopology = FALSE), "OGC:CRS84"), ctx)
 merged <- merged[!st_is_empty(merged), ]
 merged <- merged[order(merged$class == "primary", merged$ref), ]
 st_write(merged, file.path(ctx$out, "roads.geojson"), quiet = TRUE, delete_dsn = TRUE,

@@ -3,7 +3,8 @@
 // layers, a filter, a pooled selection, natural breaks, measuring and a
 // 320px phone; then the statistics (tract tables, hot spots, bivariate and
 // EB clusters, hatching, smoothing and the scan; regressions, count models,
-// access, point patterns and density), as numbered JPEGs. Not a test; run
+// access, point patterns and density); then the national counties and the
+// national tract map at several zooms, as numbered JPEGs. Not a test; run
 // after `npm run build` when the look changes:
 //   node scripts/screens.mjs stats-b
 import { chromium } from "playwright";
@@ -229,6 +230,45 @@ await page.click("#density-go");
 await page.locator("#toast", { hasText: "Added Density" }).waitFor();
 await page.waitForTimeout(800);
 await shot("density-surface");
+
+// The national region and tract map, where the build has them
+// (scripts/build-regions.mjs us, scripts/build-tiles.mjs).
+if (existsSync("dist/data/us/tiles/tiles.json")) {
+  const settle = async () => {
+    await page.waitForFunction(() => window.rumb.map.areTilesLoaded() && window.rumb.map.loaded());
+    await page.waitForTimeout(600);
+  };
+  await page.evaluate(() => window.rumb.appearance({ theme: "terminal" }));
+  await page.goto(`http://127.0.0.1:${port}/rumb/?r=us`);
+  await page.waitForFunction(() => window.rumb?.timings.firstMap, null, { timeout: 60000 });
+  await settle();
+  await shot("us-counties");
+  await page.click("#analyze");
+  await page.locator("#inspect-panel", { hasText: "Global Moran" }).waitFor();
+  await settle();
+  await shot("us-counties-clusters");
+  await page.evaluate(() => window.rumb.app.addLibraryLayer("tracts_tiles"));
+  await page.evaluate(() => window.rumb.app.setMeasure("places_diabetes"));
+  await page.waitForFunction(() => window.rumb.map.getFeatureState({ source: "lyr-tracts_tiles", sourceLayer: "tracts", id: "29510125500" }).color);
+  for (const [name, center, zoom] of [
+    ["us-tracts-z4-counties-below", [-96, 38.5], 4],
+    ["us-tracts-z5", [-96, 38.5], 5],
+    ["us-tracts-z11-st-louis", [-90.2, 38.63], 11],
+    ["us-tracts-alaska", [-150, 61.5], 5.2],
+  ]) {
+    await page.evaluate(([c, z]) => window.rumb.map.jumpTo({ center: c, zoom: z }), [center, zoom]);
+    await settle();
+    await shot(name);
+  }
+  await page.evaluate(() => window.rumb.map.jumpTo({ center: [-90.2, 38.63], zoom: 9 }));
+  await settle();
+  const box = await page.locator("#map canvas").boundingBox();
+  const at = await page.evaluate(() => window.rumb.map.project([-90.2, 38.63]));
+  await page.mouse.click(box.x + at.x, box.y + at.y);
+  await page.locator("#inspect-panel", { hasText: "29510125500" }).waitFor();
+  await page.click("#sec-analyze h2");
+  await shot("us-tracts-inspector-scope");
+}
 await browser.close();
 server.kill();
 console.log(`Wrote ${n} screenshots to ${dir}/`);

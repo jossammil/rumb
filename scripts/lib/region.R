@@ -1,6 +1,7 @@
 # Shared helpers for the per-state data scripts. Every prepare-*.R script
 # sources this file and takes the same options:
-#   --state MS      a state's abbreviation, FIPS code or data id (default MS)
+#   --state MS      a state's abbreviation, FIPS code or data id (default MS),
+#                   or US for the national region, whose areas are counties
 #   --out DIR       where the region's files go (default public/data/<id>)
 #   --cache DIR     downloads (default $RUMB_SOURCE_CACHE or .cache/sources)
 #   --pin           record what was downloaded instead of checking it
@@ -23,16 +24,22 @@ region_context <- function(args = commandArgs(trailingOnly = TRUE)) {
   flags <- args[startsWith(args, "--")]
   if (length(setdiff(flags, known))) stop("Unknown option ", setdiff(flags, known)[1])
   want <- toupper(value("--state", "MS"))
-  regions <- jsonlite::read_json("scripts/regions.json")$regions
-  hit <- Filter(function(r) want %in% c(r$abbr, r$fips, toupper(r$id)), regions)
+  manifest <- jsonlite::read_json("scripts/regions.json")
+  regions <- c(manifest$regions, list(manifest$national))
+  hit <- Filter(function(r) want %in% c(r$abbr, toupper(r$fips), toupper(r$id)), regions)
   if (length(hit) != 1) stop("Unknown state ", want, "; see scripts/regions.json")
   r <- hit[[1]]
   ctx <- list(
     id = r$id, fips = r$fips, abbr = r$abbr, name = r$name,
+    # The national region's areas are counties; a state's are tracts.
+    national = identical(r$id, manifest$national$id),
+    unit = r$unit %||% "tracts",
+    states = vapply(manifest$regions, function(s) s$fips, character(1)),
     out = value("--out", file.path("public/data", r$id)),
     cache = value("--cache", Sys.getenv("RUMB_SOURCE_CACHE", ".cache/sources")),
     pin = "--pin" %in% args,
-    pins = file.path("scripts/sources", paste0(r$id, ".json")),
+    # The national region's own downloads are pinned with the national files.
+    pins = file.path("scripts/sources", paste0(if (identical(r$id, manifest$national$id)) "national" else r$id, ".json")),
     build = file.path(".cache/build", r$id)
   )
   dir.create(ctx$out, recursive = TRUE, showWarnings = FALSE)
@@ -44,8 +51,14 @@ region_context <- function(args = commandArgs(trailingOnly = TRUE)) {
 
 sha256 <- function(path) digest::digest(path, algo = "sha256", file = TRUE)
 
-# The data.census.gov geography filter for every tract in the state.
-tract_filter <- function(ctx) paste0("040XX00US", ctx$fips, "$1400000")
+# The data.census.gov geography filter for every tract in the state, or for
+# every county in the country (the 50 states and DC).
+tract_filter <- function(ctx) if (ctx$national) "010XX00US$0500000" else paste0("040XX00US", ctx$fips, "$1400000")
+# An export row's GEO_ID: a tract of the state, or a county of one of the states.
+geo_pattern <- function(ctx) {
+  if (ctx$national) paste0("^0500000US(", paste(ctx$states, collapse = "|"), ")[0-9]{3}$")
+  else paste0("^1400000US", ctx$fips, "[0-9]{9}$")
+}
 
 # Downloads may take minutes (CDC's 75 MB PLACES export is slow). R's default
 # 60-second timeout cut it short in CI, and a timeout is only a warning, so
@@ -112,8 +125,8 @@ census_export <- function(ctx, table) {
   stop("Census table export did not finish for ", table, " (", ctx$name, ")")
 }
 
-# The CSV inside an export, with its variable-description row removed. The
-# first data row's GEO_ID must be a tract of this state.
+# The CSV inside an export, with its variable-description row removed. Every
+# row's GEO_ID must be one of the region's areas (geo_pattern).
 read_export <- function(ctx, zip, table, stage) {
   csv_name <- paste0(table, "-Data.csv")
   unzip(zip, files = csv_name, exdir = stage)
@@ -122,9 +135,11 @@ read_export <- function(ctx, zip, table, stage) {
   stopifnot(d$GEO_ID[1] == "Geography")
   labels <- unlist(d[1, ])
   d <- d[-1, ]
-  bad <- !grepl(paste0("^1400000US", ctx$fips, "[0-9]{9}$"), d$GEO_ID)
+  # The country's counties include Puerto Rico's municipios, which the region leaves out.
+  if (ctx$national) d <- d[!grepl("^0500000US72[0-9]{3}$", d$GEO_ID), ]
+  bad <- !grepl(geo_pattern(ctx), d$GEO_ID)
   if (any(bad)) stop(table, " has rows outside ", ctx$name, ": ", d$GEO_ID[which(bad)[1]])
-  d$GEOID <- sub("^1400000US", "", d$GEO_ID)
+  d$GEOID <- sub("^(1400000|0500000)US", "", d$GEO_ID)
   list(data = d, labels = labels, csv = csv)
 }
 
@@ -185,11 +200,15 @@ metric_crs <- function(ctx) {
   switch(ctx$fips, "28" = 3814, "02" = 3338, "15" = "ESRI:102007", 5070)
 }
 
+# Whether the region holds Alaska, whose Aleutians cross 180°.
+has_alaska <- function(ctx) ctx$fips == "02" || ctx$national
+
 # Longitude and latitude as the region uses them. Alaska's Aleutians cross
 # 180°: its positive longitudes move west by 360°, so the state is one
-# west-to-east piece (MapLibre draws longitudes below -180° in place).
+# west-to-east piece (MapLibre draws longitudes below -180° in place). Every
+# other longitude in the country is negative and comes back unchanged.
 region_lonlat <- function(x, ctx) {
-  if (ctx$fips != "02") return(x)
+  if (!has_alaska(ctx)) return(x)
   crs <- sf::st_crs(x)
   g <- sf::st_shift_longitude(sf::st_geometry(x)) - c(360, 0)
   sf::st_set_geometry(x, sf::st_set_crs(g, crs))
@@ -197,7 +216,7 @@ region_lonlat <- function(x, ctx) {
 
 # GDAL's RFC 7946 mode wraps longitudes into [-180°, 180°] and splits shapes at
 # 180°, which would undo Alaska's shift; Alaska's files are written without it.
-rfc7946 <- function(ctx) if (ctx$fips == "02") "RFC7946=NO" else "RFC7946=YES"
+rfc7946 <- function(ctx) if (has_alaska(ctx)) "RFC7946=NO" else "RFC7946=YES"
 
 write_json_file <- function(x, path, digits = 15) {
   jsonlite::write_json(x, path, auto_unbox = TRUE, null = "null", na = "null", digits = digits)

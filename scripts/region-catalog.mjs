@@ -1,7 +1,8 @@
 // Writes a state's catalog.json from the files the data scripts built and from
 // Mississippi's catalog, which is the template for the reference layer's fields
 // (every state's tracts carry the same ACS S1701 measures). Mississippi keeps
-// its committed, hand-edited catalog. Used by scripts/build-regions.mjs.
+// its committed, hand-edited catalog. The national region's reference layer is
+// counties, with the same measures. Used by scripts/build-regions.mjs.
 import fs from "node:fs";
 import path from "node:path";
 
@@ -34,6 +35,15 @@ export function bbox(collection) {
  * (0.26% for Texas, the widest after Alaska).
  */
 export function regionProjection(region, [west, south, east, north]) {
+  // The national region: CONUS Albers equal-area. Alaska and Hawaii lie far
+  // outside its standard parallels, so their distances stretch (METHODS.md).
+  if (region.unit === "counties")
+    return {
+      epsg: 5070,
+      name: "NAD83 / Conus Albers",
+      aea: { lat0: 23, lon0: -96, lat1: 29.5, lat2: 45.5, x0: 0, y0: 0, a: 6378137, rf: 298.257222101 },
+      proj: "+proj=aea +lat_0=23 +lon_0=-96 +lat_1=29.5 +lat_2=45.5 +x_0=0 +y_0=0 +ellps=GRS80 +units=m +no_defs",
+    };
   if (region.fips === "02")
     return {
       epsg: 3338,
@@ -70,16 +80,36 @@ export function paddedBounds([west, south, east, north]) {
 /** The catalog for `region` (an entry of scripts/regions.json) built into `dir`. */
 export function regionCatalog(region, dir, { template, backdrop }) {
   const read = (name) => JSON.parse(fs.readFileSync(path.join(dir, name), "utf8"));
-  const tracts = read("tracts.geojson");
+  const counties = region.unit === "counties";
+  const tracts = read(counties ? "counties.geojson" : "tracts.geojson");
   const box = bbox(tracts);
+  // The national map opens on the lower 48; Alaska and Hawaii are a pan away.
+  const opening = counties
+    ? bbox({ features: tracts.features.filter((f) => !["02", "15"].includes(String(f.id).slice(0, 2))) })
+    : box;
   const base = template.layers[0];
-  const layer = {
-    ...base,
-    name: region.name + " tracts",
-    title: region.name,
-    summary: "2020–2024 ACS · " + region.name + " census tracts",
-    studyAll: "All " + region.name + " tracts",
-  };
+  const layer = counties
+    ? {
+        ...base,
+        id: "counties",
+        name: region.name + " counties",
+        noun: "county",
+        nouns: "counties",
+        title: region.name,
+        subtitle: "Counties · ACS 2020–2024",
+        summary: "2020–2024 ACS · " + region.name + " counties",
+        studyAll: "All U.S. counties",
+        files: { display: "counties.geojson", parquet: "counties.parquet", neighbors: "neighbors.json", sources: "sources.json" },
+        idLabel: "5-character county GEOID",
+        groupField: "state",
+      }
+    : {
+        ...base,
+        name: region.name + " tracts",
+        title: region.name,
+        summary: "2020–2024 ACS · " + region.name + " census tracts",
+        studyAll: "All " + region.name + " tracts",
+      };
   // Compare pairs poverty with a PLACES social-needs measure; leave it out
   // where the state's release has none of them.
   delete layer.compare;
@@ -96,7 +126,7 @@ export function regionCatalog(region, dir, { template, backdrop }) {
     region: {
       id: region.id,
       name: region.name,
-      bounds: paddedBounds(box),
+      bounds: paddedBounds(opening),
       credit: template.region.credit,
       projection: regionProjection(region, box),
       outline: "outline.geojson",
@@ -109,6 +139,8 @@ export function regionCatalog(region, dir, { template, backdrop }) {
       },
     },
     library: template.library,
+    // Tile layers (scripts/build-tiles.mjs) join the library when built.
+    ...(fs.existsSync(path.join(dir, "tiles", "tiles.json")) && { tiles: "tiles/tiles.json" }),
     layers: [layer],
   };
 }

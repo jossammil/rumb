@@ -279,3 +279,18 @@ kbd {
     transition: none !important;
   }
 }
+
+/* A view-only layer (the national tract tiles) turns sections off, with a note. */
+.side-section.view-only > :not(h2):not(.scope-note) {
+  opacity: 0.4;
+}
+.scope-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 2px 0 12px;
+}
+.scope-note p {
+  flex-basis: 100%;
+  margin: 0;
+}

@@ -24,7 +24,8 @@ import { accessFields, densityId, densitySpec, derivedSpec, modelFields } from "
 import { mapGeometry } from "./geo/spatial.js";
 import { accessMeasures } from "./stats/access.js";
 import { createStore } from "./core/store.js";
-import { chooseRegion, listed, projectRegion, regionHref, unknownRegion } from "./core/regions.js";
+import { cameraFromSearch, chooseRegion, listed, projectRegion, regionHref, unknownRegion } from "./core/regions.js";
+import { commandAllowed, layerScope } from "./core/scope.js";
 import { load as loadPref, save as savePref } from "./core/storage.js";
 import { createWorkspace } from "./core/workspace.js";
 import { createOffline } from "./data/offline.js";
@@ -38,6 +39,7 @@ import { createCompare } from "./panels/compare.js";
 import { createFiles } from "./panels/files.js";
 import { findFeatures, openFind } from "./panels/find.js";
 import { openRegions } from "./panels/regions.js";
+import { renderScope } from "./panels/scope.js";
 import { createInspector } from "./panels/inspector.js";
 import { describeLayer, openLibrary, renderLayers } from "./panels/layers.js";
 import { createStyle } from "./panels/style.js";
@@ -88,6 +90,8 @@ async function start() {
   const ws = createWorkspace(catalog, {
     status: (m) => status(m, "loading"),
     onDatabase: (s) => app.statusbar?.database(s),
+    // Tile layers need the PMTiles reader, a lazy chunk.
+    onTiles: () => import("./map/tiles.js").then((m) => m.registerTiles(app.atlas.addProtocol)),
   });
   const store = createStore(defaults(catalog));
 
@@ -282,7 +286,7 @@ async function start() {
         if (!l) continue;
         const kind = app.kindOf(l),
           style = { ...entryStyle(e, kind), faded: !!store.state.filter && store.state.filterMode !== "hide" };
-        if (!app.atlas.has(e.id)) app.atlas.addLayer(e.id, kind, style);
+        if (!app.atlas.has(e.id)) app.atlas.addLayer(e.id, kind, style, tileSource(l));
         else if (JSON.stringify(app.atlas.styleOf(e.id)) !== JSON.stringify(style)) app.atlas.setStyle(e.id, style);
         app.atlas.setVisible(e.id, e.visible);
         app.mapped.add(e.id);
@@ -397,7 +401,7 @@ async function start() {
     /** Maps a field, first reading the table it comes from when needed. */
     async setMeasure(field) {
       if (ws.missingFields([field]).length) {
-        status("Reading " + ws.tableOf(field).name + "…", "loading");
+        status("Reading " + (ws.tableOf(field)?.name || app.layer()?.name || "values") + "…", "loading");
         await ws.ensureFields([field]).catch(report);
       }
       app.analysis.clearResults();
@@ -425,6 +429,7 @@ async function start() {
     app.style.renderControls(fields);
     app.filter.render();
     app.analysis.renderControls(fields);
+    renderScope(app);
     const ref = ws.ref;
     app.syncMap();
     app.setTitles(
@@ -452,6 +457,8 @@ async function start() {
 
   function setView(view, restoring = false) {
     if (!ready) return;
+    // Compare needs the whole layer in memory; a tile layer is for viewing.
+    if (view === "compare" && !commandAllowed("view-compare", app.layer())) return app.notify(layerScope(app.layer()).reason);
     const { state } = app,
       previous = state.view,
       comparing = view === "compare",
@@ -614,6 +621,18 @@ async function start() {
     return view.collection.features.map((f) =>
       (graph[featureId(f)] || []).filter((id) => index.has(id)).map((id) => index.get(id)),
     );
+  }
+  /** Where a tile layer's tiles are, for the map; null for other layers. */
+  function tileSource(l) {
+    const meta = l?.meta;
+    if (!meta?.tiled) return null;
+    return {
+      url: "pmtiles://" + new URL(catalog.path + meta.tiles, location.href).href,
+      sourceLayer: meta.sourceLayer,
+      idField: meta.idField,
+      minzoom: meta.minzoom,
+      maxzoom: meta.maxzoom,
+    };
   }
   /** A layer without point counts. */
   function baseLayer(id) {
@@ -784,6 +803,15 @@ async function start() {
   // project opened in another region waits in the pending cache for this one.
   if (/^#state=/.test(location.hash)) app.loadShare().then((s) => s.fromAddress());
   if (new URLSearchParams(location.search).has("restore")) app.files.restorePending().catch(report);
+  // ?at=lon,lat,zoom (the national tract map's "Open <state>") keeps the place
+  // on the map; it is dropped from the address once used.
+  const at = cameraFromSearch(location.search);
+  if (at) {
+    app.atlas.map.jumpTo(at);
+    const url = new URL(location.href);
+    url.searchParams.delete("at");
+    history.replaceState(history.state, "", url.pathname + url.search + url.hash);
+  }
 
   // For debugging in the console, the e2e checks and scripts/benchmark-browser.mjs.
   window.rumb = {
@@ -843,7 +871,7 @@ function focusSection(app, name) {
 function wire(app) {
   const { store } = app;
   const inMap = () => app.state.view === "map" || app.state.view === "compare";
-  const runCommand = bindCommands({
+  const commands = bindCommands({
     palette: () => {
       // The library loads in the background so its layers can be offered.
       app.ws.library().then((lib) => (library = lib), () => {});
@@ -945,6 +973,9 @@ function wire(app) {
     "layer-down": () => stepFocus(app, -1),
     "layer-up": () => stepFocus(app, 1),
   });
+  // A tile layer turns off the commands that need its shapes (core/scope.js).
+  const runCommand = (id) =>
+    commandAllowed(id, app.layer()) ? commands(id) : app.notify(layerScope(app.layer()).reason);
   app.runCommand = runCommand;
 
   // The palette lists commands, then layers, measures and themes; places
@@ -960,7 +991,9 @@ function wire(app) {
   let library = null;
   const palette = createPalette((query) => {
     const { state } = app;
-    const items = COMMANDS.filter((c) => c.id !== "palette" && (available[c.id]?.() ?? true)).map((c) => ({
+    const items = COMMANDS.filter(
+      (c) => c.id !== "palette" && (available[c.id]?.() ?? true) && commandAllowed(c.id, app.layer()),
+    ).map((c) => ({
       group: c.group,
       label: c.label,
       keys: keyOf[c.id],

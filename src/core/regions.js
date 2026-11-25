@@ -38,3 +38,19 @@ export function regionHref(href, id, { index, hash = "", extra = {} } = {}) {
 
 /** The region a saved project belongs to. Projects saved before there was a choice were Mississippi's. */
 export const projectRegion = (saved) => (typeof saved?.region === "string" && saved.region) || "ms";
+
+/** A tile layer's state ({ state, id, name, start, rows }) for a tract GEOID, or undefined. */
+export const stateOf = (meta, id) => meta?.states?.find((g) => String(id).startsWith(g.state));
+
+/** A camera as the ?at= value: "lon,lat,zoom". */
+export const cameraParam = ({ center, zoom }) =>
+  [center[0].toFixed(5), center[1].toFixed(5), zoom.toFixed(2)].join(",");
+
+/** The camera ?at= asks for ({ center, zoom }), or null when it is missing or out of range. */
+export function cameraFromSearch(search = "") {
+  const parts = (new URLSearchParams(search).get("at") || "").split(",").map(Number);
+  if (parts.length !== 3 || !parts.every(Number.isFinite)) return null;
+  const [lon, lat, zoom] = parts;
+  if (lon < -540 || lon > 540 || lat < -85 || lat > 85 || zoom < 0 || zoom > 22) return null;
+  return { center: [lon, lat], zoom };
+}

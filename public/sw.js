@@ -72,8 +72,9 @@ async function shell(request) {
 async function cachedRange(request) {
   const hit = await caches.match(request.url, { ignoreSearch: true });
   if (!hit) return null;
-  const body = await hit.arrayBuffer();
-  const size = body.byteLength;
+  // A Blob is sliced without reading the whole file (the national tiles are 37 MB).
+  const body = await hit.blob();
+  const size = body.size;
   const m = /^bytes=(\d*)-(\d*)$/.exec(request.headers.get("range") || "");
   if (!m || (!m[1] && !m[2])) return null;
   let start = m[1] ? Number(m[1]) : size - Number(m[2]);
@@ -94,7 +95,7 @@ async function cachedHead(request) {
   const hit = await caches.match(request.url, { ignoreSearch: true });
   if (!hit) return fetch(request);
   const headers = new Headers(hit.headers);
-  headers.set("Content-Length", String((await hit.clone().arrayBuffer()).byteLength));
+  headers.set("Content-Length", String((await hit.blob()).size));
   return new Response(null, { status: 200, headers });
 }
 

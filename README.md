@@ -217,9 +217,16 @@ The spatial query returned one result per tract and counted 39,670 points inside
 
 ## Limits
 
-- Each state is analysed on its own: weights, scans and models stop at its
-  border. There is no whole-country map yet, and no county-level statistics
-  across state lines. Puerto Rico is not included.
+- A state is analysed on its own: weights, scans and models stop at its
+  border. Across state lines, statistics run on the national counties
+  (United States, 3,144 counties), whose distances are in CONUS Albers:
+  within about 1.5% in the lower 48, but off by 13% at Anchorage and up to
+  43% on Alaska's North Slope. Puerto Rico is not included.
+- The national tract map (All U.S. tracts, 84,415 tracts from tiles, zoom 5
+  and closer) is for viewing: it can be styled, classified and clicked,
+  but statistics, filters, search and Compare run on the counties or on one
+  state, and its inspector opens the tract's state at the same place.
+  Keeping the national map offline downloads about 145 MB, and asks first.
 - Outside Mississippi the GeoParquet for spatial SQL is simplified to about
   10 m, so a point within a few metres of a tract boundary can be counted in
   its neighbor. Mississippi's keeps full TIGER resolution.
@@ -291,6 +298,9 @@ the data and checks results against R. Pushes to `main` publish to GitHub Pages.
 | R packages [spdep](https://r-spatial.github.io/spdep/), [smerc](https://cran.r-project.org/package=smerc) and R itself | GPL-2 or later | Reference values for the tests (not shipped; nothing is ported from them) |
 | [JSTS](https://github.com/bjornharrtell/jsts) | EDL-1.0 or EPL-1.0 | Polygon contiguity for imported layers |
 | [zip.js](https://gildas-lormeau.github.io/zip.js/) | BSD-3-Clause | `.rumb` project files |
+| [hyparquet](https://github.com/hyparam/hyparquet) | MIT | Reading attribute tables and tract values stored as Parquet |
+| [PMTiles](https://github.com/protomaps/PMTiles) (`pmtiles`, with [fflate](https://github.com/101arrowz/fflate), MIT) | BSD-3-Clause | Reading the national tract tiles by range requests |
+| [tippecanoe](https://github.com/felt/tippecanoe) 2.79.0, [@mapbox/vector-tile](https://github.com/mapbox/vector-tile-js) and [pbf](https://github.com/mapbox/pbf) | BSD-2-Clause, BSD-3-Clause | Building and checking the tract tiles (not shipped) |
 | [ColorBrewer](https://colorbrewer2.org/) diverging schemes (Cynthia Brewer, Mark Harrower and The Pennsylvania State University) | Apache-2.0 | Red–blue, pink–green and brown–teal palettes |
 | Okabe and Ito's color-blind-safe colors | Free to use | Category colors |
 | JetBrains Mono, Antonio, Chakra Petch and Saira Stencil One, via [Fontsource](https://fontsource.org/) | SIL OFL 1.1 | Theme fonts |

@@ -6,7 +6,7 @@
 //   npm run build:debug    readable code with source maps, for studying and debugging
 //   npm run dev            build, then rebuild on change and serve at http://127.0.0.1:4180/rumb/
 import { build, context } from "esbuild";
-import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 
@@ -44,8 +44,25 @@ if (process.env.RUMB_REGIONS) {
     const catalog = JSON.parse(await readFile(path.join(dir, "catalog.json"), "utf8").catch(() => "null"));
     if (!catalog) continue;
     await cp(dir, "dist/data/" + entry.name, { recursive: true });
-    const tracts = JSON.parse(await readFile(path.join(dir, catalog.layers[0].files.display), "utf8")).features.length;
-    added.push({ id: catalog.region.id, name: catalog.region.name, path: entry.name + "/", tracts, bounds: catalog.region.bounds });
+    // Tile layers built separately (CI's tiles job) join the catalog when present.
+    const hasTiles = await stat(path.join(dir, "tiles", "tiles.json")).then(() => true, () => false);
+    if (hasTiles !== !!catalog.tiles) {
+      const { layers, tiles, ...rest } = catalog;
+      await writeFile(
+        path.join("dist/data", entry.name, "catalog.json"),
+        JSON.stringify({ ...rest, ...(hasTiles && { tiles: "tiles/tiles.json" }), layers }, null, 1) + "\n",
+      );
+    }
+    const areas = JSON.parse(await readFile(path.join(dir, catalog.layers[0].files.display), "utf8")).features.length;
+    // The national region's areas are counties, and the picker says so.
+    const counties = catalog.layers[0].id === "counties";
+    added.push({
+      id: catalog.region.id,
+      name: catalog.region.name + (counties ? " (counties)" : ""),
+      path: entry.name + "/",
+      ...(counties ? { counties: areas } : { tracts: areas }),
+      bounds: catalog.region.bounds,
+    });
   }
   index.regions.push(...added.sort((a, b) => a.name.localeCompare(b.name)));
   await writeFile("dist/data/index.json", JSON.stringify(index, null, 1) + "\n");
@@ -154,6 +171,8 @@ if (watch) {
     ["jsts", "polygon contiguity"],
     ["@zip.js/zip.js", ".rumb project files"],
     ["hyparquet", "reads attribute tables stored as Parquet"],
+    ["pmtiles", "reads tract tiles from one file by range requests"],
+    ["fflate", "decompresses PMTiles directories"],
     ["@fontsource-variable/jetbrains-mono", "font, Field Terminal"],
     ["@fontsource-variable/antonio", "font, Starship"],
     ["@fontsource/chakra-petch", "font, Tactical HUD"],
@@ -210,6 +229,15 @@ if (watch) {
   const predata = ["data/index.json", base + "catalog.json", base + catalog.layers[0].files.display];
   if (catalog.region.backdrop?.context) predata.push(base + catalog.region.backdrop.context);
   const { shared, ...regions } = groups;
+  // What "Download for offline" fetches, in bytes: the vendor runtimes and
+  // shared data, and each region's data (the app asks before a large one).
+  const sizeOf = async (list) => {
+    let n = 0;
+    for (const f of list) n += (await stat(path.join("dist", f))).size;
+    return n;
+  };
+  const bytes = { base: await sizeOf([...vendorFiles, ...shared]) };
+  for (const [id, list] of Object.entries(regions)) bytes[id] = await sizeOf(list);
   await writeFile(
     "dist/offline.json",
     JSON.stringify(
@@ -219,6 +247,7 @@ if (watch) {
         vendor: vendorFiles,
         shared,
         regions,
+        bytes,
         // Builds before regions were cached separately read `files`.
         files: [...vendorFiles, ...shared, ...(regions[index.default] || [])],
       },

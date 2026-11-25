@@ -9,6 +9,7 @@
 //   reach, summed back over the facilities each area can reach, per 10,000
 //   people.
 // Pure.
+import { GRID_MIN, nearest as nearestIn, pointGrid, within as withinOf } from "./grid.js";
 
 export const METRES_PER_MILE = 1609.344;
 const EDGE = Math.exp(-0.5);
@@ -25,7 +26,7 @@ export function decay(d, d0, kind = "gaussian") {
  * size). Distances are in metres in; miles out. `within` and `catchment`
  * are miles. Returns { nearest, count, ratio } aligned with the demand.
  */
-export function accessMeasures(demand, supply, { within = 10, catchment = 30, kind = "gaussian" } = {}) {
+export function accessMeasures(demand, supply, { within = 10, catchment = 30, kind = "gaussian", grid } = {}) {
   const nD = demand.xy.length,
     nS = supply.xy.length;
   if (!nS) throw new Error("The facility layer has no points.");
@@ -37,10 +38,36 @@ export function accessMeasures(demand, supply, { within = 10, catchment = 30, ki
   // Step 1: each facility's supply over the decay-weighted population it serves.
   const served = new Float64Array(nS);
   const pairs = [];
+  // Above a few dozen facilities the search goes through a uniform grid
+  // (grid.js). Each area still meets its facilities in index order, so the
+  // sums come out the same.
+  const index = (grid ?? nS >= GRID_MIN) ? pointGrid(supply.xy) : null;
+  const reachOf = Math.max(reach, d0);
   for (let i = 0; i < nD; i++) {
     const p = demand.xy[i];
     if (!p) continue;
-    for (let j = 0; j < nS; j++) {
+    let js = null,
+      m = nS;
+    if (index && Number.isFinite(p[0]) && Number.isFinite(p[1]) && Number.isFinite(reachOf)) {
+      // The nearest facility may lie past both radii.
+      const near = nearestIn(index, p[0], p[1], 1, (cs) => {
+        let best = -1,
+          bd = Infinity;
+        for (const j of cs) {
+          const d = dist(p, supply.xy[j]);
+          if (d < bd) {
+            bd = d;
+            best = j;
+          }
+        }
+        return { best: best >= 0 ? [best] : [], last: bd };
+      });
+      if (near.length) nearest[i] = dist(p, supply.xy[near[0]]);
+      js = withinOf(index, p[0], p[1], reachOf);
+      m = js.length;
+    }
+    for (let t = 0; t < m; t++) {
+      const j = js ? js[t] : t;
       const d = dist(p, supply.xy[j]);
       if (d < nearest[i]) nearest[i] = d;
       if (d <= reach) count[i]++;

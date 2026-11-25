@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chooseRegion, listed, projectRegion, regionHref, unknownRegion } from "../src/core/regions.js";
+import { cameraFromSearch, cameraParam, chooseRegion, listed, projectRegion, regionHref, stateOf, unknownRegion } from "../src/core/regions.js";
 import { matchRegions } from "../src/panels/regions.js";
-import { offlineFiles } from "../src/data/offline.js";
+import { commandAllowed, layerScope, SCOPED_COMMANDS } from "../src/core/scope.js";
+import { offlineAsks, offlineBytes, offlineFiles } from "../src/data/offline.js";
 
 const index = { default: "ms", regions: [{ id: "ms" }, { id: "de" }, { id: "tx" }] };
 
@@ -45,4 +46,40 @@ test("offline downloads cover the vendor files, shared data and the open region"
   assert.deepEqual(offlineFiles(list, "de"), ["vendor/a", "data/index.json", "data/de/y"]);
   assert.deepEqual(offlineFiles(list, "tx"), ["vendor/a", "data/index.json"]);
   assert.deepEqual(offlineFiles({ files: ["old"] }, "ms"), ["old"]);
+});
+
+test("the national tract map opens a tract's state at the same place", () => {
+  const meta = { states: [{ state: "01", id: "al", name: "Alabama" }, { state: "10", id: "de", name: "Delaware" }] };
+  assert.equal(stateOf(meta, "10001040700").id, "de");
+  assert.equal(stateOf(meta, "99000000000"), undefined);
+  const at = cameraParam({ center: [-75.551234567, 39.16], zoom: 9.456 });
+  assert.equal(at, "-75.55123,39.16000,9.46");
+  assert.deepEqual(cameraFromSearch("?r=de&at=" + at), { center: [-75.55123, 39.16], zoom: 9.46 });
+  // Alaska's shifted longitudes pass; nonsense does not.
+  assert.deepEqual(cameraFromSearch("?at=-185.2,52,6"), { center: [-185.2, 52], zoom: 6 });
+  for (const bad of ["", "?at=1,2", "?at=a,b,c", "?at=0,95,3", "?at=0,0,40"]) assert.equal(cameraFromSearch(bad), null, bad);
+});
+
+test("a tile layer is for viewing: the commands that need its shapes are off", () => {
+  const tiled = { meta: { tiled: true } },
+    counties = { meta: undefined };
+  assert.equal(layerScope(tiled).viewOnly, true);
+  assert.match(layerScope(tiled).reason, /counties nationwide, or on one state/);
+  assert.deepEqual(layerScope(counties), { viewOnly: false, reason: null });
+  for (const id of SCOPED_COMMANDS) {
+    assert.equal(commandAllowed(id, tiled), false, id);
+    assert.equal(commandAllowed(id, counties), true, id);
+  }
+  // Styling, the library and the region picker stay.
+  for (const id of ["style", "add-layer", "regions", "fit", "view-map"]) assert.equal(commandAllowed(id, tiled), true, id);
+});
+
+test("offline downloads know their size, so a large region can ask first", () => {
+  const list = { vendor: [], shared: [], regions: { us: [] }, bytes: { base: 61e6, us: 87e6, de: 2e6 } };
+  assert.equal(offlineBytes(list, "us"), 148e6);
+  // The region's own data decides, not the runtimes every region shares.
+  assert.equal(offlineAsks(list, "us"), true);
+  assert.equal(offlineAsks(list, "de"), false);
+  assert.equal(offlineAsks({ files: [] }, "us"), false);
+  assert.equal(offlineBytes({ files: [] }, "us"), null);
 });
