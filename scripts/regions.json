@@ -53,5 +53,7 @@
     { "id": "wv", "fips": "54", "abbr": "WV", "name": "West Virginia" },
     { "id": "wi", "fips": "55", "abbr": "WI", "name": "Wisconsin" },
     { "id": "wy", "fips": "56", "abbr": "WY", "name": "Wyoming" }
-  ]
+  ],
+  "nationalNote": "The national region: every county of the 50 states and DC, built by the same scripts with counties as the reference layer (--state US). It is not a state, so --all and the CI shards leave it out.",
+  "national": { "id": "us", "fips": "us", "abbr": "US", "name": "United States", "unit": "counties" }
 }

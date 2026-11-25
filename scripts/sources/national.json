@@ -1,9 +1,44 @@
 {
   "version": 1,
   "region": "us",
+  "acs_dp02": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP02?g=010XX00US$0500000",
+    "sha256": "36f6a91e84f4afcf6d52613bde1345a43cb116a06482516695526650dbf5d6d7",
+    "rows": 3144
+  },
+  "acs_dp03": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP03?g=010XX00US$0500000",
+    "sha256": "f5d8e79162a5e3a21cd46333b973d033fe112c98eb3eee462a2e50febe7cc87d",
+    "rows": 3144
+  },
+  "acs_dp04": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP04?g=010XX00US$0500000",
+    "sha256": "a18b9fbeba47fa26fb8c525adedc7d951ea949bd9230b4b9858ca6736870f78f",
+    "rows": 3144
+  },
+  "acs_dp05": {
+    "url": "https://data.census.gov/table/ACSDP5Y2024.DP05?g=010XX00US$0500000",
+    "sha256": "b85557f19e9cb54813b1d22f6e1b5f8152f7d81462ae6c39f4085918901a2853",
+    "rows": 3144
+  },
+  "acs_s1701": {
+    "url": "https://data.census.gov/table/ACSST5Y2024.S1701?g=010XX00US$0500000",
+    "sha256": "46e7f622514cd7afdab1e3f045d3bac3cc2a54881b535d32f3672b68d7609d99",
+    "rows": 3144
+  },
   "cb_states": {
     "url": "https://www2.census.gov/geo/tiger/GENZ2024/shp/cb_2024_us_state_500k.zip",
     "sha256": "3e81cbb6cf5f60d9b01ef3e730afa14d61ce5f784252a0b33a696135e71447bc"
+  },
+  "centers_counties": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/county/CenPop2020_Mean_CO.txt",
+    "sha256": "4f754a3bda9714e5820d73bfac44ef1dab2b8c371f6c136305474cda7a752014",
+    "rows": 3221
+  },
+  "centers_tracts_09": {
+    "url": "https://www2.census.gov/geo/docs/reference/cenpop2020/tract/CenPop2020_Mean_TR09.txt",
+    "sha256": "f27937515c681625d9928ed80de7cc1c250452ed482c99ac48d5ee1dc4d4f724",
+    "rows": 883
   },
   "layer_census_counties_2020": {
     "url": "https://www2.census.gov/geo/tiger/GENZ2020/shp/cb_2020_us_county_500k.zip",
@@ -40,5 +75,18 @@
   "ne_50m_land": {
     "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/ca96624a56bd078437bca8184e78163e5039ad19/geojson/ne_50m_land.geojson",
     "sha256": "e874b27a51d146452be360cafb3cc50c86001074a67d534113e6534682f9826b"
+  },
+  "tiger_counties": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/COUNTY/tl_2024_us_county.zip",
+    "sha256": "04e668d3502757c837c13444730547cd967f28a2c49aeffb873d1792ab2cb97b",
+    "counties": 3144
+  },
+  "tiger_roads": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/PRIMARYROADS/tl_2024_us_primaryroads.zip",
+    "sha256": "10ecc0a5978ac8f7cda970e85c150663b6f08d76bc7cab644975128b7be5c98c"
+  },
+  "tiger_tracts_09": {
+    "url": "https://www2.census.gov/geo/tiger/TIGER2024/TRACT/tl_2024_09_tract.zip",
+    "sha256": "f5c876f3384563ce4e87adcd60c10494a52cf99b1b8f452fb6620591da6220ca"
   }
 }

@@ -18,6 +18,30 @@ R reference values come from `scripts/reference-stats.R` and
   Other layers use area-weighted centroids. Both are projected to
   EPSG:3814 (NAD83 / Mississippi Transverse Mercator).
 
+**The national region** (United States, counties) holds every county of the
+50 states and DC (3,144, with Connecticut's nine planning regions). The same
+ACS and PLACES measures come from the county releases, and County Health
+Rankings is a library layer on the same counties. Its centers of population
+are the Census Bureau's 2020 county centers, except Connecticut's planning
+regions: their centers are the population-weighted mean of their 2020 tract
+centers, as the Bureau computes a mean center.
+
+- **Projection:** EPSG:5070 (CONUS Albers equal-area). Areas are exact
+  everywhere. Distances are within about 1.5% across the lower 48, but are
+  off by about 3% in Hawaii, 13% at Anchorage, and up to 43% east–west (30%
+  north–south) on Alaska's North Slope (measured against geodesic
+  distances). So distance bands, k nearest, scan radii and catchments there
+  are approximate. For distances in Alaska or Hawaii, open the state, which
+  has its own projection.
+- **Contiguity:** neighbors cross state lines. They come from 2024
+  TIGER/Line county boundaries, which run through water. So counties facing
+  each other across a lake or bay can be neighbors: Door County, Wisconsin,
+  touches four Michigan counties across Lake Michigan. Within a state, tract
+  neighbors work the same way. Hawaii, Honolulu and Kauaʻi counties have no
+  neighbors.
+- **Distance searches** go through a uniform grid at every scale, with
+  exactly the results of comparing every pair.
+
 **PLACES values are model-based.** CDC estimates them from BRFSS with ACS
 and county-level covariates, so their spatial patterns partly reflect the
 model. Results on them carry that caution.

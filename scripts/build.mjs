@@ -44,8 +44,16 @@ if (process.env.RUMB_REGIONS) {
     const catalog = JSON.parse(await readFile(path.join(dir, "catalog.json"), "utf8").catch(() => "null"));
     if (!catalog) continue;
     await cp(dir, "dist/data/" + entry.name, { recursive: true });
-    const tracts = JSON.parse(await readFile(path.join(dir, catalog.layers[0].files.display), "utf8")).features.length;
-    added.push({ id: catalog.region.id, name: catalog.region.name, path: entry.name + "/", tracts, bounds: catalog.region.bounds });
+    const areas = JSON.parse(await readFile(path.join(dir, catalog.layers[0].files.display), "utf8")).features.length;
+    // The national region's areas are counties, and the picker says so.
+    const counties = catalog.layers[0].id === "counties";
+    added.push({
+      id: catalog.region.id,
+      name: catalog.region.name + (counties ? " (counties)" : ""),
+      path: entry.name + "/",
+      ...(counties ? { counties: areas } : { tracts: areas }),
+      bounds: catalog.region.bounds,
+    });
   }
   index.regions.push(...added.sort((a, b) => a.name.localeCompare(b.name)));
   await writeFile("dist/data/index.json", JSON.stringify(index, null, 1) + "\n");

@@ -1173,6 +1173,44 @@ await check("regions", async () => {
   await p.context().close();
 });
 
+await check("us-counties", async () => {
+  // The national region: every county, with neighbors across state lines.
+  // Only where the build merged it (scripts/build-regions.mjs us).
+  if (!existsSync("dist/data/us/catalog.json")) return "skip";
+  const ref = JSON.parse(await readFile("dist/data/us/reference.json", "utf8"));
+  const count = JSON.parse(await readFile("dist/data/us/counties.geojson", "utf8")).features.length;
+  const p = await openPage();
+  await p.goto(base + "?r=us");
+  await ready(p);
+  await waitText("#foot-status", count.toLocaleString("en-US") + " features", p);
+  expect((await p.evaluate(() => window.rumb.app.catalog.region.projection.epsg)) === 5070, "CONUS Albers");
+  // Moran's I on poverty, queen and rook, as spdep computed them in the build.
+  await p.click("#analyze");
+  await waitText("#inspect-panel", ref.queen.globalI.toFixed(4), p);
+  await p.selectOption("#rule", "rook");
+  await p.click("#analyze");
+  await waitText("#inspect-panel", ref.rook.globalI.toFixed(4), p);
+  // Distance weights go through the grid; Hawaii's islands are far from all.
+  await p.selectOption("#rule", "knn");
+  await p.waitForSelector("#k", { state: "visible" });
+  await p.click("#analyze");
+  await waitText("#weights-note", "6 neighbors each · no islands", p);
+  // A spatial lag model at 3,141 areas (Hawaii's three islands left out)
+  // takes the Chebyshev log-determinant. spatialreg::lagsarlm(poverty_pct ~
+  // acs_bachelors_pct, method = "Chebyshev", cheb_q = 7) on the 2024 build
+  // gives ρ 0.605113 and an intercept of 9.380723.
+  await p.selectOption("#rule", "queen");
+  await p.selectOption("#method", "model");
+  await p.waitForSelector("#covariates");
+  await p.check('[data-covariate="acs_bachelors_pct"]');
+  await p.selectOption("#model-type", "lag");
+  await p.click("#analyze");
+  await waitText("#inspect-panel", "Areas3,141", p);
+  await waitText("#inspect-panel", "ρ (rho)0.6051", p);
+  await waitText("#inspect-panel", "Intercept9.3807", p);
+  await p.context().close();
+});
+
 await check("exports", async () => {
   const ref = JSON.parse(await readFile("tests/filter-reference.json", "utf8"));
   const p = await openPage();

@@ -9,8 +9,9 @@ concurrency:
   group: github-pages
   cancel-in-progress: false
 jobs:
-  # Every state but the two committed ones (Mississippi, Delaware), built by
-  # the R pipeline in six shards balanced by tract count. Downloads are pinned
+  # Every state but the two committed ones (Mississippi, Delaware), and the
+  # national counties, built by the R pipeline in six shards balanced by tract
+  # count. Downloads are pinned
   # in scripts/sources/ and checked; both the downloads and each shard's output
   # are cached, so a run without data changes rebuilds nothing.
   data:

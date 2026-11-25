@@ -2,8 +2,8 @@
 // checks the result. Run at the repository root:
 //   node scripts/build-regions.mjs [ids...] [--all] [--out-root .cache/data]
 //                                  [--jobs 2] [--pin] [--keep]
-// ids are data ids, abbreviations or FIPS codes from scripts/regions.json;
-// --all builds every state and DC. Each region goes to <out-root>/<id>/, with
+// ids are data ids, abbreviations or FIPS codes from scripts/regions.json, or
+// us for the national counties; --all builds every state and DC (not us). Each region goes to <out-root>/<id>/, with
 // its log in .cache/build/<id>/build.log. --keep skips a region whose folder
 // already passes the checks. --pin records downloads instead of checking them
 // (scripts/lib/region.R). Mississippi's committed catalog is copied, not
@@ -28,9 +28,10 @@ const jobs = Math.max(1, Number(option("--jobs", 2)));
 const pin = args.includes("--pin");
 const keep = args.includes("--keep");
 
-const regions = JSON.parse(fs.readFileSync("scripts/regions.json", "utf8")).regions;
+const manifest = JSON.parse(fs.readFileSync("scripts/regions.json", "utf8"));
+const regions = manifest.regions;
 const find = (want) =>
-  regions.find((r) => [r.id, r.abbr.toLowerCase(), r.fips].includes(String(want).toLowerCase())) ??
+  [...regions, manifest.national].find((r) => [r.id, r.abbr.toLowerCase(), r.fips].includes(String(want).toLowerCase())) ??
   (() => {
     throw new Error("Unknown state " + want);
   })();
@@ -68,8 +69,9 @@ async function build(region) {
   const started = Date.now();
   for (const script of ["prepare-data.R", "prepare-layers.R", "prepare-tables.R", "prepare-outline.R", "prepare-basemap.R"])
     await run("Rscript", ["scripts/" + script, ...common], log);
+  // The comparison reference is a tract extract; the national counties have none.
   const places = path.join(process.env.RUMB_SOURCE_CACHE || ".cache/sources", "us", "PLACES_tract_GIS_2025.csv");
-  await run("python3", ["scripts/prepare-places.py", places, "--state", region.id, "--out", out], log);
+  if (!region.unit) await run("python3", ["scripts/prepare-places.py", places, "--state", region.id, "--out", out], log);
   const catalog =
     region.id === "ms"
       ? template

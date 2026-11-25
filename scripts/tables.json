@@ -115,11 +115,22 @@
       ["LACKTRPT", "Lack of reliable transportation", "Health-related social needs"]
     ]
   },
+  "placesCounties": {
+    "note": "The national region's PLACES table: the same measures for counties, joined by CountyFIPS (Connecticut by planning region).",
+    "title": "CDC PLACES, 2025 release, county estimates (GIS-friendly format)",
+    "url": "https://data.cdc.gov/d/i46a-9kgh",
+    "download": "https://data.cdc.gov/api/v3/views/i46a-9kgh/export.csv",
+    "sha256": "b446f7573c3cf22939b1e789637cfd34e58d7cfc870dbbfcd3a3d6fb3a990a2c",
+    "file": "PLACES_county_GIS_2025.csv"
+  },
   "centers": {
     "title": "2020 Census centers of population",
     "credit": "2020 Census centers of population · U.S. Census Bureau",
     "tracts": "https://www2.census.gov/geo/docs/reference/cenpop2020/tract/CenPop2020_Mean_TR{fips}.txt",
     "counties": "https://www2.census.gov/geo/docs/reference/cenpop2020/county/CenPop2020_Mean_CO{fips}.txt",
+    "countiesNational": "https://www2.census.gov/geo/docs/reference/cenpop2020/county/CenPop2020_Mean_CO.txt",
+    "connecticutTracts": "https://www2.census.gov/geo/docs/reference/cenpop2020/tract/CenPop2020_Mean_TR09.txt",
+    "connecticutTiger": "https://www2.census.gov/geo/tiger/TIGER2024/TRACT/tl_2024_09_tract.zip",
     "countyLayer": "chr_counties_2025"
   }
 }

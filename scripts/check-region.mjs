@@ -36,7 +36,8 @@ export function checkRegion(dir) {
     region.backdrop?.context, region.backdrop?.world, region.backdrop?.roads, ref.compare?.reference].filter(Boolean))
     if (!name.startsWith("../shared/")) exists(name); // data/shared/ is checked with the index
 
-  // The reference tracts and their neighbors.
+  // The reference areas (tracts, or the national counties) and their neighbors.
+  const areas = ref.nouns === "counties" ? "counties" : "tracts";
   const display = read(ref.files.display);
   const ids = display.features.map((f) => String(f.id ?? f.properties[ref.idField]));
   const idSet = new Set(ids);
@@ -46,7 +47,7 @@ export function checkRegion(dir) {
   const graphs = read(ref.files.neighbors);
   for (const kind of ["queen", "rook"]) {
     const graph = graphs[kind] || {};
-    if (!sameSet(new Set(Object.keys(graph)), idSet)) fail(kind + " neighbors do not list every tract");
+    if (!sameSet(new Set(Object.keys(graph)), idSet)) fail(kind + " neighbors do not list every one of the " + areas);
     for (const [id, list] of Object.entries(graph))
       for (const j of list) if (!graph[j]?.includes(id)) fail(kind + " neighbors are not symmetric at " + id + "–" + j);
   }
@@ -60,8 +61,8 @@ export function checkRegion(dir) {
     else c.forEach(walk);
   };
   display.features.forEach((f) => walk(f.geometry.coordinates));
-  if (beyond > 0.1) fail("tracts reach " + beyond.toFixed(2) + "° past the region's bounds");
-  else if (beyond > 0) notes.push("tracts reach " + beyond.toFixed(3) + "° past the bounds");
+  if (beyond > 0.1) fail(areas + " reach " + beyond.toFixed(2) + "° past the region's bounds");
+  else if (beyond > 0) notes.push(areas + " reach " + beyond.toFixed(3) + "° past the bounds");
 
   // Tables and centers, in the display file's order.
   if (ref.tables) {
@@ -69,7 +70,7 @@ export function checkRegion(dir) {
     guard(ref.tables, () => (index = validateTables(read(ref.tables))));
     for (const table of index?.tables || []) {
       const t = read(table.file);
-      if (t.ids.join() !== ids.join()) fail(table.file + " ids differ from the tracts");
+      if (t.ids.join() !== ids.join()) fail(table.file + " ids differ from the " + areas);
       for (const field of Object.keys(table.fields))
         if (!(field in t.columns)) fail(table.file + " lacks " + field);
       for (const [field, column] of Object.entries(t.columns))
@@ -78,7 +79,7 @@ export function checkRegion(dir) {
     for (const [layer, center] of Object.entries(index?.centers || {})) {
       const c = read(center.file);
       const want = layer === ref.id ? ids : null;
-      if (want && c.ids.join() !== want.join()) fail(center.file + " ids differ from the tracts");
+      if (want && c.ids.join() !== want.join()) fail(center.file + " ids differ from the " + areas);
       if (![c.lon, c.lat, c.population].every((col) => col.length === c.ids.length)) fail(center.file + " has ragged columns");
     }
   }
@@ -118,7 +119,7 @@ export function checkRegion(dir) {
     }
   };
   visit(dir);
-  notes.push(ids.length + " tracts, " + (total / 1048576).toFixed(1) + " MB");
+  notes.push(ids.length + " " + areas + ", " + (total / 1048576).toFixed(1) + " MB");
   return { problems: problems.slice(0, 40), notes };
 }
 
