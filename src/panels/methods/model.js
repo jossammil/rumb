@@ -44,10 +44,11 @@ export function render(app, mount) {
         "data-covariate": f,
         checked: chosen.has(f),
         onchange: async (ev) => {
+          const on = ev.target.checked;
+          if (on) await app.ws.ensureFields([f]).catch(app.fail);
+          // Read the choice after the wait: other ticks may have landed while the table loaded.
           const now = current().xs;
-          const xs = ev.target.checked ? [...new Set([...now, f])] : now.filter((x) => x !== f);
-          if (ev.target.checked) await app.ws.ensureFields([f]).catch(app.fail);
-          set({ xs });
+          set({ xs: on ? [...new Set([...now, f])] : now.filter((x) => x !== f) });
         },
       }),
       app.label(f),
