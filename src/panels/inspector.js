@@ -115,7 +115,7 @@ export function createInspector(app) {
       h("div", { class: "inspection-head" }, h("h3", { text: ids.length === 1 ? "Pooled with neighbors" : ids.length + " areas selected" })),
       h("p", { class: "subtle", text: "Sums of counts, then the rate. Shift-click areas to add or remove them." }),
       h("table", { class: "pool-table" }, h("thead", null, head), h("tbody", null, first.map(rowOf))),
-      rest.length &&
+      rest.length > 0 &&
         h(
           "details",
           { class: "pool-more" },

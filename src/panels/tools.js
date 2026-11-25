@@ -23,9 +23,9 @@ export function createTools(app) {
     fill(
       card,
       h("div", { class: "tool-head" }, h("strong", { text: title }), h("button", { class: "iconbtn dismiss", "aria-label": "Close " + title, onclick: stop, text: "×" })),
-      rows.length && h("dl", { class: "metrics" }, rows),
+      rows.length > 0 && h("dl", { class: "metrics" }, rows),
       note && h("p", { class: "subtle", text: note }),
-      actions.length && h("div", { class: "tool-actions" }, actions),
+      actions.length > 0 && h("div", { class: "tool-actions" }, actions),
     );
   }
   function stop() {

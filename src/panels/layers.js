@@ -69,7 +69,7 @@ export function renderLayers(app) {
   const l = app.layer();
   const list = [
     ...rows,
-    offMap.length && h("p", { class: "stack-note", text: "Query layers not on the map" }),
+    offMap.length > 0 && h("p", { class: "stack-note", text: "Query layers not on the map" }),
     ...offMap.map((x) =>
       h(
         "button",

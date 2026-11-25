@@ -83,6 +83,10 @@ export function regionCatalog(region, dir, { template, backdrop }) {
   const counties = region.unit === "counties";
   const tracts = read(counties ? "counties.geojson" : "tracts.geojson");
   const box = bbox(tracts);
+  // The national map opens on the lower 48; Alaska and Hawaii are a pan away.
+  const opening = counties
+    ? bbox({ features: tracts.features.filter((f) => !["02", "15"].includes(String(f.id).slice(0, 2))) })
+    : box;
   const base = template.layers[0];
   const layer = counties
     ? {
@@ -122,7 +126,7 @@ export function regionCatalog(region, dir, { template, backdrop }) {
     region: {
       id: region.id,
       name: region.name,
-      bounds: paddedBounds(box),
+      bounds: paddedBounds(opening),
       credit: template.region.credit,
       projection: regionProjection(region, box),
       outline: "outline.geojson",

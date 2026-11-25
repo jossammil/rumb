@@ -305,7 +305,7 @@ export function createFilter(app) {
           text: "Select these " + number(kept.size, 0) + " in " + l.name,
           onclick: () => app.selectMany([...kept].sort((a, b) => a[1] - b[1]).map(([id]) => id)),
         }),
-      nearest.length && h("p", { class: "stack-note", text: filter.kind === "polygon" ? "In the area: " + l.name : "Nearest: " + l.name }),
+      nearest.length > 0 && h("p", { class: "stack-note", text: filter.kind === "polygon" ? "In the area: " + l.name : "Nearest: " + l.name }),
       nearest,
     );
   }
