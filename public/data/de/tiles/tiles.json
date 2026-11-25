@@ -12,11 +12,12 @@
    "maxzoom": 11,
    "idField": "GEOID",
    "values": "tiles/tracts-values.parquet",
-   "rowGroups": [
+   "states": [
     {
      "state": "10",
      "id": "de",
      "name": "Delaware",
+     "start": 0,
      "rows": 262
     }
    ],

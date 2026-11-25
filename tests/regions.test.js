@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chooseRegion, listed, projectRegion, regionHref, unknownRegion } from "../src/core/regions.js";
+import { cameraFromSearch, cameraParam, chooseRegion, listed, projectRegion, regionHref, stateOf, unknownRegion } from "../src/core/regions.js";
 import { matchRegions } from "../src/panels/regions.js";
 import { offlineFiles } from "../src/data/offline.js";
 
@@ -45,4 +45,16 @@ test("offline downloads cover the vendor files, shared data and the open region"
   assert.deepEqual(offlineFiles(list, "de"), ["vendor/a", "data/index.json", "data/de/y"]);
   assert.deepEqual(offlineFiles(list, "tx"), ["vendor/a", "data/index.json"]);
   assert.deepEqual(offlineFiles({ files: ["old"] }, "ms"), ["old"]);
+});
+
+test("the national tract map opens a tract's state at the same place", () => {
+  const meta = { states: [{ state: "01", id: "al", name: "Alabama" }, { state: "10", id: "de", name: "Delaware" }] };
+  assert.equal(stateOf(meta, "10001040700").id, "de");
+  assert.equal(stateOf(meta, "99000000000"), undefined);
+  const at = cameraParam({ center: [-75.551234567, 39.16], zoom: 9.456 });
+  assert.equal(at, "-75.55123,39.16000,9.46");
+  assert.deepEqual(cameraFromSearch("?r=de&at=" + at), { center: [-75.55123, 39.16], zoom: 9.46 });
+  // Alaska's shifted longitudes pass; nonsense does not.
+  assert.deepEqual(cameraFromSearch("?at=-185.2,52,6"), { center: [-185.2, 52], zoom: 6 });
+  for (const bad of ["", "?at=1,2", "?at=a,b,c", "?at=0,95,3", "?at=0,0,40"]) assert.equal(cameraFromSearch(bad), null, bad);
 });

@@ -6,7 +6,7 @@
 //   npm run build:debug    readable code with source maps, for studying and debugging
 //   npm run dev            build, then rebuild on change and serve at http://127.0.0.1:4180/rumb/
 import { build, context } from "esbuild";
-import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 
@@ -44,6 +44,15 @@ if (process.env.RUMB_REGIONS) {
     const catalog = JSON.parse(await readFile(path.join(dir, "catalog.json"), "utf8").catch(() => "null"));
     if (!catalog) continue;
     await cp(dir, "dist/data/" + entry.name, { recursive: true });
+    // Tile layers built separately (CI's tiles job) join the catalog when present.
+    const hasTiles = await stat(path.join(dir, "tiles", "tiles.json")).then(() => true, () => false);
+    if (hasTiles !== !!catalog.tiles) {
+      const { layers, tiles, ...rest } = catalog;
+      await writeFile(
+        path.join("dist/data", entry.name, "catalog.json"),
+        JSON.stringify({ ...rest, ...(hasTiles && { tiles: "tiles/tiles.json" }), layers }, null, 1) + "\n",
+      );
+    }
     const areas = JSON.parse(await readFile(path.join(dir, catalog.layers[0].files.display), "utf8")).features.length;
     // The national region's areas are counties, and the picker says so.
     const counties = catalog.layers[0].id === "counties";

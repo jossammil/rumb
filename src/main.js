@@ -24,7 +24,7 @@ import { accessFields, densityId, densitySpec, derivedSpec, modelFields } from "
 import { mapGeometry } from "./geo/spatial.js";
 import { accessMeasures } from "./stats/access.js";
 import { createStore } from "./core/store.js";
-import { chooseRegion, listed, projectRegion, regionHref, unknownRegion } from "./core/regions.js";
+import { cameraFromSearch, chooseRegion, listed, projectRegion, regionHref, unknownRegion } from "./core/regions.js";
 import { load as loadPref, save as savePref } from "./core/storage.js";
 import { createWorkspace } from "./core/workspace.js";
 import { createOffline } from "./data/offline.js";
@@ -798,6 +798,15 @@ async function start() {
   // project opened in another region waits in the pending cache for this one.
   if (/^#state=/.test(location.hash)) app.loadShare().then((s) => s.fromAddress());
   if (new URLSearchParams(location.search).has("restore")) app.files.restorePending().catch(report);
+  // ?at=lon,lat,zoom (the national tract map's "Open <state>") keeps the place
+  // on the map; it is dropped from the address once used.
+  const at = cameraFromSearch(location.search);
+  if (at) {
+    app.atlas.map.jumpTo(at);
+    const url = new URL(location.href);
+    url.searchParams.delete("at");
+    history.replaceState(history.state, "", url.pathname + url.search + url.hash);
+  }
 
   // For debugging in the console, the e2e checks and scripts/benchmark-browser.mjs.
   window.rumb = {

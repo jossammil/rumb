@@ -2,6 +2,7 @@
 // of error, the plain-language reading of its cluster, and the analysis
 // summary with the Moran scatterplot.
 import { number } from "../catalog/format.js";
+import { cameraParam, stateOf } from "../core/regions.js";
 import { formatValue, popupRows } from "../catalog/popup.js";
 import { featureId } from "../core/features.js";
 import { aggregate, coverageLabel, neighborsOf, poolOf } from "../stats/pool.js";
@@ -239,7 +240,24 @@ export function createInspector(app) {
       measure && h("div", { class: "subtle", text: app.label(measure) }),
       h("dl", { class: "metrics" }, metrics),
       reading,
+      openState(l, id),
     );
+  }
+
+  /**
+   * On a tile layer, a button that opens the tract's state, where every
+   * method runs, at the same place on the map.
+   */
+  function openState(l, id) {
+    const group = l.meta?.tiled && stateOf(l.meta, id);
+    if (!group || !app.hasRegion(group.id)) return null;
+    return h("button", {
+      class: "plain-btn",
+      id: "open-state",
+      "data-region": group.id,
+      text: "Open " + group.name,
+      onclick: () => app.openRegion(group.id, { extra: { at: cameraParam(app.atlas.camera()) } }),
+    });
   }
 
   function analysisBlock() {

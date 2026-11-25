@@ -105,8 +105,63 @@ jobs:
           path: .cache/verify
           retention-days: 7
 
+  # The national tract map: tippecanoe 2.79.0, built from its pinned source
+  # tarball and cached, draws every state's tracts into one PMTiles file, and
+  # prepare-tract-values.R gathers their values (scripts/build-tiles.mjs).
+  # Only us/tiles/ is uploaded; the build job checks it and merges it.
+  tiles:
+    needs: [data]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TIPPECANOE_VERSION: 2.79.0
+      TIPPECANOE_SHA256: b0fd9df49b6efc988288ea48774822c6de19eb48428017f27ee0b3b01d44f05d
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: data-*
+          path: .cache/data
+          merge-multiple: true
+      - uses: actions/cache@v6.1.0
+        id: tippecanoe
+        with:
+          path: ~/.local/tippecanoe
+          key: tippecanoe-${{ env.TIPPECANOE_VERSION }}-${{ env.TIPPECANOE_SHA256 }}
+      - name: Build tippecanoe ${{ env.TIPPECANOE_VERSION }}
+        if: steps.tippecanoe.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update && sudo apt-get install -y libsqlite3-dev zlib1g-dev
+          curl --fail --location --output /tmp/tippecanoe.tar.gz \
+            "https://github.com/felt/tippecanoe/archive/refs/tags/${TIPPECANOE_VERSION}.tar.gz"
+          echo "${TIPPECANOE_SHA256}  /tmp/tippecanoe.tar.gz" | sha256sum --check
+          tar -xzf /tmp/tippecanoe.tar.gz -C /tmp
+          make -C "/tmp/tippecanoe-${TIPPECANOE_VERSION}" -j "$(nproc)"
+          make -C "/tmp/tippecanoe-${TIPPECANOE_VERSION}" install PREFIX="$HOME/.local/tippecanoe"
+      - run: echo "$HOME/.local/tippecanoe/bin" >> "$GITHUB_PATH"
+      - run: sudo apt-get update && sudo apt-get install -y libgdal-dev libgeos-dev libproj-dev libudunits2-dev
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: 4.5.0
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-renv@v2
+      # Mississippi and Delaware are committed; every other state comes from the data job.
+      - name: Build the national tract tiles
+        run: |
+          dirs=$(node -e 'const r = require("./scripts/regions.json").regions; console.log(r.map((s) => (["ms", "de"].includes(s.id) ? "public/data/" : ".cache/data/") + s.id).join(" "))')
+          node scripts/build-tiles.mjs --out .cache/data/us $dirs
+          mkdir -p .cache/tiles/us && cp -R .cache/data/us/tiles .cache/tiles/us/
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: data-tiles
+          path: .cache/tiles
+          retention-days: 3
+
   build:
-    needs: [data, verify]
+    needs: [data, verify, tiles]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -121,6 +176,8 @@ jobs:
           merge-multiple: true
       - run: npm ci
       - run: npm test
+      # Every tract at the lowest and highest zoom, no tile over 1 MB, tiles under 150 MB.
+      - run: node scripts/check-tiles.mjs public/data/de .cache/data/us
       - run: npm run build
         env:
           RUMB_REGIONS: .cache/data

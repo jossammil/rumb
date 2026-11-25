@@ -62,7 +62,7 @@ fs.rmSync(path.join(tiles, "tracts-values.json"));
 const box = inputs
   .map((f) => bbox(JSON.parse(fs.readFileSync(f, "utf8"))))
   .reduce((a, b) => [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])]);
-const single = values.rowGroups.length === 1 ? values.rowGroups[0].name : null;
+const single = values.states.length === 1 ? values.states[0].name : null;
 const layer = {
   id: option("--id", "tracts_tiles"),
   name: option("--name", single ? single + " tracts (tiles)" : "All U.S. tracts"),
@@ -74,7 +74,7 @@ const layer = {
   maxzoom: ZOOMS.max,
   idField: "GEOID",
   values: "tiles/tracts-values.parquet",
-  rowGroups: values.rowGroups,
+  states: values.states,
   count: values.rows,
   bbox: box.map((v) => Math.round(v * 1e4) / 1e4),
   labelField: values.labelField,
@@ -89,8 +89,17 @@ const layer = {
   source: { tippecanoe: TIPPECANOE, values: { sha256: values.sha256, packages: values.packages } },
 };
 fs.writeFileSync(path.join(tiles, "tiles.json"), JSON.stringify({ version: 1, layers: [layer] }, null, 1) + "\n");
+// A built region's catalog names its tile layers (region-catalog.mjs does the same when it writes one).
+const catalogFile = path.join(out, "catalog.json");
+if (fs.existsSync(catalogFile)) {
+  const catalog = JSON.parse(fs.readFileSync(catalogFile, "utf8"));
+  if (catalog.tiles !== "tiles/tiles.json") {
+    const { layers, ...rest } = catalog;
+    fs.writeFileSync(catalogFile, JSON.stringify({ ...rest, tiles: "tiles/tiles.json", layers }, null, 1) + "\n");
+  }
+}
 console.log(
-  `${layer.id}: ${layer.count} tracts of ${values.rowGroups.length} states, ` +
+  `${layer.id}: ${layer.count} tracts of ${values.states.length} states, ` +
     `${(fs.statSync(path.join(tiles, "tracts.pmtiles")).size / 1048576).toFixed(1)} MB of tiles and ` +
     `${(values.bytes / 1048576).toFixed(1)} MB of values in ${((Date.now() - started) / 1000).toFixed(0)} s`,
 );

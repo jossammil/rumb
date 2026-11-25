@@ -43,7 +43,7 @@ export async function remoteFile(url) {
 
 /**
  * Some columns of a remote Parquet file as { ids, columns }, like readTable;
- * `rows` ([start, end)) limits the read to those rows (one state's row group).
+ * `rows` ([start, end)) limits the read to those rows (one state's).
  */
 export async function readColumns(url, names, { idColumn = "GEOID", rows } = {}) {
   const file = await remoteFile(url);

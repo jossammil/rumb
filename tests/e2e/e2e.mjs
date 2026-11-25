@@ -1257,6 +1257,54 @@ await check("us-counties", async () => {
   await p.context().close();
 });
 
+await check("us-tracts", async () => {
+  // Every tract in the country, from tiles, listed in the national library.
+  // Only where the build merged the national tiles (CI's tiles job, or
+  // scripts/build-tiles.mjs --out .cache/data/us).
+  if (!existsSync("dist/data/us/tiles/tiles.json")) return "skip";
+  const p = await openPage();
+  await p.goto(base + "?r=us");
+  await ready(p);
+  await p.evaluate(() => window.rumb.map.jumpTo({ center: [-90.2, 38.63], zoom: 9 }));
+  await p.keyboard.press("n");
+  await p.click('[data-library="tracts_tiles"]');
+  await waitText("#toast", "Added All U.S. tracts", p);
+  await p.evaluate(() => window.rumb.app.setMeasure("places_diabetes"));
+  const tract = "29510125500";
+  await p.waitForFunction((id) => window.rumb.map.getFeatureState({ source: "lyr-tracts_tiles", sourceLayer: "tracts", id }).color, tract);
+  // The values are Missouri's own, where the build has Missouri.
+  if (existsSync("dist/data/mo/tables/tracts-places.json")) {
+    const mo = JSON.parse(await readFile("dist/data/mo/tables/tracts-places.json", "utf8"));
+    const got = await p.evaluate(
+      (ids) => {
+        const byId = new Map(window.rumb.app.layer().collection.features.map((f) => [f.id, f.properties.places_diabetes]));
+        return ids.map((id) => byId.get(id));
+      },
+      mo.ids,
+    );
+    got.forEach((v, i) => expect(v === mo.columns.places_diabetes[i], "Missouri value for " + mo.ids[i]));
+  }
+  // Feature-state is set before tiles arrive; click once the tract is drawn.
+  await p.waitForFunction(() => {
+    const m = window.rumb.map;
+    return m.areTilesLoaded() && m.queryRenderedFeatures(m.project([-90.2, 38.63]), { layers: ["lyr-tracts_tiles-fill"] }).length > 0;
+  });
+  const box = await p.locator("#map canvas").boundingBox();
+  const at = await p.evaluate(() => window.rumb.map.project([-90.2, 38.63]));
+  await p.mouse.click(box.x + at.x, box.y + at.y);
+  await waitText("#inspect-panel", tract, p);
+  // "Open Missouri" goes to the state at the same place.
+  if (await p.locator("#open-state").count()) {
+    const camera = await p.evaluate(() => window.rumb.app.atlas.camera());
+    await Promise.all([p.waitForURL(/\?r=mo/), p.click("#open-state")]);
+    await ready(p);
+    const after = await p.evaluate(() => ({ region: window.rumb.app.catalog.region.id, camera: window.rumb.app.atlas.camera(), search: location.search }));
+    expect(after.region === "mo" && !after.search.includes("at="), JSON.stringify(after));
+    expect(Math.abs(after.camera.center[0] - camera.center[0]) < 1e-3 && Math.abs(after.camera.zoom - camera.zoom) < 0.02, JSON.stringify([camera, after.camera]));
+  }
+  await p.context().close();
+});
+
 await check("exports", async () => {
   const ref = JSON.parse(await readFile("tests/filter-reference.json", "utf8"));
   const p = await openPage();

@@ -3,10 +3,11 @@
 # states' tracts, one row per tract, read from the files the state builds
 # wrote (the display GeoJSON's ACS S1701 fields and the Parquet tables), so the
 # numbers are the states' own. Writes <out>/tracts-values.parquet (GEOID, the
-# state's FIPS code, then one double column per field) with one row group per
-# state, in state order, so the app can read one state's rows; and
-# <out>/tracts-values.json, which lists the row groups and describes each
-# field. Run at the repository root by scripts/build-tiles.mjs:
+# state's FIPS code, then one double column per field), states in FIPS order,
+# in a single row group: the app reads a field for every tract at once, and one
+# row group makes that one range request per column instead of one per state.
+# And <out>/tracts-values.json, which lists each state's rows and describes
+# each field. Run at the repository root by scripts/build-tiles.mjs:
 #   Rscript scripts/prepare-tract-values.R --out DIR STATE_DIR [STATE_DIR...]
 # R packages: jsonlite, arrow, digest.
 args <- commandArgs(trailingOnly = TRUE)
@@ -67,29 +68,19 @@ frame <- function(s) {
   for (name in numeric_names) df[[name]] <- if (is.null(s$columns[[name]])) rep(NA_real_, n) else as.numeric(s$columns[[name]])
   df
 }
-# One row group per state: each WriteTable call with chunk_size at least the
-# state's rows writes one group.
-first <- arrow::Table$create(frame(states[[1]]))
-sink <- arrow::FileOutputStream$create(path)
-writer <- arrow::ParquetFileWriter$create(first$schema, sink,
-  properties = arrow::ParquetWriterProperties$create(names(first), compression = "snappy"))
-groups <- list()
-for (k in seq_along(states)) {
-  table <- if (k == 1) first else arrow::Table$create(frame(states[[k]]), schema = first$schema)
-  writer$WriteTable(table, chunk_size = max(1L, table$num_rows))
-  groups[[k]] <- list(state = states[[k]]$fips, id = states[[k]]$id, name = states[[k]]$name,
-                      rows = table$num_rows)
-}
-writer$Close()
-sink$close()
-check <- arrow::ParquetFileReader$create(path)
-stopifnot(check$num_row_groups == length(states))
+frames <- lapply(states, frame)
+table <- arrow::Table$create(do.call(rbind, frames))
+arrow::write_parquet(table, path, compression = "snappy", chunk_size = table$num_rows)
+stopifnot(arrow::ParquetFileReader$create(path)$num_row_groups == 1)
+starts <- cumsum(c(0, vapply(frames, nrow, numeric(1))))
+groups <- lapply(seq_along(states), function(k)
+  list(state = states[[k]]$fips, id = states[[k]]$id, name = states[[k]]$name, start = starts[[k]], rows = nrow(frames[[k]])))
 
 meta <- list(
   version = 1,
   file = basename(path),
   rows = sum(vapply(groups, function(g) g$rows, numeric(1))),
-  rowGroups = groups,
+  states = groups,
   labelField = "name",
   placeField = "county",
   measures = I(measures),
