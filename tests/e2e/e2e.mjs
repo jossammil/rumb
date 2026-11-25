@@ -68,7 +68,9 @@ function watchErrors(target) {
   const opener = running;
   target.on("pageerror", (e) => {
     const where = (e.stack || "").split("\n").slice(1, 3).join(" ").trim();
-    errors.push(`[${opener}${running !== opener ? " → " + running : ""}] ${e.message}${where ? " @ " + where : ""}`);
+    // The page's address says which step of a check it was on (a region, a restore).
+    const page = target.url().replace(/^https?:\/\/[^/]+/, "");
+    errors.push(`[${opener}${running !== opener ? " → " + running : ""} · ${page}] ${e.message}${where ? " @ " + where : ""}`);
   });
 }
 const external = new Set();
@@ -495,6 +497,8 @@ await check("regression", async () => {
   await p.selectOption("#method", "model");
   await p.waitForSelector("#covariates");
   for (const x of ref.linalg.covariates) await p.check(`[data-covariate="${x}"]`);
+  // Run once every covariate is in the model (ticks wait for their table to load).
+  await waitText("#model-note", ref.linalg.covariates.length + " covariates chosen.", p);
   await p.click("#analyze");
   // The same fit and residual diagnostics as lm and spdep.
   await waitText("#inspect-panel", "R² · adjusted" + ref.ols.r2.toFixed(3), p);
@@ -540,6 +544,7 @@ await check("counts-model", async () => {
   await p.waitForSelector("#model-type");
   await p.selectOption("#model-type", "poisson");
   for (const x of ref.covariates) await p.check(`[data-covariate="${x}"]`);
+  await waitText("#model-note", ref.covariates.length + " covariates chosen.", p);
   await waitText("#model-note", "with log(", p);
   await p.click("#analyze");
   // Drug overdose deaths are overdispersed for a Poisson model, so it says so.
@@ -1278,6 +1283,7 @@ await check("us-counties", async () => {
   await p.selectOption("#method", "model");
   await p.waitForSelector("#covariates");
   await p.check('[data-covariate="acs_bachelors_pct"]');
+  await waitText("#model-note", "1 covariates chosen.", p);
   await p.selectOption("#model-type", "lag");
   await p.click("#analyze");
   await waitText("#inspect-panel", "Areas3,141", p);
@@ -1691,6 +1697,7 @@ await check("offline", async () => {
   await p.selectOption("#method", "model");
   await p.waitForSelector("#covariates");
   await p.check('[data-covariate="acs_no_vehicle_pct"]');
+  await waitText("#model-note", "1 covariates chosen.", p);
   await p.click("#analyze");
   await waitText("#inspect-panel", "R² · adjusted", p);
   await p.evaluate(() => (window.print = () => (window.__printed = true)));
