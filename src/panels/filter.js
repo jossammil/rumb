@@ -51,7 +51,8 @@ export function createFilter(app) {
   /** Map(id → miles) of a layer's kept features, or null with no filter. Cached per layer. */
   function keptFor(l) {
     const filter = current();
-    if (!filter) return null;
+    // A tile layer has no shapes here to filter (core/scope.js): it stays as it is.
+    if (!filter || l.meta?.tiled) return null;
     const sig = JSON.stringify([filter, filter.orSelection ? [app.state.selected, app.state.picks, app.state.active] : 0]);
     const hit = cache.get(l.id);
     if (hit && hit.sig === sig && hit.collection === l.collection) return hit.kept;
@@ -259,7 +260,7 @@ export function createFilter(app) {
       { state } = app;
     for (const e of [...state.stack].reverse()) {
       const l = app.layerById(e.id);
-      if (!l || !e.visible) continue;
+      if (!l || !e.visible || l.meta?.tiled) continue;
       const kept = keptFor(l);
       rows.push(
         h(
@@ -273,7 +274,7 @@ export function createFilter(app) {
     const l = app.layer(),
       kept = keptFor(l),
       fields = app.searchFields(l);
-    const nearest = [...kept]
+    const nearest = [...(kept || [])]
       .sort((a, b) => a[1] - b[1])
       .slice(0, 8)
       .map(([id, miles]) => {
@@ -297,7 +298,7 @@ export function createFilter(app) {
       out,
       h("p", { class: "filter-what", text: describeFilter(filter, where) }),
       h("dl", { class: "metrics" }, rows),
-      kept.size > 0 &&
+      kept?.size > 0 &&
         h("button", {
           class: "small-btn",
           id: "filter-select",

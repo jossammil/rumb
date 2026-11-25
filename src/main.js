@@ -25,6 +25,7 @@ import { mapGeometry } from "./geo/spatial.js";
 import { accessMeasures } from "./stats/access.js";
 import { createStore } from "./core/store.js";
 import { cameraFromSearch, chooseRegion, listed, projectRegion, regionHref, unknownRegion } from "./core/regions.js";
+import { commandAllowed, layerScope } from "./core/scope.js";
 import { load as loadPref, save as savePref } from "./core/storage.js";
 import { createWorkspace } from "./core/workspace.js";
 import { createOffline } from "./data/offline.js";
@@ -38,6 +39,7 @@ import { createCompare } from "./panels/compare.js";
 import { createFiles } from "./panels/files.js";
 import { findFeatures, openFind } from "./panels/find.js";
 import { openRegions } from "./panels/regions.js";
+import { renderScope } from "./panels/scope.js";
 import { createInspector } from "./panels/inspector.js";
 import { describeLayer, openLibrary, renderLayers } from "./panels/layers.js";
 import { createStyle } from "./panels/style.js";
@@ -427,6 +429,7 @@ async function start() {
     app.style.renderControls(fields);
     app.filter.render();
     app.analysis.renderControls(fields);
+    renderScope(app);
     const ref = ws.ref;
     app.syncMap();
     app.setTitles(
@@ -454,6 +457,8 @@ async function start() {
 
   function setView(view, restoring = false) {
     if (!ready) return;
+    // Compare needs the whole layer in memory; a tile layer is for viewing.
+    if (view === "compare" && !commandAllowed("view-compare", app.layer())) return app.notify(layerScope(app.layer()).reason);
     const { state } = app,
       previous = state.view,
       comparing = view === "compare",
@@ -866,7 +871,7 @@ function focusSection(app, name) {
 function wire(app) {
   const { store } = app;
   const inMap = () => app.state.view === "map" || app.state.view === "compare";
-  const runCommand = bindCommands({
+  const commands = bindCommands({
     palette: () => {
       // The library loads in the background so its layers can be offered.
       app.ws.library().then((lib) => (library = lib), () => {});
@@ -968,6 +973,9 @@ function wire(app) {
     "layer-down": () => stepFocus(app, -1),
     "layer-up": () => stepFocus(app, 1),
   });
+  // A tile layer turns off the commands that need its shapes (core/scope.js).
+  const runCommand = (id) =>
+    commandAllowed(id, app.layer()) ? commands(id) : app.notify(layerScope(app.layer()).reason);
   app.runCommand = runCommand;
 
   // The palette lists commands, then layers, measures and themes; places
@@ -983,7 +991,9 @@ function wire(app) {
   let library = null;
   const palette = createPalette((query) => {
     const { state } = app;
-    const items = COMMANDS.filter((c) => c.id !== "palette" && (available[c.id]?.() ?? true)).map((c) => ({
+    const items = COMMANDS.filter(
+      (c) => c.id !== "palette" && (available[c.id]?.() ?? true) && commandAllowed(c.id, app.layer()),
+    ).map((c) => ({
       group: c.group,
       label: c.label,
       keys: keyOf[c.id],

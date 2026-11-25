@@ -1186,8 +1186,11 @@ await check("tiles", async () => {
   await p.goto(base + "?r=de");
   await ready(p);
   expect(!tileRequests.length, "no tile requests before the layer is added");
+  // A filter set on the reference layer leaves the tile layer as it is.
+  await p.evaluate(() => window.rumb.app.filter.set({ kind: "radius", center: [-75.55, 39.16], miles: 5 }));
   await p.evaluate(() => window.rumb.app.addLibraryLayer("tracts_tiles"));
   await waitText("#toast", "Added Delaware tracts (tiles)", p);
+  await p.evaluate(() => window.rumb.app.filter.set(null));
   await p.evaluate(() => window.rumb.app.setMeasure("poverty_pct"));
   await p.waitForFunction(() => {
     const m = window.rumb.map;
@@ -1214,6 +1217,20 @@ await check("tiles", async () => {
     () => window.rumb.map.getFeatureState({ source: "lyr-tracts_tiles", sourceLayer: "tracts", id: "10001040700" }).selected,
   );
   expect(selected === true, "selected in feature-state");
+  // On the tile layer, the methods that need shapes are off, and say why.
+  for (const id of ["sec-filter", "sec-analyze"]) {
+    await waitText(`#${id} .scope-note`, "for viewing", p);
+    expect(await p.evaluate((sid) => document.querySelector("#" + sid + " #analyze, #" + sid + " #filter-kind")?.closest("[inert]") != null, id), id + " is inert");
+  }
+  await p.keyboard.press("f");
+  await waitText("#toast", "Statistics, filters, search and Compare run on", p);
+  expect(!(await p.locator("#find-term").count()), "Find does not open");
+  await p.evaluate(() => window.rumb.app.setView("compare"));
+  expect((await p.evaluate(() => window.rumb.state.view)) === "map", "Compare does not open");
+  // "Use Delaware tracts" puts the reference layer in focus, where everything runs.
+  await p.click('#sec-analyze [data-scope-action="counties"]');
+  await p.waitForFunction(() => window.rumb.state.active === "tracts");
+  expect(!(await p.locator(".scope-note").count()), "notes gone with the reference layer in focus");
   // Tiles came from this origin, by range requests.
   expect(tileRequests.length > 0 && tileRequests.every((r) => r.url.startsWith(origin) && /^bytes=\d+-\d+$/.test(r.range)), JSON.stringify(tileRequests.slice(0, 3)));
   await p.context().close();
