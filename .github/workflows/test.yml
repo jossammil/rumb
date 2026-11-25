@@ -10,8 +10,6 @@ jobs:
   test:
     # Pinned like Pocket R's: Playwright browsers install reliably on 24.04.
     runs-on: ubuntu-24.04
-    # WebKit has not run in CI yet; until it passes there, its failures are warnings.
-    continue-on-error: ${{ matrix.browser == 'webkit' }}
     strategy:
       fail-fast: false
       matrix:
