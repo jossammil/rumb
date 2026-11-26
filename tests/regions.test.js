@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { cameraFromSearch, cameraParam, chooseRegion, listed, projectRegion, regionHref, stateOf, unknownRegion } from "../src/core/regions.js";
 import { matchRegions } from "../src/panels/regions.js";
 import { commandAllowed, layerScope, SCOPED_COMMANDS } from "../src/core/scope.js";
-import { offlineAsks, offlineBytes, offlineFiles } from "../src/data/offline.js";
+import { countCached, offlineAsks, offlineBytes, offlineFiles } from "../src/data/offline.js";
 
 const index = { default: "ms", regions: [{ id: "ms" }, { id: "de" }, { id: "tx" }] };
 
@@ -46,6 +46,16 @@ test("offline downloads cover the vendor files, shared data and the open region"
   assert.deepEqual(offlineFiles(list, "de"), ["vendor/a", "data/index.json", "data/de/y"]);
   assert.deepEqual(offlineFiles(list, "tx"), ["vendor/a", "data/index.json"]);
   assert.deepEqual(offlineFiles({ files: ["old"] }, "ms"), ["old"]);
+});
+
+test("the offline status counts cached files from the caches' own lists", () => {
+  const at = (f) => "https://x.test/rumb/" + f;
+  const files = ["vendor/a.js", "data/ms/x.json", "data/ms/y.parquet"].map(at);
+  // The worker caches some requests with a query string, and looks them up ignoring it.
+  const cached = [at("vendor/a.js?v=3"), at("data/ms/x.json"), at("data/de/z.json"), at("data/ms/x.json")];
+  assert.equal(countCached(files, cached), 2);
+  assert.equal(countCached(files, []), 0);
+  assert.equal(countCached(files, [...files, at("index.html")]), 3);
 });
 
 test("the national tract map opens a tract's state at the same place", () => {
