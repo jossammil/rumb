@@ -99,6 +99,12 @@ if (national) {
 }
 
 graphs <- contiguity(st_geometry(shapes))
+if (national) {
+  # The same graphs without links across water (scripts/lib/region.R, shoreline()).
+  shore <- shoreline(graphs, shapes, drawn)
+  graphs$queenShore <- shore$queen
+  graphs$rookShore <- shore$rook
+}
 ids <- measures$GEOID
 by_id <- function(graph) setNames(lapply(graph, function(indices) I(ids[indices])), ids)
 write_json <- function(x, filename) write_json_file(x, file.path(stage, filename))
@@ -176,7 +182,7 @@ source_info <- c(list(
                     below = "S1701_C02_001E", universe = "S1701_C01_001E"),
     under_18 = list(rate = "S1701_C03_002E", moe = "S1701_C03_002M",
                     below = "S1701_C02_002E", universe = "S1701_C01_002E")),
-  methods = list(weights = if (national) "Undirected, first-order, across state lines; queen shares at least one boundary point, rook a boundary segment, evaluated with GEOS on original TIGER/Line county vertices (whose boundaries run through water, so counties facing each other across a lake or bay may touch)."
+  methods = list(weights = if (national) "Undirected, first-order, across state lines; queen shares at least one boundary point, rook a boundary segment, evaluated with GEOS on original TIGER/Line county vertices (whose boundaries run through water, so counties facing each other across a lake or bay may touch). queenShore and rookShore keep only the links that also meet on land: the 2024 cartographic shapes, clipped to the shoreline, come within 100 m, or TIGER's only contact is a point within 100 m of them."
       else paste0("Undirected, first-order, within ", ctx$name, "; queen shares at least one boundary point, rook a boundary segment, evaluated with GEOS on original TIGER vertices."),
     display = paste0("Mapshaper shared-arc simplification at ", display_keep * 100, "% retained removable vertices, preserving small features; coordinates rounded to 5 decimal places."),
     analytical = if (ctx$fips != "28") paste0("GeoParquet geometry simplified with Mapshaper shared arcs at a ", interval, " m interval, preserving small features."),

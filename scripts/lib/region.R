@@ -194,6 +194,42 @@ contiguity <- function(geometry) {
   graphs
 }
 
+# Contiguity that does not cross water: TIGER's graphs (from contiguity()),
+# keeping a link only where the two areas also meet on land. `tiger` and
+# `drawn` (the cartographic file, clipped to the shoreline) list the same
+# areas in the same order. A link stays when the two cartographic shapes come
+# within `slack` metres, or when TIGER has them meeting only at points and one
+# of those lies within `slack` of the cartographic shapes: generalization
+# opens land contacts a few metres apart, and once rounds a TIGER corner
+# 301 m apart, while the narrowest water in TIGER's links is 175 m. Nothing
+# is added, so the results stay symmetric and rook stays within queen.
+shoreline <- function(graphs, tiger, drawn, slack = 100) {
+  crs <- 5070
+  shore <- sf::st_transform(sf::st_geometry(drawn), crs)
+  edges <- sf::st_transform(sf::st_geometry(tiger), crs)
+  queen <- graphs$queen
+  # Each TIGER link once (i < j); distances for these pairs only take seconds.
+  pairs <- do.call(rbind, lapply(seq_along(queen), function(i) if (length(queen[[i]])) cbind(i, queen[[i]])))
+  pairs <- pairs[pairs[, 1] < pairs[, 2], , drop = FALSE]
+  near <- as.numeric(sf::st_distance(shore[pairs[, 1]], shore[pairs[, 2]], by_element = TRUE)) <= slack
+  on_land <- function(i, j) {
+    shared <- sf::st_intersection(sf::st_boundary(edges[i]), sf::st_boundary(edges[j]))
+    if (!length(shared) || sum(as.numeric(sf::st_length(shared))) > 0) return(FALSE)
+    points <- sf::st_cast(shared, "POINT")
+    any(lengths(sf::st_is_within_distance(points, shore, slack)) > 0)
+  }
+  keep <- near
+  for (k in which(!near)) keep[k] <- on_land(pairs[k, 1], pairs[k, 2])
+  kept <- pairs[keep, , drop = FALSE]
+  out <- list(queen = lapply(seq_along(queen), function(i) sort(c(kept[kept[, 1] == i, 2], kept[kept[, 2] == i, 1]))))
+  out$rook <- lapply(seq_along(graphs$rook), function(i) intersect(graphs$rook[[i]], out$queen[[i]]))
+  for (i in seq_along(queen)) {
+    stopifnot(all(out$rook[[i]] %in% out$queen[[i]]), all(out$queen[[i]] %in% queen[[i]]))
+    for (graph in out) stopifnot(all(vapply(graph[[i]], function(j) i %in% graph[[j]], logical(1))))
+  }
+  out
+}
+
 # A metric CRS for simplification tolerances and areas, never for output.
 # Mississippi keeps its state plane system, so its files do not change.
 metric_crs <- function(ctx) {

@@ -45,12 +45,19 @@ export function checkRegion(dir) {
   for (const f of display.features)
     if (String(f.id) !== String(f.properties[ref.idField])) fail("feature id differs from " + ref.idField + " for " + f.id);
   const graphs = read(ref.files.neighbors);
-  for (const kind of ["queen", "rook"]) {
+  // The national counties also have graphs that leave out links across water.
+  for (const kind of ["queen", "rook", ...(graphs.queenShore ? ["queenShore", "rookShore"] : [])]) {
     const graph = graphs[kind] || {};
     if (!sameSet(new Set(Object.keys(graph)), idSet)) fail(kind + " neighbors do not list every one of the " + areas);
     for (const [id, list] of Object.entries(graph))
       for (const j of list) if (!graph[j]?.includes(id)) fail(kind + " neighbors are not symmetric at " + id + "–" + j);
   }
+  if (graphs.queenShore)
+    for (const id of ids) {
+      const within = (inner, outer) => graphs[inner][id].every((j) => graphs[outer][id].includes(j));
+      if (!within("queenShore", "queen") || !within("rookShore", "rook") || !within("rookShore", "queenShore"))
+        fail("shoreline neighbors of " + id + " are not within TIGER's");
+    }
   // Bounds frame the opening view, so a sliver outside them is only noted
   // (Mississippi's hand-set bounds leave out 0.02° of coastal water tracts).
   const [[west, south], [east, north]] = region.bounds;
