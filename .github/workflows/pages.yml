@@ -186,8 +186,46 @@ jobs:
       - uses: actions/upload-pages-artifact@v5.0.0
         with:
           path: dist
-  deploy:
+  # The national checks, which the Test workflow skips for want of national
+  # data: counties, tract tiles and offline, in both browsers, against the very
+  # files the deploy publishes. STRICT=1 fails a check that skips.
+  national:
     needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: github-pages
+          path: .cache/pages
+      - run: mkdir dist && tar -xf .cache/pages/artifact.tar -C dist
+      - run: npm ci
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: National checks (${{ matrix.browser }})
+        run: npm run e2e
+        env:
+          BROWSER: ${{ matrix.browser }}
+          ONLY: us-counties,us-tracts,offline-us
+          STRICT: "1"
+          SHOTS: e2e-shots
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: national-shots-${{ matrix.browser }}
+          path: e2e-shots
+  # Only main deploys; a run started by hand on another branch checks it all.
+  deploy:
+    needs: [build, national]
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       pages: write
