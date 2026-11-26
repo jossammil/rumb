@@ -90,7 +90,8 @@ navigator's course of constant bearing. It was called Field Atlas (repository
     envelope, and the mean and median centers, standard distance and
     deviational ellipse.
   - **Neighbors**: queen or rook contiguity, k nearest, a distance band or
-    inverse distance, measured between centers of population.
+    inverse distance, measured between centers of population. For the
+    national counties, contiguity can leave out links across water.
   - The whole state, one county or the current map extent as the study area;
     99 to 9,999 permutations with a fixed seed; optional Benjamini–Hochberg
     adjustment. **Export statistics** writes every result and setting to CSV.

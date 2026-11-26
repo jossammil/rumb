@@ -1331,6 +1331,17 @@ await check("us-counties", async () => {
   await p.selectOption("#rule", "rook");
   await p.click("#analyze");
   await waitText("#inspect-panel", ref.rook.globalI.toFixed(4), p);
+  // Without links across water (Door County, WI no longer touches Michigan),
+  // rook and queen match spdep on the build's shoreline graphs.
+  await p.check("#land");
+  await p.click("#analyze");
+  await waitText("#inspect-panel", ref.rookShore.globalI.toFixed(4), p);
+  await waitText("#weights-note", "Shared edge only (rook), not across water", p);
+  await p.selectOption("#rule", "queen");
+  await p.click("#analyze");
+  await waitText("#inspect-panel", ref.queenShore.globalI.toFixed(4), p);
+  expect((await p.evaluate(async () => (await window.rumb.app.ws.neighbors()).queenShore["55029"])).join() === "55061", "Door County's only neighbor on land is Kewaunee");
+  await p.uncheck("#land");
   // Distance weights go through the grid; Hawaii's islands are far from all.
   await p.selectOption("#rule", "knn");
   await p.waitForSelector("#k", { state: "visible" });

@@ -12,13 +12,14 @@ export function modelSpec(spec) {
   if (spec?.kind !== "model" || typeof spec.y !== "string" || !spec.y) return null;
   const xs = Array.isArray(spec.xs) ? [...new Set(spec.xs.filter((x) => typeof x === "string" && x && x !== spec.y))].slice(0, 12) : [];
   if (!xs.length) return null;
-  const { kind, k, miles, power, symmetric } = weightsSpec(spec.weights);
+  const { kind, k, miles, power, symmetric, land } = weightsSpec(spec.weights);
   return {
     kind: "model",
     type: MODEL_KINDS.includes(spec.type) ? spec.type : "ols",
     y: spec.y,
     xs,
-    weights: { kind, k, miles, power, symmetric },
+    // `land` only when set, so older specs and links stay the same.
+    weights: { kind, k, miles, power, symmetric, ...(land ? { land } : {}) },
   };
 }
 

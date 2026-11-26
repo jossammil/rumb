@@ -44,12 +44,13 @@ export function createInspector(app) {
   /**
    * The focus layer's contiguity graph for the current rule, once loaded.
    * Distance-based rules pool a selection with the areas that touch it (queen).
+   * Where the region ships them, the reference layer can leave out links across water.
    */
   function graphOf(l) {
     const { state } = app,
       rule = state.rule === "rook" ? "rook" : "queen";
     return l.reference
-      ? app.ws.neighborData?.[rule]
+      ? app.ws.neighborData?.[state.land && app.ref.shoreline ? rule + "Shore" : rule] ?? app.ws.neighborData?.[rule]
       : l.library
         ? app.ws.layerNeighbors(l.id)?.[rule]
         : app.ws.graphs.get(l.id + "-" + rule);

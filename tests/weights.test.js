@@ -12,6 +12,7 @@ import {
   connectingBand,
   describeWeights,
   distanceWeights,
+  graphKey,
   knn,
   summaryText,
   symmetrize,
@@ -19,6 +20,7 @@ import {
   weightsSummary,
 } from "../src/stats/neighbors.js";
 import { analyze } from "../src/stats/stats.js";
+import { modelSpec } from "../src/core/derived.js";
 
 const read = (p) => JSON.parse(readFileSync(new URL(p, import.meta.url)));
 const ref = read("./stats-reference.json");
@@ -113,8 +115,17 @@ test("weights specs are made safe and described", () => {
     miles: null,
     power: 1,
     symmetric: false,
+    land: false,
   });
   assert.equal(weightsSpec({ kind: "nope" }).kind, "queen");
+  // Leaving out links across water applies to contiguity only.
+  assert.equal(weightsSpec({ kind: "rook", land: true }).land, true);
+  assert.equal(weightsSpec({ kind: "knn", land: true }).land, false);
+  assert.equal(graphKey({ kind: "queen", land: true }), "queenShore");
+  assert.equal(graphKey({ kind: "rook" }), "rook");
+  assert.equal(graphKey({ kind: "band", land: true }), "band");
+  assert.equal(describeWeights({ kind: "queen", land: true }), "Shared edge or corner (queen), not across water");
+  assert.equal(describeWeights({ kind: "rook" }), "Shared edge only (rook)");
   assert.equal(describeWeights({ kind: "knn", k: 6, symmetric: true }), "6 nearest neighbors, made symmetric");
   assert.equal(describeWeights({ kind: "band" }, 1609.344 * 14.75), "Every area within 14.8 mi");
   assert.equal(describeWeights({ kind: "idw", power: 2, miles: 25 }), "Inverse distance squared, within 25.0 mi");
@@ -122,4 +133,11 @@ test("weights specs are made safe and described", () => {
   assert.deepEqual(summary, { n: 4, min: 0, mean: 1, max: 2, islands: 1, histogram: [[0, 1], [1, 2], [2, 1]] });
   assert.equal(summaryText(summary), "0–2 neighbors, 1.0 on average · 1 without neighbors");
   assert.equal(summaryText(weightsSummary([[1], [0]])), "1 neighbor each · no islands");
+});
+
+test("a model spec keeps land only when it is set, so older specs stay the same", () => {
+  const base = { kind: "model", type: "lag", y: "poverty_pct", xs: ["acs_bachelors_pct"] };
+  assert.deepEqual(modelSpec({ ...base, weights: { kind: "queen" } }).weights, { kind: "queen", k: 6, miles: null, power: 1, symmetric: false });
+  assert.equal(modelSpec({ ...base, weights: { kind: "queen", land: true } }).weights.land, true);
+  assert.equal(modelSpec({ ...base, weights: { kind: "knn", land: true } }).weights.land, undefined);
 });

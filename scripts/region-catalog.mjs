@@ -102,6 +102,8 @@ export function regionCatalog(region, dir, { template, backdrop }) {
         files: { display: "counties.geojson", parquet: "counties.parquet", neighbors: "neighbors.json", sources: "sources.json" },
         idLabel: "5-character county GEOID",
         groupField: "state",
+        // neighbors.json also has queen and rook without links across water.
+        ...(read("neighbors.json").queenShore && { shoreline: true }),
       }
     : {
         ...base,

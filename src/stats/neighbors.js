@@ -18,7 +18,11 @@ export const METRES_PER_MILE = 1609.344;
 /** The automatic band is the largest nearest-neighbor distance, widened by this much so that pair counts. */
 const BAND_SLACK = 1e-9;
 
-/** A weights spec made safe: a known kind and parameters in range. */
+/**
+ * A weights spec made safe: a known kind and parameters in range. `land`
+ * (queen and rook only) asks for the graphs without links across water,
+ * which the national counties ship.
+ */
 export function weightsSpec(spec = {}) {
   const kind = WEIGHT_KINDS.includes(spec.kind) ? spec.kind : "queen";
   const k = Math.min(30, Math.max(1, Math.round(Number(spec.k) || 6)));
@@ -29,7 +33,14 @@ export function weightsSpec(spec = {}) {
     miles: miles >= 0.1 && miles <= 200 ? miles : null,
     power: Number(spec.power) === 2 ? 2 : 1,
     symmetric: !!spec.symmetric,
+    land: !!spec.land && (kind === "queen" || kind === "rook"),
   };
+}
+
+/** The name of a spec's graph in a neighbors file: "queen", or "queenShore" without links across water. */
+export function graphKey(spec) {
+  const s = weightsSpec(spec);
+  return s.land ? s.kind + "Shore" : s.kind;
 }
 
 /** "6 nearest neighbors", "Within 12.3 mi", "Shared edge or corner (queen)"… */
@@ -39,9 +50,9 @@ export function describeWeights(spec, threshold) {
   const within = band != null ? "within " + band.toFixed(1) + " mi" : "within the smallest distance that leaves no area alone";
   switch (s.kind) {
     case "queen":
-      return "Shared edge or corner (queen)";
+      return "Shared edge or corner (queen)" + (s.land ? ", not across water" : "");
     case "rook":
-      return "Shared edge only (rook)";
+      return "Shared edge only (rook)" + (s.land ? ", not across water" : "");
     case "knn":
       return s.k + " nearest neighbor" + (s.k > 1 ? "s" : "") + (s.symmetric ? ", made symmetric" : "");
     case "band":

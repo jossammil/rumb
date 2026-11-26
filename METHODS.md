@@ -39,6 +39,20 @@ centers, as the Bureau computes a mean center.
   touches four Michigan counties across Lake Michigan. Within a state, tract
   neighbors work the same way. Hawaii, Honolulu and Kauaʻi counties have no
   neighbors.
+- **Not across water** (national counties, queen and rook): an option under
+  Neighbors keeps a TIGER link only where the two counties also meet on
+  land. Their 2024 cartographic shapes, clipped to the shoreline, must come
+  within 100 m, or TIGER's only contact must be a point within 100 m of
+  those shapes. The generalized file opens some land contacts a few metres
+  apart, and once rounds a corner 301 m apart (Richmond County, NC and
+  Chesterfield County, SC), while the narrowest water among TIGER's links is
+  175 m (the Arthur Kill), so a distance alone would not do. The option
+  drops 163 of 9,287 queen links and adds none: Door County keeps only
+  Kewaunee County, and Dukes and Nantucket (MA), Richmond (NY), San Juan
+  (WA) and the Aleutians West Census Area join Hawaii's three counties
+  without neighbors. Off by default, so results match TIGER's graphs and
+  spdep's references unless it is ticked; `reference.json` holds spdep's
+  Moran values for both.
 - **Distance searches** (k nearest, distance bands, nearest distances,
   Ripley's pair counts, kernel density, access and the scan's radius cap) go
   through a uniform grid over the points, here and in every state. Each
