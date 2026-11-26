@@ -15,7 +15,7 @@ import { WEIGHT_KINDS } from "../stats/neighbors.js";
 export const SHARE_LIMIT = 8000;
 const VIEW_KEYS = [
   "measure", "category", "palette", "classification", "count", "breaks",
-  "method", "inference", "yField", "scan", "model", "pointWeight", "rule", "k", "band", "power", "symmetric", "study", "permutations", "seed", "fdr",
+  "method", "inference", "yField", "scan", "model", "pointWeight", "rule", "k", "band", "power", "symmetric", "land", "study", "permutations", "seed", "fdr",
 ];
 const LOOK_KEYS = ["color", "opacity", "size", "shape", "outline", "outlineColor", "hatch"];
 
@@ -174,6 +174,7 @@ export function readShare(data, { known, palettes, region }) {
         band: num(w.band, 0.1, 200),
         power: [1, 2].includes(w.power) ? w.power : undefined,
         symmetric: typeof w.symmetric === "boolean" ? w.symmetric : undefined,
+        land: typeof w.land === "boolean" ? w.land : undefined,
         study: str(w.study, 200),
         permutations: num(w.permutations, 99, 9999),
         seed: num(w.seed, 0, 2 ** 31),

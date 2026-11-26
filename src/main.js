@@ -1160,6 +1160,12 @@ function wire(app) {
     store.set({ symmetric });
     app.renderAll();
   });
+  on("land", "change", (ev) => {
+    const land = ev.target.checked;
+    app.analysis.clearResults();
+    store.set({ land });
+    app.renderAll();
+  });
   on("zoom-in", "click", () => app.atlas.map.zoomIn());
   on("zoom-out", "click", () => app.atlas.map.zoomOut());
   on("fit", "click", () =>

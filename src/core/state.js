@@ -22,6 +22,7 @@ export const LAYER_VIEW_KEYS = [
   "band",
   "power",
   "symmetric",
+  "land",
   "study",
   "permutations",
   "seed",
@@ -68,6 +69,8 @@ export function defaults(catalog) {
     band: null,
     power: 1,
     symmetric: false,
+    // Queen and rook without links across water, where the region ships those graphs.
+    land: false,
     study: "all",
     permutations: 999,
     seed: 12345,

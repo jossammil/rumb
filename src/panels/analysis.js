@@ -11,7 +11,7 @@ import { METHOD_LIST, methodId, methodOf } from "../stats/methods.js";
 import { poolOf } from "../stats/pool.js";
 import { modelSpec } from "../core/derived.js";
 import { COUNT_TYPES } from "../stats/models.js";
-import { centroid, DISTANCE_KINDS, summaryText } from "../stats/neighbors.js";
+import { centroid, DISTANCE_KINDS, graphKey, summaryText } from "../stats/neighbors.js";
 import { $, icon, options, saveBlob } from "../ui/dom.js";
 
 
@@ -95,6 +95,22 @@ export function createAnalysis(app) {
     load().then((panel) => token === panelToken && panel.render(app, mount), app.fail);
   }
 
+  /** Whether layer `l` can leave out links across water for `rule`: the reference layer, where the region ships those graphs. */
+  const shorelineFor = (l, rule) => !!(l?.reference && app.ref.shoreline && (rule === "queen" || rule === "rook"));
+
+  /** The weights the controls describe, for layer `l`; `land` only where it applies. */
+  function weightsOf(l) {
+    const { state } = app;
+    return {
+      kind: state.rule,
+      k: state.k,
+      miles: state.band,
+      power: state.power,
+      symmetric: state.symmetric,
+      ...(state.land && shorelineFor(l, state.rule) ? { land: true } : {}),
+    };
+  }
+
   /** The weights inputs for the chosen kind, and what the last run's weights were like. */
   function renderWeights() {
     const { state } = app,
@@ -106,6 +122,8 @@ export function createAnalysis(app) {
     $("weights-params").hidden = free || !DISTANCE_KINDS.has(rule);
     $("k-field").hidden = rule !== "knn";
     $("symmetric-field").hidden = rule !== "knn";
+    $("land-field").hidden = free || !shorelineFor(app.layer(), rule);
+    $("land").checked = state.land;
     $("band-field").hidden = rule !== "band" && rule !== "idw";
     $("power-field").hidden = rule !== "idw";
     $("k").value = String(state.k);
@@ -181,7 +199,7 @@ export function createAnalysis(app) {
         l = app.layer(),
         items = app.records(),
         cacheKey = l.id + "-" + state.rule;
-      const weights = { kind: state.rule, k: state.k, miles: state.band, power: state.power, symmetric: state.symmetric };
+      const weights = weightsOf(l);
       const ids = new Set(items.map(featureId));
       let neighbors, points, from;
       const scanning = state.method === "scan",
@@ -190,7 +208,7 @@ export function createAnalysis(app) {
       if (!pattern && !scanning && !DISTANCE_KINDS.has(state.rule)) {
         // Reference and library polygons ship their neighbors; other layers compute them once.
         let graph = l.reference
-          ? (await app.ws.neighbors())[state.rule]
+          ? (await app.ws.neighbors())[graphKey(weights)]
           : l.library && l.meta.neighbors
             ? (await app.ws.loadLayerNeighbors(l.id))[state.rule]
             : app.ws.graphs.get(cacheKey);
@@ -347,7 +365,7 @@ export function createAnalysis(app) {
       type: state.model?.type,
       y: state.measure,
       xs: state.model?.xs,
-      weights: { kind: state.rule, k: state.k, miles: state.band, power: state.power, symmetric: state.symmetric },
+      weights: weightsOf(app.layer()),
     });
     if (!spec) throw new Error("Run a regression with at least one covariate first.");
     const others = (state.stack.find((e) => e.id === state.active)?.derived || []).filter((d) => !(d.kind === "model" && d.y === spec.y));
@@ -380,8 +398,9 @@ export function createAnalysis(app) {
     const ids = new Set(items.map(featureId));
     if (DISTANCE_KINDS.has(spec.weights.kind)) request.points = (await locations(l, items)).points;
     else {
+      const graphs = l.reference && (await app.ws.neighbors());
       const graph = l.reference
-        ? (await app.ws.neighbors())[spec.weights.kind]
+        ? graphs[graphKey(spec.weights)] || graphs[spec.weights.kind]
         : l.library && l.meta.neighbors
           ? (await app.ws.loadLayerNeighbors(l.id))[spec.weights.kind]
           : app.ws.graphs.get(l.id + "-" + spec.weights.kind) ||

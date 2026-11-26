@@ -34,6 +34,7 @@ function sample() {
     filter: { kind: "radius", center: [-90.18, 32.3], miles: 25, orSelection: true },
     filterMode: "hide",
     roads: "below",
+    land: true,
     sql: "SELECT secret",
   };
 }
@@ -63,6 +64,7 @@ test("a share keeps catalog layers and settings, never imports, SQL or results",
   assert.equal(state.filterMode, "hide");
   assert.equal(state.roads, "below");
   assert.equal(state.classification, "jenks");
+  assert.equal(state.land, true);
   assert.deepEqual(camera, { center: [-90.12346, 32.3], zoom: 7.12 });
 });
 
@@ -80,7 +82,7 @@ test("shared data is checked on the way in", async () => {
     r: "ms",
     a: "nowhere",
     s: [{ i: "nowhere" }, { i: "tracts", st: { color: "red", opacity: 9, shape: "star", size: 4 } }, { i: "fire_stations_2020", h: 1 }],
-    w: { palette: "Neon", classification: "magic", count: 99, measure: "poverty_pct" },
+    w: { palette: "Neon", classification: "magic", count: 99, measure: "poverty_pct", land: "yes" },
     f: { kind: "radius", center: [-90, 200], miles: 5 },
     m: [10, 99, 3],
   };
@@ -89,7 +91,7 @@ test("shared data is checked on the way in", async () => {
   assert.equal(state.active, "tracts");
   assert.deepEqual(state.stack[0], { id: "tracts", visible: true, style: { size: 4 } });
   assert.equal(state.stack[1].visible, false);
-  assert.deepEqual([state.palette, state.classification, state.count, state.measure], [undefined, undefined, undefined, "poverty_pct"]);
+  assert.deepEqual([state.palette, state.classification, state.count, state.measure, state.land], [undefined, undefined, undefined, "poverty_pct", undefined]);
   assert.equal(state.filter, null);
   assert.equal(camera, null);
   assert.throws(() => readShare({ v: 1, r: "al" }, options), /another region/);
