@@ -55,14 +55,10 @@ async function openRemote(url) {
   return cachedAsyncBuffer(await asyncBufferFromUrl({ url, byteLength: Number(total) }));
 }
 
-/**
- * Some columns of a remote Parquet file as { ids, columns }, like readTable;
- * `rows` ([start, end)) limits the read to those rows (one state's).
- */
-export async function readColumns(url, names, { idColumn = "GEOID", rows } = {}) {
+/** Some columns of a remote Parquet file as { ids, columns }, like readTable. */
+export async function readColumns(url, names, { idColumn = "GEOID" } = {}) {
   const file = await remoteFile(url);
-  const [rowStart, rowEnd] = rows || [];
-  const objects = await parquetReadObjects({ file, columns: [idColumn, ...names], rowStart, rowEnd });
+  const objects = await parquetReadObjects({ file, columns: [idColumn, ...names] });
   const columns = {};
   for (const key of names) columns[key] = objects.map((r) => (r[key] == null || Number.isNaN(r[key]) ? null : typeof r[key] === "bigint" ? Number(r[key]) : r[key]));
   return { ids: objects.map((r) => String(r[idColumn])), columns };
