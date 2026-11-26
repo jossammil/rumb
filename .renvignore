@@ -1,0 +1,12 @@
+# A .renvignore replaces .gitignore for renv, so this repeats its folders.
+node_modules/
+dist/
+.cache/
+public/
+
+# renv.lock pins what the data pipeline needs in CI. These scripts run only on
+# a developer's machine, to write test fixtures or measure DuckDB, with the
+# package versions REPRODUCIBILITY.md records; renv would otherwise call the
+# project out of sync for lmtest, smerc, spatialreg and duckdb.
+scripts/reference-*.R
+scripts/benchmark-db.R
