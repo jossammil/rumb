@@ -9,7 +9,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DOWNLOAD = "https://data.cdc.gov/api/views/yjkw-uj5s/rows.csv?accessType=DOWNLOAD"
+# Socrata retired the rows.csv link in October 2026; its v3 export serves the same file.
+DOWNLOAD = "https://data.cdc.gov/api/v3/views/yjkw-uj5s/export.csv"
 SOCIAL_DEFINITIONS = "https://www.cdc.gov/places/measure-definitions/health-related-social-needs.html"
 MEASURES = {
     "transportation_barrier_pct": (

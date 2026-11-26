@@ -758,10 +758,13 @@ Since then:
 - **Socrata retired CDC's `rows.csv` download links in October 2026**; they
   now answer with an error, ahead of a sunset on December 21, 2026. PLACES
   downloads from the v3 export (`api/v3/views/<id>/export.csv`), which
-  serves the same bytes. Outputs still record the old URL as provenance, so
-  Mississippi's files did not change.
-- **Wait for CI before merging.** `pages.yml` runs only on `main`, so the
-  tiles job first ran after the merge. And three fixes for flaky checks were
+  serves the same bytes. Outputs recorded the old URL as provenance until
+  November 26, 2026; now `tables.json` and `prepare-places.py` record the v3
+  export, and the committed regions' `places-2025.json` and
+  `tables/index.json` changed only in that URL.
+- **Wait for CI before merging.** `pages.yml` ran only on `main`, so the
+  tiles job first ran after the merge (now Publish can be started by hand on
+  a branch, and deploys only from `main`). And three fixes for flaky checks were
   merged before their WebKit result came in.
 
 All paths are relative, so the same build
