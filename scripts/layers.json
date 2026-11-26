@@ -110,6 +110,7 @@
       "credit": "County Health Rankings & Roadmaps 2025 · U.S. Census Bureau", "terms": "chr", "color": "#c86bfa",
       "label": "name", "population": "v051_rawvalue",
       "lead": ["v085_rawvalue", "v023_rawvalue", "v138_rawvalue", "v002_rawvalue", "v063_rawvalue"],
+      "nationalGaps": [{ "state": "09", "note": "in Connecticut, whose planning regions County Health Rankings 2025 reports few measures for; open Connecticut to see its eight former counties" }],
       "fraction": ["v002", "v003", "v009", "v011", "v021", "v023", "v024", "v037", "v049", "v050", "v052", "v053", "v054", "v055", "v056", "v057", "v058", "v059", "v060", "v065", "v067", "v069", "v070", "v080", "v081", "v082", "v083", "v085", "v122", "v126", "v132", "v134", "v136", "v137", "v139", "v143", "v144", "v145", "v149", "v153", "v154", "v155", "v166", "v167", "v168", "v171", "v177", "v178", "v179", "v180", "v183", "v184"],
       "scaleBy": { "v004": 100000, "v062": 100000, "v088": 100000, "v131": 100000 },
       "display": [
