@@ -93,3 +93,12 @@ test("offline downloads know their size, so a large region can ask first", () =>
   assert.equal(offlineAsks({ files: [] }, "us"), false);
   assert.equal(offlineBytes({ files: [] }, "us"), null);
 });
+
+test("the legend says why a source's gaps are missing (Connecticut's planning regions nationally)", async () => {
+  const { gapNotes } = await import("../src/catalog/gaps.js");
+  const meta = { gaps: [{ ids: ["09110", "09120"], note: "in Connecticut, whose …" }] };
+  const features = [{ id: "09110" }, { id: "09120" }, { id: "01001" }, { id: "01003" }];
+  assert.deepEqual(gapNotes(meta, features, [null, 3.2, null, 4]), ["1 in Connecticut, whose …"]);
+  assert.deepEqual(gapNotes(meta, features, [1, 2, null, 4]), []);
+  assert.deepEqual(gapNotes({}, features, [null, null, null, null]), []);
+});

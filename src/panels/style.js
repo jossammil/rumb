@@ -1,6 +1,7 @@
 // Map style: the measure, classification and palette controls, and drawing
 // every stacked layer's colors (each from its own view settings) and the focus
 // layer's legend.
+import { gapNotes } from "../catalog/gaps.js";
 import { featureId } from "../core/features.js";
 import { layerViewDefaults } from "../core/state.js";
 import { neutralColors } from "../map/basemap-style.js";
@@ -168,6 +169,7 @@ export function createStyle(app) {
     const isSuppressed = (f) => !!flag && f.properties?.[flag] === 2;
     const data = features.map((f) => (isSuppressed(f) ? null : f.properties?.[measure]));
     const suppressed = flag ? features.filter(isSuppressed).length : 0;
+    const gaps = measure ? gapNotes(l.meta, features, data) : [];
     const cuts = measure ? classify(data, view.count, view.classification, { breaks: view.breaks }) : [],
       colors = ramp(view.palette, cuts.length + 1);
     const cats = category ? categories(features.map((f) => f.properties?.[category])) : null;
@@ -219,6 +221,7 @@ export function createStyle(app) {
       uniform,
       na,
       suppressed,
+      gaps,
       hatched: rule ? { count: unreliable, note: rule.note } : null,
     };
   }
@@ -261,7 +264,7 @@ export function createStyle(app) {
     const l = app.layer();
     values.clear();
     for (const f of l.collection.features) values.set(featureId(f), f);
-    const { data, cuts, colors, cats, clustered, clusterColor, method, classes, uniform, na, suppressed, hatched } =
+    const { data, cuts, colors, cats, clustered, clusterColor, method, classes, uniform, na, suppressed, gaps, hatched } =
       focus || colorize(l, state);
     lastCuts = cuts;
 
@@ -298,7 +301,7 @@ export function createStyle(app) {
           ? valid.reduce(([lo, hi], v) => [Math.min(lo, v), Math.max(hi, v)], [Infinity, -Infinity])
           : null,
         missing: data.length - valid.length,
-        missingNote: suppressed ? suppressed + " suppressed by the source" : "",
+        missingNote: [suppressed ? suppressed + " suppressed by the source" : "", ...gaps].filter(Boolean).join("; "),
         hatched,
         action,
       });

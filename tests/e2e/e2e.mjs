@@ -1361,6 +1361,11 @@ await check("us-counties", async () => {
   await waitText("#inspect-panel", "Areas3,141", p);
   await waitText("#inspect-panel", "ρ (rho)0.6051", p);
   await waitText("#inspect-panel", "Intercept9.3807", p);
+  // County Health Rankings leaves most measures out for Connecticut's
+  // planning regions; the legend says so.
+  await p.evaluate(() => window.rumb.app.addLibraryLayer("chr_counties_2025"));
+  await p.evaluate(() => window.rumb.app.setMeasure("v147_rawvalue"));
+  await waitText("#legend", "9 in Connecticut, whose planning regions", p);
   await p.context().close();
 });
 
