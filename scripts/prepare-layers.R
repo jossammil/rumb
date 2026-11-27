@@ -237,9 +237,13 @@ build_chr <- function(l, built) {
   }
   lead <- unlist(l$lead)
   measures <- c(lead, setdiff(measures, lead))
+  # Nationally, areas the source reports few measures for (Connecticut's
+  # planning regions), so the legend can say why their values are missing.
+  gaps <- if (ctx$national) lapply(l$nationalGaps, function(g)
+    list(ids = I(geo$feature_id[substr(geo$feature_id, 1, 2) == g$state]), note = g$note))
   shaped <- st_sf(feature_id = geo$feature_id, as.data.frame(data, stringsAsFactors = FALSE),
                   geometry = st_geometry(geo))
-  list(sf = shaped, graphs = built[[l$geometryFrom]]$graphs, fields = fields, measures = measures,
+  list(sf = shaped, graphs = built[[l$geometryFrom]]$graphs, fields = fields, measures = measures, gaps = gaps,
        source = Filter(Negate(is.null), list(url = l$url, sha256 = sha256(csv), terms = spec$terms[[l$terms]],
                      geometry = built[[l$geometryFrom]]$source$url,
                      rowsLeftOut = if (length(dropped_rows)) I(dropped_rows))))
@@ -305,7 +309,7 @@ for (l in Filter(is_listed, layers)) {
     labelField = l$label, typeField = l$type, placeField = l$place, populationField = l$population,
     popupFields = I(unlist(l$popup)), measures = I(b$measures), fields = b$fields,
     style = list(color = l$color), credit = l$credit, vintage = l$vintage,
-    dropped = if (isTRUE(b$dropped > 0)) b$dropped
+    dropped = if (isTRUE(b$dropped > 0)) b$dropped, gaps = if (length(b$gaps)) b$gaps
   )
   if (!is.null(b$graphs)) {
     nb <- paste0(l$id, ".neighbors.json")
